@@ -8,9 +8,11 @@ Git ブランチ/PR/Worktree の状態を可視化・管理するローカルWeb
 # 依存関係インストール
 bun install && cd frontend && bun install && cd ..
 
-# データベース初期化
+# データベース初期化 (初回のみ)
 bun run db:push
 ```
+
+> DBリセットしたい場合: `rm -rf data/ && bun run db:push`
 
 ## 起動
 
