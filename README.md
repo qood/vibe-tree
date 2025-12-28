@@ -1,15 +1,33 @@
-# vibe-tree
+# Vibe Tree
 
-To install dependencies:
+Git ブランチ/PR/Worktree の状態を可視化・管理するローカルWebアプリ。
 
-```bash
-bun install
-```
-
-To run:
+## セットアップ
 
 ```bash
-bun run index.ts
+# 依存関係インストール
+bun install && cd frontend && bun install && cd ..
+
+# データベース初期化
+bun run db:push
 ```
 
-This project was created using `bun init` in bun v1.0.17. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+## 起動
+
+```bash
+bun run dev
+```
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3000
+
+## テスト
+
+```bash
+bun run test:all
+```
+
+## 技術スタック
+
+- **Backend**: Bun, Hono, Drizzle ORM, SQLite, WebSocket
+- **Frontend**: React, TypeScript, Vite

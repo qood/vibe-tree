@@ -3,7 +3,8 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/server/index.ts",
+    "dev": "bun run dev:backend & bun run dev:frontend",
+    "dev:backend": "bun run --watch src/server/index.ts",
     "dev:frontend": "cd frontend && bun run dev",
     "build": "cd frontend && bun run build",
     "test": "bun test",
