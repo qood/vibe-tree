@@ -1,6 +1,6 @@
 type WSMessage = {
   type: string;
-  repoId?: number;
+  repoId?: string;
   data?: unknown;
 };
 
@@ -9,10 +9,10 @@ type MessageHandler = (message: WSMessage) => void;
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private handlers: Map<string, Set<MessageHandler>> = new Map();
-  private repoId: number | null = null;
+  private repoId: string | null = null;
   private reconnectTimeout: number | null = null;
 
-  connect(repoId?: number) {
+  connect(repoId?: string) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       if (repoId && repoId !== this.repoId) {
         this.subscribe(repoId);
@@ -57,7 +57,7 @@ class WebSocketClient {
     }, 3000);
   }
 
-  subscribe(repoId: number) {
+  subscribe(repoId: string) {
     this.repoId = repoId;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "subscribe", repoId }));

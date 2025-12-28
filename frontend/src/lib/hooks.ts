@@ -46,18 +46,18 @@ export function useRepos() {
 }
 
 // Single repo hook
-export function useRepo(repoId: number | null) {
+export function useRepo(owner: string | null, name: string | null) {
   return useAsync(
     async () => {
-      if (!repoId) return null;
-      return api.getRepo(repoId);
+      if (!owner || !name) return null;
+      return api.getRepo(owner, name);
     },
-    [repoId]
+    [owner, name]
   );
 }
 
 // Branch naming hook with WebSocket updates
-export function useBranchNaming(repoId: number | null) {
+export function useBranchNaming(repoId: string | null) {
   const [data, setData] = useState<BranchNamingRule | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +101,7 @@ export function useBranchNaming(repoId: number | null) {
 }
 
 // Plan hook with WebSocket updates
-export function usePlan(repoId: number | null) {
+export function usePlan(repoId: string | null) {
   const [data, setData] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -145,16 +145,16 @@ export function usePlan(repoId: number | null) {
 }
 
 // Scan hook with WebSocket updates
-export function useScan(repoId: number | null) {
+export function useScan(repoId: string | null, localPath: string | null) {
   const [data, setData] = useState<ScanSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const scan = useCallback(async () => {
-    if (!repoId) return;
+    if (!repoId || !localPath) return;
     setLoading(true);
     try {
-      const result = await api.scan(repoId);
+      const result = await api.scan(repoId, localPath);
       setData(result);
       setError(null);
     } catch (err) {
@@ -162,7 +162,7 @@ export function useScan(repoId: number | null) {
     } finally {
       setLoading(false);
     }
-  }, [repoId]);
+  }, [repoId, localPath]);
 
   // Listen for WebSocket updates
   useEffect(() => {

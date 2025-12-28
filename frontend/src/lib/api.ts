@@ -1,16 +1,17 @@
 const API_BASE = "/api";
 
+// Repo from GitHub (fetched via gh CLI)
 export interface Repo {
-  id: number;
-  path: string;
+  id: string; // owner/name format
   name: string;
-  createdAt: string;
-  updatedAt: string;
+  fullName: string;
+  url: string;
+  description: string;
+  isPrivate: boolean;
+  defaultBranch: string;
 }
 
 export interface BranchNamingRule {
-  id: number;
-  repoId: number;
   pattern: string;
   description: string;
   examples: string[];
@@ -18,7 +19,7 @@ export interface BranchNamingRule {
 
 export interface Plan {
   id: number;
-  repoId: number;
+  repoId: string;
   title: string;
   contentMd: string;
   status: "draft" | "committed";
@@ -34,23 +35,48 @@ export interface Warning {
   meta?: Record<string, unknown>;
 }
 
+export interface PRInfo {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  branch: string;
+  isDraft?: boolean;
+  labels?: string[];
+  assignees?: string[];
+  reviewDecision?: string;
+  checks?: string;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+}
+
+export interface IssueInfo {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  labels?: string[];
+  assignees?: string[];
+  parentIssue?: number;
+  childIssues?: number[];
+}
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  commit: string;
+  dirty: boolean;
+  isActive?: boolean;
+  activeAgent?: string;
+}
+
 export interface TreeNode {
   branchName: string;
   badges: string[];
-  pr?: {
-    number: number;
-    title: string;
-    state: string;
-    url: string;
-    branch: string;
-    checks?: string;
-  };
-  worktree?: {
-    path: string;
-    branch: string;
-    commit: string;
-    dirty: boolean;
-  };
+  pr?: PRInfo;
+  issue?: IssueInfo;
+  worktree?: WorktreeInfo;
   lastCommitAt: string;
   aheadBehind?: { ahead: number; behind: number };
 }
@@ -59,29 +85,49 @@ export interface TreeEdge {
   parent: string;
   child: string;
   confidence: "high" | "medium" | "low";
+  isDesigned?: boolean;
+}
+
+export interface TreeSpecNode {
+  branchName: string;
+  intendedIssue?: number;
+  intendedPr?: number;
+  description?: string;
+}
+
+export interface TreeSpecEdge {
+  parent: string;
+  child: string;
+}
+
+export interface TreeSpec {
+  id: number;
+  repoId: string;
+  specJson: {
+    nodes: TreeSpecNode[];
+    edges: TreeSpecEdge[];
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ScanSnapshot {
   nodes: TreeNode[];
   edges: TreeEdge[];
   warnings: Warning[];
-  worktrees: Array<{
-    path: string;
-    branch: string;
-    commit: string;
-    dirty: boolean;
-  }>;
+  worktrees: WorktreeInfo[];
   rules: { branchNaming: BranchNamingRule | null };
   restart: {
     worktreePath: string;
     cdCommand: string;
     restartPromptMd: string;
   } | null;
+  treeSpec?: TreeSpec;
 }
 
 export interface InstructionLog {
   id: number;
-  repoId: number;
+  repoId: string;
   planId: number | null;
   worktreePath: string | null;
   branchName: string | null;
@@ -109,22 +155,18 @@ export const api = {
   // Health
   health: () => fetchJson<{ status: string }>(`${API_BASE}/health`),
 
-  // Repos
+  // Repos (fetched from gh CLI)
   getRepos: () => fetchJson<Repo[]>(`${API_BASE}/repos`),
-  createRepo: (path: string, name?: string) =>
-    fetchJson<Repo>(`${API_BASE}/repos`, {
-      method: "POST",
-      body: JSON.stringify({ path, name }),
-    }),
-  getRepo: (id: number) => fetchJson<Repo>(`${API_BASE}/repos/${id}`),
+  getRepo: (owner: string, name: string) =>
+    fetchJson<Repo>(`${API_BASE}/repos/${owner}/${name}`),
 
   // Branch Naming
-  getBranchNaming: (repoId: number) =>
-    fetchJson<BranchNamingRule>(
-      `${API_BASE}/project-rules/branch-naming?repoId=${repoId}`
+  getBranchNaming: (repoId: string) =>
+    fetchJson<BranchNamingRule & { id: number; repoId: string }>(
+      `${API_BASE}/project-rules/branch-naming?repoId=${encodeURIComponent(repoId)}`
     ),
   updateBranchNaming: (data: {
-    repoId: number;
+    repoId: string;
     pattern: string;
     description: string;
     examples: string[];
@@ -135,9 +177,9 @@ export const api = {
     }),
 
   // Plan
-  getCurrentPlan: (repoId: number) =>
-    fetchJson<Plan | null>(`${API_BASE}/plan/current?repoId=${repoId}`),
-  startPlan: (repoId: number, title: string) =>
+  getCurrentPlan: (repoId: string) =>
+    fetchJson<Plan | null>(`${API_BASE}/plan/current?repoId=${encodeURIComponent(repoId)}`),
+  startPlan: (repoId: string, title: string) =>
     fetchJson<Plan>(`${API_BASE}/plan/start`, {
       method: "POST",
       body: JSON.stringify({ repoId, title }),
@@ -147,20 +189,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ planId, contentMd }),
     }),
-  commitPlan: (planId: number) =>
+  commitPlan: (planId: number, localPath: string) =>
     fetchJson<Plan>(`${API_BASE}/plan/commit`, {
       method: "POST",
-      body: JSON.stringify({ planId }),
+      body: JSON.stringify({ planId, localPath }),
     }),
 
   // Scan
-  scan: (repoId: number) =>
+  scan: (repoId: string, localPath: string) =>
     fetchJson<ScanSnapshot>(`${API_BASE}/scan`, {
       method: "POST",
-      body: JSON.stringify({ repoId }),
+      body: JSON.stringify({ repoId, localPath }),
     }),
-  getRestartPrompt: (repoId: number, planId?: number, worktreePath?: string) => {
-    const params = new URLSearchParams({ repoId: String(repoId) });
+  getRestartPrompt: (
+    repoId: string,
+    localPath: string,
+    planId?: number,
+    worktreePath?: string
+  ) => {
+    const params = new URLSearchParams({
+      repoId,
+      localPath,
+    });
     if (planId) params.set("planId", String(planId));
     if (worktreePath) params.set("worktreePath", worktreePath);
     return fetchJson<{ cdCommand: string; restartPromptMd: string }>(
@@ -168,9 +218,22 @@ export const api = {
     );
   },
 
+  // Tree Spec
+  getTreeSpec: (repoId: string) =>
+    fetchJson<TreeSpec | null>(`${API_BASE}/tree-spec?repoId=${encodeURIComponent(repoId)}`),
+  updateTreeSpec: (data: {
+    repoId: string;
+    nodes: TreeSpecNode[];
+    edges: TreeSpecEdge[];
+  }) =>
+    fetchJson<TreeSpec>(`${API_BASE}/tree-spec`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   // Instructions
   logInstruction: (data: {
-    repoId: number;
+    repoId: string;
     planId?: number;
     worktreePath?: string;
     branchName?: string;
@@ -181,6 +244,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  getInstructionLogs: (repoId: number) =>
-    fetchJson<InstructionLog[]>(`${API_BASE}/instructions/logs?repoId=${repoId}`),
+  getInstructionLogs: (repoId: string) =>
+    fetchJson<InstructionLog[]>(
+      `${API_BASE}/instructions/logs?repoId=${encodeURIComponent(repoId)}`
+    ),
 };

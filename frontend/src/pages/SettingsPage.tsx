@@ -7,9 +7,7 @@ export default function SettingsPage() {
   const repoIdParam = searchParams.get("repoId");
 
   const [repos, setRepos] = useState<Repo[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<number | null>(
-    repoIdParam ? parseInt(repoIdParam) : null
-  );
+  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(repoIdParam);
   const [rule, setRule] = useState<BranchNamingRule | null>(null);
   const [pattern, setPattern] = useState("");
   const [description, setDescription] = useState("");
@@ -40,7 +38,11 @@ export default function SettingsPage() {
       })
       .catch((err) => {
         console.error(err);
-        setError(err.message);
+        // Create default rule if not exists
+        setRule({ pattern: "vt/{planId}/{taskSlug}", description: "", examples: [] });
+        setPattern("vt/{planId}/{taskSlug}");
+        setDescription("");
+        setExamples([]);
       });
   }, [selectedRepoId]);
 
@@ -88,7 +90,7 @@ export default function SettingsPage() {
       <h1>Project Settings</h1>
 
       <div style={{ marginBottom: "20px" }}>
-        <Link to="/">← Back to Plan Mode</Link>
+        <Link to="/">← Back to Dashboard</Link>
       </div>
 
       {error && (
@@ -129,13 +131,13 @@ export default function SettingsPage() {
         <h3>Select Repository</h3>
         <select
           value={selectedRepoId || ""}
-          onChange={(e) => setSelectedRepoId(Number(e.target.value) || null)}
+          onChange={(e) => setSelectedRepoId(e.target.value || null)}
           style={{ padding: "8px", minWidth: "300px" }}
         >
           <option value="">-- Select a repo --</option>
           {repos.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.name} ({r.path})
+              {r.fullName}
             </option>
           ))}
         </select>

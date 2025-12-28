@@ -147,10 +147,10 @@ describe('useRepos', () => {
 
   it('should fetch repos successfully', async () => {
     const mockRepos = [
-      { id: 1, path: '/repo1', name: 'repo1' },
-      { id: 2, path: '/repo2', name: 'repo2' },
+      { id: 'owner/repo1', name: 'repo1', fullName: 'owner/repo1' },
+      { id: 'owner/repo2', name: 'repo2', fullName: 'owner/repo2' },
     ];
-    vi.mocked(api.getRepos).mockResolvedValue(mockRepos);
+    vi.mocked(api.getRepos).mockResolvedValue(mockRepos as any);
 
     const { result } = renderHook(() => useRepos());
 
@@ -186,7 +186,7 @@ describe('useRepos', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    vi.mocked(api.getRepos).mockResolvedValue([{ id: 1, path: '/new', name: 'new' }]);
+    vi.mocked(api.getRepos).mockResolvedValue([{ id: 'owner/new', name: 'new', fullName: 'owner/new' }] as any);
 
     act(() => {
       result.current.refetch();
@@ -204,21 +204,32 @@ describe('useRepo', () => {
   });
 
   it('should fetch single repo', async () => {
-    const mockRepo = { id: 1, path: '/repo', name: 'repo' };
-    vi.mocked(api.getRepo).mockResolvedValue(mockRepo);
+    const mockRepo = { id: 'owner/repo', name: 'repo', fullName: 'owner/repo' };
+    vi.mocked(api.getRepo).mockResolvedValue(mockRepo as any);
 
-    const { result } = renderHook(() => useRepo(1));
+    const { result } = renderHook(() => useRepo('owner', 'repo'));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
     expect(result.current.data).toEqual(mockRepo);
-    expect(api.getRepo).toHaveBeenCalledWith(1);
+    expect(api.getRepo).toHaveBeenCalledWith('owner', 'repo');
   });
 
-  it('should return null when repoId is null', async () => {
-    const { result } = renderHook(() => useRepo(null));
+  it('should return null when owner is null', async () => {
+    const { result } = renderHook(() => useRepo(null, 'repo'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toBeNull();
+    expect(api.getRepo).not.toHaveBeenCalled();
+  });
+
+  it('should return null when name is null', async () => {
+    const { result } = renderHook(() => useRepo('owner', null));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -237,7 +248,7 @@ describe('useBranchNaming', () => {
   it('should fetch branch naming rule', async () => {
     const mockRule = {
       id: 1,
-      repoId: 1,
+      repoId: 'owner/repo',
       pattern: 'vt/{planId}/{taskSlug}',
       description: 'test',
       examples: ['vt/1/feature'],
@@ -245,7 +256,7 @@ describe('useBranchNaming', () => {
     vi.mocked(api.getBranchNaming).mockResolvedValue(mockRule);
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => useBranchNaming(1));
+    const { result } = renderHook(() => useBranchNaming('owner/repo'));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -269,7 +280,7 @@ describe('useBranchNaming', () => {
     vi.mocked(api.getBranchNaming).mockRejectedValue(new Error('Not found'));
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => useBranchNaming(1));
+    const { result } = renderHook(() => useBranchNaming('owner/repo'));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -279,10 +290,10 @@ describe('useBranchNaming', () => {
   });
 
   it('should subscribe to WebSocket updates', async () => {
-    vi.mocked(api.getBranchNaming).mockResolvedValue(null);
+    vi.mocked(api.getBranchNaming).mockResolvedValue(null as any);
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    renderHook(() => useBranchNaming(1));
+    renderHook(() => useBranchNaming('owner/repo'));
 
     await waitFor(() => {
       expect(wsClient.on).toHaveBeenCalledWith('projectRules.updated', expect.any(Function));
@@ -296,11 +307,11 @@ describe('usePlan', () => {
   });
 
   it('should fetch plan', async () => {
-    const mockPlan = { id: 1, repoId: 1, title: 'Test', status: 'draft' };
-    vi.mocked(api.getCurrentPlan).mockResolvedValue(mockPlan);
+    const mockPlan = { id: 1, repoId: 'owner/repo', title: 'Test', status: 'draft' };
+    vi.mocked(api.getCurrentPlan).mockResolvedValue(mockPlan as any);
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => usePlan(1));
+    const { result } = renderHook(() => usePlan('owner/repo'));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -323,7 +334,7 @@ describe('usePlan', () => {
     vi.mocked(api.getCurrentPlan).mockResolvedValue(null);
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    renderHook(() => usePlan(1));
+    renderHook(() => usePlan('owner/repo'));
 
     await waitFor(() => {
       expect(wsClient.on).toHaveBeenCalledWith('plan.updated', expect.any(Function));
@@ -334,14 +345,14 @@ describe('usePlan', () => {
     vi.mocked(api.getCurrentPlan).mockResolvedValue(null);
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => usePlan(1));
+    const { result } = renderHook(() => usePlan('owner/repo'));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
     act(() => {
-      result.current.setData({ id: 2, repoId: 1, title: 'New', status: 'committed' } as any);
+      result.current.setData({ id: 2, repoId: 'owner/repo', title: 'New', status: 'committed' } as any);
     });
 
     expect(result.current.data?.title).toBe('New');
@@ -356,7 +367,7 @@ describe('useScan', () => {
   it('should not auto-fetch on mount', async () => {
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => useScan(1));
+    const { result } = renderHook(() => useScan('owner/repo', '/path/to/repo'));
 
     // Initial state should not be loading
     expect(result.current.loading).toBe(false);
@@ -376,7 +387,7 @@ describe('useScan', () => {
     vi.mocked(api.scan).mockResolvedValue(mockSnapshot);
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => useScan(1));
+    const { result } = renderHook(() => useScan('owner/repo', '/path/to/repo'));
 
     act(() => {
       result.current.scan();
@@ -394,17 +405,17 @@ describe('useScan', () => {
   it('should connect to WebSocket', async () => {
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    renderHook(() => useScan(1));
+    renderHook(() => useScan('owner/repo', '/path/to/repo'));
 
     await waitFor(() => {
-      expect(wsClient.connect).toHaveBeenCalledWith(1);
+      expect(wsClient.connect).toHaveBeenCalledWith('owner/repo');
     });
   });
 
   it('should not connect when repoId is null', async () => {
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    renderHook(() => useScan(null));
+    renderHook(() => useScan(null, '/path/to/repo'));
 
     expect(wsClient.connect).not.toHaveBeenCalled();
   });
@@ -413,7 +424,7 @@ describe('useScan', () => {
     vi.mocked(api.scan).mockRejectedValue(new Error('Scan failed'));
     vi.mocked(wsClient.on).mockReturnValue(vi.fn());
 
-    const { result } = renderHook(() => useScan(1));
+    const { result } = renderHook(() => useScan('owner/repo', '/path/to/repo'));
 
     act(() => {
       result.current.scan();

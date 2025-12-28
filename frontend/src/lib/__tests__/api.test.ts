@@ -31,7 +31,9 @@ describe('api', () => {
 
   describe('getRepos', () => {
     it('should return list of repos', async () => {
-      const repos = [{ id: 1, path: '/test', name: 'test' }];
+      const repos = [
+        { id: 'owner/repo', name: 'repo', fullName: 'owner/repo', url: 'https://github.com/owner/repo', description: '', isPrivate: false, defaultBranch: 'main' }
+      ];
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(repos),
@@ -42,19 +44,17 @@ describe('api', () => {
     });
   });
 
-  describe('createRepo', () => {
-    it('should create a new repo', async () => {
-      const repo = { id: 1, path: '/test', name: 'test' };
+  describe('getRepo', () => {
+    it('should get a repo by owner and name', async () => {
+      const repo = { id: 'owner/repo', name: 'repo', fullName: 'owner/repo', url: 'https://github.com/owner/repo', description: '', isPrivate: false, defaultBranch: 'main' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(repo),
       });
 
-      const result = await api.createRepo('/test', 'test');
+      const result = await api.getRepo('owner', 'repo');
       expect(result).toEqual(repo);
-      expect(mockFetch).toHaveBeenCalledWith('/api/repos', {
-        method: 'POST',
-        body: JSON.stringify({ path: '/test', name: 'test' }),
+      expect(mockFetch).toHaveBeenCalledWith('/api/repos/owner/repo', {
         headers: { 'Content-Type': 'application/json' },
       });
     });
@@ -64,7 +64,7 @@ describe('api', () => {
     it('should get branch naming rule', async () => {
       const rule = {
         id: 1,
-        repoId: 1,
+        repoId: 'owner/repo',
         pattern: 'vt/{planId}/{taskSlug}',
         description: 'test',
         examples: [],
@@ -74,7 +74,7 @@ describe('api', () => {
         json: () => Promise.resolve(rule),
       });
 
-      const result = await api.getBranchNaming(1);
+      const result = await api.getBranchNaming('owner/repo');
       expect(result).toEqual(rule);
     });
   });
@@ -82,7 +82,7 @@ describe('api', () => {
   describe('updateBranchNaming', () => {
     it('should update branch naming rule', async () => {
       const input = {
-        repoId: 1,
+        repoId: 'owner/repo',
         pattern: 'vt/{planId}/{taskSlug}',
         description: 'test',
         examples: ['vt/1/feature'],
@@ -99,13 +99,13 @@ describe('api', () => {
 
   describe('getCurrentPlan', () => {
     it('should return current plan', async () => {
-      const plan = { id: 1, repoId: 1, title: 'Test', status: 'draft' };
+      const plan = { id: 1, repoId: 'owner/repo', title: 'Test', status: 'draft' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(plan),
       });
 
-      const result = await api.getCurrentPlan(1);
+      const result = await api.getCurrentPlan('owner/repo');
       expect(result).toEqual(plan);
     });
 
@@ -115,20 +115,20 @@ describe('api', () => {
         json: () => Promise.resolve(null),
       });
 
-      const result = await api.getCurrentPlan(1);
+      const result = await api.getCurrentPlan('owner/repo');
       expect(result).toBeNull();
     });
   });
 
   describe('startPlan', () => {
     it('should create a new plan', async () => {
-      const plan = { id: 1, repoId: 1, title: 'Test', status: 'draft' };
+      const plan = { id: 1, repoId: 'owner/repo', title: 'Test', status: 'draft' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(plan),
       });
 
-      const result = await api.startPlan(1, 'Test');
+      const result = await api.startPlan('owner/repo', 'Test');
       expect(result).toEqual(plan);
     });
   });
@@ -154,7 +154,7 @@ describe('api', () => {
         json: () => Promise.resolve(plan),
       });
 
-      const result = await api.commitPlan(1);
+      const result = await api.commitPlan(1, '/path/to/repo');
       expect(result.status).toBe('committed');
     });
   });
@@ -174,7 +174,7 @@ describe('api', () => {
         json: () => Promise.resolve(snapshot),
       });
 
-      const result = await api.scan(1);
+      const result = await api.scan('owner/repo', '/path/to/repo');
       expect(result).toEqual(snapshot);
     });
   });
@@ -183,7 +183,7 @@ describe('api', () => {
     it('should log instruction', async () => {
       const log = {
         id: 1,
-        repoId: 1,
+        repoId: 'owner/repo',
         kind: 'user_instruction',
         contentMd: 'Test',
       };
@@ -193,7 +193,7 @@ describe('api', () => {
       });
 
       const result = await api.logInstruction({
-        repoId: 1,
+        repoId: 'owner/repo',
         kind: 'user_instruction',
         contentMd: 'Test',
       });
@@ -209,7 +209,7 @@ describe('api', () => {
         json: () => Promise.resolve({ error: 'Not found' }),
       });
 
-      await expect(api.getRepo(999)).rejects.toThrow('Not found');
+      await expect(api.getRepo('owner', 'nonexistent')).rejects.toThrow('Not found');
     });
 
     it('should handle JSON parse errors', async () => {
