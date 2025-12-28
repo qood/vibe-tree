@@ -3,8 +3,21 @@ import { db, schema } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { execSync } from "child_process";
 import { broadcast } from "../ws";
-
-export const scanRouter = new Hono();
+import {
+  scanSchema,
+  restartPromptQuerySchema,
+  validateOrThrow,
+} from "../../shared/validation";
+import { NotFoundError } from "../middleware/error-handler";
+import type {
+  BranchNamingRule,
+  TreeNode,
+  TreeEdge,
+  Warning,
+  WorktreeInfo,
+  PRInfo,
+  ScanSnapshot,
+} from "../../shared/types";
 
 interface BranchInfo {
   name: string;
@@ -12,165 +25,110 @@ interface BranchInfo {
   lastCommitAt: string;
 }
 
-interface WorktreeInfo {
-  path: string;
-  branch: string;
-  commit: string;
-  dirty: boolean;
-}
-
-interface PRInfo {
-  number: number;
-  title: string;
-  state: string;
-  url: string;
-  branch: string;
-  checks?: string;
-}
-
-interface Warning {
-  severity: "warn" | "error";
-  code: string;
-  message: string;
-  meta?: Record<string, unknown>;
-}
-
-interface TreeNode {
-  branchName: string;
-  badges: string[];
-  pr?: PRInfo;
-  worktree?: WorktreeInfo;
-  lastCommitAt: string;
-  aheadBehind?: { ahead: number; behind: number };
-}
-
-interface TreeEdge {
-  parent: string;
-  child: string;
-  confidence: "high" | "medium" | "low";
-}
+export const scanRouter = new Hono();
 
 // POST /api/scan
 scanRouter.post("/", async (c) => {
   const body = await c.req.json();
-  const { repoId } = body;
-
-  if (!repoId) {
-    return c.json({ error: "repoId is required" }, 400);
-  }
+  const input = validateOrThrow(scanSchema, body);
 
   // Get repo
   const repos = await db
     .select()
     .from(schema.repos)
-    .where(eq(schema.repos.id, repoId));
-
-  if (repos.length === 0) {
-    return c.json({ error: "Repo not found" }, 404);
-  }
+    .where(eq(schema.repos.id, input.repoId));
 
   const repo = repos[0];
+  if (!repo) {
+    throw new NotFoundError("Repo");
+  }
+
   const repoPath = repo.path;
 
-  try {
-    // 1. Get branches
-    const branches = getBranches(repoPath);
+  // 1. Get branches
+  const branches = getBranches(repoPath);
 
-    // 2. Get worktrees
-    const worktrees = getWorktrees(repoPath);
+  // 2. Get worktrees
+  const worktrees = getWorktrees(repoPath);
 
-    // 3. Get PRs
-    const prs = getPRs(repoPath);
+  // 3. Get PRs
+  const prs = getPRs(repoPath);
 
-    // 4. Build tree (infer parent-child relationships)
-    const { nodes, edges } = buildTree(branches, worktrees, prs, repoPath);
+  // 4. Build tree (infer parent-child relationships)
+  const { nodes, edges } = buildTree(branches, worktrees, prs, repoPath);
 
-    // 5. Calculate warnings
-    const warnings = calculateWarnings(nodes, edges, repoPath);
+  // 5. Get branch naming rule
+  const rules = await db
+    .select()
+    .from(schema.projectRules)
+    .where(
+      and(
+        eq(schema.projectRules.repoId, input.repoId),
+        eq(schema.projectRules.ruleType, "branch_naming"),
+        eq(schema.projectRules.isActive, true)
+      )
+    );
 
-    // 6. Get branch naming rule
-    const rules = await db
-      .select()
-      .from(schema.projectRules)
-      .where(
-        and(
-          eq(schema.projectRules.repoId, repoId),
-          eq(schema.projectRules.ruleType, "branch_naming"),
-          eq(schema.projectRules.isActive, true)
-        )
-      );
+  const ruleRecord = rules[0];
+  const branchNaming = ruleRecord
+    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
+    : null;
 
-    const branchNaming =
-      rules.length > 0 ? JSON.parse(rules[0].ruleJson) : null;
+  // 6. Calculate warnings
+  const warnings = calculateWarnings(nodes, branchNaming);
 
-    // 7. Generate restart info for active worktree
-    const activeWorktree = worktrees.find((w) => w.branch !== "HEAD");
-    const restart = activeWorktree
-      ? {
-          worktreePath: activeWorktree.path,
-          cdCommand: `cd "${activeWorktree.path}"`,
-          restartPromptMd: generateRestartPrompt(
-            activeWorktree,
-            nodes,
-            warnings,
-            branchNaming
-          ),
-        }
-      : null;
+  // 7. Generate restart info for active worktree
+  const activeWorktree = worktrees.find((w) => w.branch !== "HEAD");
+  const restart = activeWorktree
+    ? generateRestartInfo(activeWorktree, nodes, warnings, branchNaming)
+    : null;
 
-    const snapshot = {
-      nodes,
-      edges,
-      warnings,
-      worktrees,
-      rules: { branchNaming },
-      restart,
-    };
+  const snapshot: ScanSnapshot = {
+    nodes,
+    edges,
+    warnings,
+    worktrees,
+    rules: { branchNaming },
+    restart,
+  };
 
-    // Broadcast scan result
-    broadcast({
-      type: "scan.updated",
-      repoId,
-      data: snapshot,
-    });
+  // Broadcast scan result
+  broadcast({
+    type: "scan.updated",
+    repoId: input.repoId,
+    data: snapshot,
+  });
 
-    return c.json(snapshot);
-  } catch (error) {
-    console.error("Scan error:", error);
-    return c.json({ error: "Failed to scan repository" }, 500);
-  }
+  return c.json(snapshot);
 });
 
-// GET /api/restart-prompt
+// GET /api/scan/restart-prompt
 scanRouter.get("/restart-prompt", async (c) => {
-  const repoId = parseInt(c.req.query("repoId") || "0");
-  const planId = parseInt(c.req.query("planId") || "0");
-  const worktreePath = c.req.query("worktreePath");
-
-  if (!repoId) {
-    return c.json({ error: "repoId is required" }, 400);
-  }
+  const query = validateOrThrow(restartPromptQuerySchema, {
+    repoId: c.req.query("repoId"),
+    planId: c.req.query("planId"),
+    worktreePath: c.req.query("worktreePath"),
+  });
 
   // Get repo
   const repos = await db
     .select()
     .from(schema.repos)
-    .where(eq(schema.repos.id, repoId));
-
-  if (repos.length === 0) {
-    return c.json({ error: "Repo not found" }, 404);
-  }
+    .where(eq(schema.repos.id, query.repoId));
 
   const repo = repos[0];
+  if (!repo) {
+    throw new NotFoundError("Repo");
+  }
 
   // Get plan if provided
   let plan = null;
-  if (planId) {
+  if (query.planId) {
     const plans = await db
       .select()
       .from(schema.plans)
-      .where(eq(schema.plans.id, planId));
-    plan = plans[0] || null;
+      .where(eq(schema.plans.id, query.planId));
+    plan = plans[0] ?? null;
   }
 
   // Get branch naming rule
@@ -179,17 +137,20 @@ scanRouter.get("/restart-prompt", async (c) => {
     .from(schema.projectRules)
     .where(
       and(
-        eq(schema.projectRules.repoId, repoId),
+        eq(schema.projectRules.repoId, query.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
         eq(schema.projectRules.isActive, true)
       )
     );
 
-  const branchNaming = rules.length > 0 ? JSON.parse(rules[0].ruleJson) : null;
+  const ruleRecord = rules[0];
+  const branchNaming = ruleRecord
+    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
+    : null;
 
   // Get git status for worktree
+  const targetPath = query.worktreePath ?? repo.path;
   let gitStatus = "";
-  const targetPath = worktreePath || repo.path;
   try {
     gitStatus = execSync(`cd "${targetPath}" && git status --short`, {
       encoding: "utf-8",
@@ -202,8 +163,8 @@ scanRouter.get("/restart-prompt", async (c) => {
 
 ## Project Rules
 ### Branch Naming
-- Pattern: \`${branchNaming?.pattern || "N/A"}\`
-- Examples: ${branchNaming?.examples?.join(", ") || "N/A"}
+- Pattern: \`${branchNaming?.pattern ?? "N/A"}\`
+- Examples: ${branchNaming?.examples?.join(", ") ?? "N/A"}
 
 ${
   plan
@@ -245,8 +206,12 @@ function getBranches(repoPath: string): BranchInfo[] {
       .split("\n")
       .filter(Boolean)
       .map((line) => {
-        const [name, commit, lastCommitAt] = line.split("|");
-        return { name, commit, lastCommitAt };
+        const parts = line.split("|");
+        return {
+          name: parts[0] ?? "",
+          commit: parts[1] ?? "",
+          lastCommitAt: parts[2] ?? "",
+        };
       });
   } catch {
     return [];
@@ -265,7 +230,7 @@ function getWorktrees(repoPath: string): WorktreeInfo[] {
     for (const line of output.split("\n")) {
       if (line.startsWith("worktree ")) {
         if (current.path) worktrees.push(current as WorktreeInfo);
-        current = { path: line.replace("worktree ", "") };
+        current = { path: line.replace("worktree ", ""), dirty: false };
       } else if (line.startsWith("HEAD ")) {
         current.commit = line.replace("HEAD ", "");
       } else if (line.startsWith("branch ")) {
@@ -298,15 +263,28 @@ function getPRs(repoPath: string): PRInfo[] {
       `cd "${repoPath}" && gh pr list --json number,title,state,url,headRefName,statusCheckRollup --limit 50`,
       { encoding: "utf-8" }
     );
-    const prs = JSON.parse(output);
-    return prs.map((pr: Record<string, unknown>) => ({
-      number: pr.number,
-      title: pr.title,
-      state: pr.state,
-      url: pr.url,
-      branch: pr.headRefName,
-      checks: pr.statusCheckRollup?.[0]?.conclusion || undefined,
-    }));
+    const prs = JSON.parse(output) as Array<{
+      number: number;
+      title: string;
+      state: string;
+      url: string;
+      headRefName: string;
+      statusCheckRollup?: Array<{ conclusion?: string }>;
+    }>;
+    return prs.map((pr) => {
+      const prInfo: PRInfo = {
+        number: pr.number,
+        title: pr.title,
+        state: pr.state,
+        url: pr.url,
+        branch: pr.headRefName,
+      };
+      const conclusion = pr.statusCheckRollup?.[0]?.conclusion;
+      if (conclusion) {
+        prInfo.checks = conclusion;
+      }
+      return prInfo;
+    });
   } catch {
     return [];
   }
@@ -343,21 +321,24 @@ function buildTree(
           `cd "${repoPath}" && git rev-list --left-right --count ${mainBranch.name}...${branch.name}`,
           { encoding: "utf-8" }
         );
-        const [behind, ahead] = output.trim().split(/\s+/).map(Number);
+        const parts = output.trim().split(/\s+/);
+        const behind = parseInt(parts[0] ?? "0", 10);
+        const ahead = parseInt(parts[1] ?? "0", 10);
         aheadBehind = { ahead, behind };
       } catch {
         // Ignore errors
       }
     }
 
-    nodes.push({
+    const node: TreeNode = {
       branchName: branch.name,
       badges,
-      pr,
-      worktree,
       lastCommitAt: branch.lastCommitAt,
-      aheadBehind,
-    });
+    };
+    if (pr) node.pr = pr;
+    if (worktree) node.worktree = worktree;
+    if (aheadBehind) node.aheadBehind = aheadBehind;
+    nodes.push(node);
 
     // Infer parent relationship using merge-base
     if (mainBranch && branch.name !== mainBranch.name) {
@@ -374,18 +355,22 @@ function buildTree(
 
 function calculateWarnings(
   nodes: TreeNode[],
-  _edges: TreeEdge[],
-  repoPath: string
+  branchNaming: BranchNamingRule | null
 ): Warning[] {
   const warnings: Warning[] = [];
 
-  // Get branch naming rule pattern
+  // Create pattern from branch naming rule
   let branchPattern: RegExp | null = null;
-  try {
-    // This is a simplified check - in production you'd get this from DB
-    branchPattern = /^vt\/\d+\/.+$/;
-  } catch {
-    // Ignore
+  if (branchNaming?.pattern) {
+    try {
+      // Convert pattern like "vt/{planId}/{taskSlug}" to regex
+      const regexStr = branchNaming.pattern
+        .replace(/\{planId\}/g, "\\d+")
+        .replace(/\{taskSlug\}/g, "[a-z0-9-]+");
+      branchPattern = new RegExp(`^${regexStr}$`);
+    } catch {
+      // Ignore invalid patterns
+    }
   }
 
   for (const node of nodes) {
@@ -446,23 +431,23 @@ function calculateWarnings(
   return warnings;
 }
 
-function generateRestartPrompt(
+function generateRestartInfo(
   worktree: WorktreeInfo,
   nodes: TreeNode[],
   warnings: Warning[],
-  branchNaming: { pattern: string; examples: string[] } | null
-): string {
+  branchNaming: BranchNamingRule | null
+): ScanSnapshot["restart"] {
   const node = nodes.find((n) => n.branchName === worktree.branch);
   const branchWarnings = warnings.filter(
     (w) => w.meta?.branch === worktree.branch
   );
 
-  return `# Restart Prompt
+  const restartPromptMd = `# Restart Prompt
 
 ## Project Rules
 ### Branch Naming
-- Pattern: \`${branchNaming?.pattern || "N/A"}\`
-- Examples: ${branchNaming?.examples?.join(", ") || "N/A"}
+- Pattern: \`${branchNaming?.pattern ?? "N/A"}\`
+- Examples: ${branchNaming?.examples?.join(", ") ?? "N/A"}
 
 ## Current State
 - Branch: \`${worktree.branch}\`
@@ -486,4 +471,10 @@ ${
 ---
 *Paste this prompt into Claude Code to continue your session.*
 `;
+
+  return {
+    worktreePath: worktree.path,
+    cdCommand: `cd "${worktree.path}"`,
+    restartPromptMd,
+  };
 }

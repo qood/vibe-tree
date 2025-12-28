@@ -1,0 +1,428 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import {
+  useClipboard,
+  useLocalStorage,
+  useRepos,
+  useRepo,
+  useBranchNaming,
+  usePlan,
+  useScan,
+} from '../hooks';
+import { api } from '../api';
+import { wsClient } from '../ws';
+
+// Mock api module
+vi.mock('../api', () => ({
+  api: {
+    getRepos: vi.fn(),
+    getRepo: vi.fn(),
+    getBranchNaming: vi.fn(),
+    getCurrentPlan: vi.fn(),
+    scan: vi.fn(),
+  },
+}));
+
+// Mock wsClient
+vi.mock('../ws', () => ({
+  wsClient: {
+    on: vi.fn(() => vi.fn()),
+    connect: vi.fn(),
+  },
+}));
+
+describe('useClipboard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should copy text to clipboard', async () => {
+    const { result } = renderHook(() => useClipboard());
+
+    expect(result.current.copied).toBeNull();
+
+    act(() => {
+      result.current.copy('test text', 'label');
+    });
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('test text');
+    expect(result.current.copied).toBe('label');
+  });
+
+  it('should reset copied state after timeout', async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useClipboard());
+
+    act(() => {
+      result.current.copy('test', 'label');
+    });
+
+    expect(result.current.copied).toBe('label');
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(result.current.copied).toBeNull();
+
+    vi.useRealTimers();
+  });
+});
+
+describe('useLocalStorage', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('should return initial value when nothing stored', () => {
+    const { result } = renderHook(() =>
+      useLocalStorage('test-key', 'initial')
+    );
+
+    expect(result.current[0]).toBe('initial');
+  });
+
+  it('should return stored value', () => {
+    localStorage.setItem('test-key', JSON.stringify('stored'));
+
+    const { result } = renderHook(() =>
+      useLocalStorage('test-key', 'initial')
+    );
+
+    expect(result.current[0]).toBe('stored');
+  });
+
+  it('should update stored value', () => {
+    const { result } = renderHook(() =>
+      useLocalStorage('test-key', 'initial')
+    );
+
+    act(() => {
+      result.current[1]('updated');
+    });
+
+    expect(result.current[0]).toBe('updated');
+    expect(JSON.parse(localStorage.getItem('test-key') || '')).toBe('updated');
+  });
+
+  it('should handle function updates', () => {
+    const { result } = renderHook(() =>
+      useLocalStorage('test-key', 0)
+    );
+
+    act(() => {
+      result.current[1]((prev) => prev + 1);
+    });
+
+    expect(result.current[0]).toBe(1);
+  });
+
+  it('should handle objects', () => {
+    const { result } = renderHook(() =>
+      useLocalStorage('test-key', { count: 0 })
+    );
+
+    act(() => {
+      result.current[1]({ count: 5 });
+    });
+
+    expect(result.current[0]).toEqual({ count: 5 });
+  });
+
+  it('should handle invalid JSON in storage', () => {
+    localStorage.setItem('test-key', 'invalid json');
+
+    const { result } = renderHook(() =>
+      useLocalStorage('test-key', 'fallback')
+    );
+
+    expect(result.current[0]).toBe('fallback');
+  });
+});
+
+describe('useRepos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should fetch repos successfully', async () => {
+    const mockRepos = [
+      { id: 1, path: '/repo1', name: 'repo1' },
+      { id: 2, path: '/repo2', name: 'repo2' },
+    ];
+    vi.mocked(api.getRepos).mockResolvedValue(mockRepos);
+
+    const { result } = renderHook(() => useRepos());
+
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual(mockRepos);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('should handle error', async () => {
+    vi.mocked(api.getRepos).mockRejectedValue(new Error('Failed to fetch'));
+
+    const { result } = renderHook(() => useRepos());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBe('Failed to fetch');
+  });
+
+  it('should refetch when called', async () => {
+    vi.mocked(api.getRepos).mockResolvedValue([]);
+
+    const { result } = renderHook(() => useRepos());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    vi.mocked(api.getRepos).mockResolvedValue([{ id: 1, path: '/new', name: 'new' }]);
+
+    act(() => {
+      result.current.refetch();
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toHaveLength(1);
+    });
+  });
+});
+
+describe('useRepo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should fetch single repo', async () => {
+    const mockRepo = { id: 1, path: '/repo', name: 'repo' };
+    vi.mocked(api.getRepo).mockResolvedValue(mockRepo);
+
+    const { result } = renderHook(() => useRepo(1));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual(mockRepo);
+    expect(api.getRepo).toHaveBeenCalledWith(1);
+  });
+
+  it('should return null when repoId is null', async () => {
+    const { result } = renderHook(() => useRepo(null));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toBeNull();
+    expect(api.getRepo).not.toHaveBeenCalled();
+  });
+});
+
+describe('useBranchNaming', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should fetch branch naming rule', async () => {
+    const mockRule = {
+      id: 1,
+      repoId: 1,
+      pattern: 'vt/{planId}/{taskSlug}',
+      description: 'test',
+      examples: ['vt/1/feature'],
+    };
+    vi.mocked(api.getBranchNaming).mockResolvedValue(mockRule);
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => useBranchNaming(1));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual(mockRule);
+  });
+
+  it('should return null when repoId is null', async () => {
+    const { result } = renderHook(() => useBranchNaming(null));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toBeNull();
+    expect(api.getBranchNaming).not.toHaveBeenCalled();
+  });
+
+  it('should handle errors', async () => {
+    vi.mocked(api.getBranchNaming).mockRejectedValue(new Error('Not found'));
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => useBranchNaming(1));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.error).toBe('Not found');
+  });
+
+  it('should subscribe to WebSocket updates', async () => {
+    vi.mocked(api.getBranchNaming).mockResolvedValue(null);
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    renderHook(() => useBranchNaming(1));
+
+    await waitFor(() => {
+      expect(wsClient.on).toHaveBeenCalledWith('projectRules.updated', expect.any(Function));
+    });
+  });
+});
+
+describe('usePlan', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should fetch plan', async () => {
+    const mockPlan = { id: 1, repoId: 1, title: 'Test', status: 'draft' };
+    vi.mocked(api.getCurrentPlan).mockResolvedValue(mockPlan);
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => usePlan(1));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual(mockPlan);
+  });
+
+  it('should return null when repoId is null', async () => {
+    const { result } = renderHook(() => usePlan(null));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toBeNull();
+  });
+
+  it('should subscribe to WebSocket updates', async () => {
+    vi.mocked(api.getCurrentPlan).mockResolvedValue(null);
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    renderHook(() => usePlan(1));
+
+    await waitFor(() => {
+      expect(wsClient.on).toHaveBeenCalledWith('plan.updated', expect.any(Function));
+    });
+  });
+
+  it('should handle setData', async () => {
+    vi.mocked(api.getCurrentPlan).mockResolvedValue(null);
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => usePlan(1));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      result.current.setData({ id: 2, repoId: 1, title: 'New', status: 'committed' } as any);
+    });
+
+    expect(result.current.data?.title).toBe('New');
+  });
+});
+
+describe('useScan', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should not auto-fetch on mount', async () => {
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => useScan(1));
+
+    // Initial state should not be loading
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toBeNull();
+    expect(api.scan).not.toHaveBeenCalled();
+  });
+
+  it('should scan when triggered', async () => {
+    const mockSnapshot = {
+      nodes: [],
+      edges: [],
+      warnings: [],
+      worktrees: [],
+      rules: { branchNaming: null },
+      restart: null,
+    };
+    vi.mocked(api.scan).mockResolvedValue(mockSnapshot);
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => useScan(1));
+
+    act(() => {
+      result.current.scan();
+    });
+
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual(mockSnapshot);
+  });
+
+  it('should connect to WebSocket', async () => {
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    renderHook(() => useScan(1));
+
+    await waitFor(() => {
+      expect(wsClient.connect).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('should not connect when repoId is null', async () => {
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    renderHook(() => useScan(null));
+
+    expect(wsClient.connect).not.toHaveBeenCalled();
+  });
+
+  it('should handle scan error', async () => {
+    vi.mocked(api.scan).mockRejectedValue(new Error('Scan failed'));
+    vi.mocked(wsClient.on).mockReturnValue(vi.fn());
+
+    const { result } = renderHook(() => useScan(1));
+
+    act(() => {
+      result.current.scan();
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.error).toBe('Scan failed');
+  });
+});

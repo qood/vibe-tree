@@ -2,50 +2,57 @@ import { Hono } from "hono";
 import { db, schema } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { broadcast } from "../ws";
+import {
+  repoIdQuerySchema,
+  updateBranchNamingSchema,
+  validateOrThrow,
+} from "../../shared/validation";
+import { NotFoundError } from "../middleware/error-handler";
+import type { BranchNamingRule } from "../../shared/types";
 
 export const projectRulesRouter = new Hono();
 
 // GET /api/project-rules/branch-naming?repoId=...
 projectRulesRouter.get("/branch-naming", async (c) => {
-  const repoId = parseInt(c.req.query("repoId") || "0");
-  if (!repoId) {
-    return c.json({ error: "repoId is required" }, 400);
-  }
+  const query = validateOrThrow(repoIdQuerySchema, {
+    repoId: c.req.query("repoId"),
+  });
 
   const rules = await db
     .select()
     .from(schema.projectRules)
     .where(
       and(
-        eq(schema.projectRules.repoId, repoId),
+        eq(schema.projectRules.repoId, query.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
         eq(schema.projectRules.isActive, true)
       )
     );
 
-  if (rules.length === 0) {
-    return c.json({ error: "Branch naming rule not found" }, 404);
+  const rule = rules[0];
+  if (!rule) {
+    throw new NotFoundError("Branch naming rule");
   }
 
-  const rule = rules[0];
+  const ruleData = JSON.parse(rule.ruleJson) as BranchNamingRule;
   return c.json({
     id: rule.id,
     repoId: rule.repoId,
-    ...JSON.parse(rule.ruleJson),
+    ...ruleData,
   });
 });
 
 // POST /api/project-rules/branch-naming
 projectRulesRouter.post("/branch-naming", async (c) => {
   const body = await c.req.json();
-  const { repoId, pattern, description, examples } = body;
-
-  if (!repoId) {
-    return c.json({ error: "repoId is required" }, 400);
-  }
+  const input = validateOrThrow(updateBranchNamingSchema, body);
 
   const now = new Date().toISOString();
-  const ruleJson = JSON.stringify({ pattern, description, examples });
+  const ruleJson = JSON.stringify({
+    pattern: input.pattern,
+    description: input.description,
+    examples: input.examples,
+  });
 
   // Update existing branch_naming rule
   const result = await db
@@ -56,29 +63,32 @@ projectRulesRouter.post("/branch-naming", async (c) => {
     })
     .where(
       and(
-        eq(schema.projectRules.repoId, repoId),
+        eq(schema.projectRules.repoId, input.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
         eq(schema.projectRules.isActive, true)
       )
     )
     .returning();
 
-  if (result.length === 0) {
-    return c.json({ error: "Branch naming rule not found" }, 404);
+  const updated = result[0];
+  if (!updated) {
+    throw new NotFoundError("Branch naming rule");
   }
+
+  const response = {
+    id: updated.id,
+    repoId: input.repoId,
+    pattern: input.pattern,
+    description: input.description,
+    examples: input.examples,
+  };
 
   // Broadcast update
   broadcast({
     type: "projectRules.updated",
-    repoId,
-    data: { pattern, description, examples },
+    repoId: input.repoId,
+    data: response,
   });
 
-  return c.json({
-    id: result[0].id,
-    repoId,
-    pattern,
-    description,
-    examples,
-  });
+  return c.json(response);
 });

@@ -1,25 +1,33 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { logger } from "hono/logger";
 import { reposRouter } from "./routes/repos";
 import { projectRulesRouter } from "./routes/project-rules";
 import { planRouter } from "./routes/plan";
 import { scanRouter } from "./routes/scan";
 import { instructionsRouter } from "./routes/instructions";
+import { errorHandler } from "./middleware/error-handler";
 import { handleWsMessage, addClient, removeClient, type WSClient } from "./ws";
 
 const app = new Hono();
+
+// Logging
+app.use("*", logger());
+
+// Error handling
+app.use("*", errorHandler);
 
 // CORS for frontend
 app.use(
   "/api/*",
   cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "http://localhost:3000"],
     credentials: true,
   })
 );
 
 // Health check
-app.get("/api/health", (c) => c.json({ status: "ok" }));
+app.get("/api/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
 // Mount routers
 app.route("/api/repos", reposRouter);
@@ -28,8 +36,14 @@ app.route("/api/plan", planRouter);
 app.route("/api/scan", scanRouter);
 app.route("/api/instructions", instructionsRouter);
 
-const port = 3000;
-console.log(`Starting Vibe Tree server on http://localhost:${port}`);
+// 404 handler for API routes
+app.notFound((c) => {
+  return c.json({ error: "Not found", code: "NOT_FOUND" }, 404);
+});
+
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+console.log(`Starting Vibe Tree server...`);
 
 Bun.serve({
   port,
@@ -38,9 +52,7 @@ Bun.serve({
 
     // Handle WebSocket upgrade
     if (url.pathname === "/ws") {
-      const upgraded = server.upgrade(req, {
-        data: { repoId: undefined },
-      });
+      const upgraded = server.upgrade(req);
       if (upgraded) {
         return undefined;
       }
@@ -66,3 +78,4 @@ Bun.serve({
 });
 
 console.log(`Server running at http://localhost:${port}`);
+console.log(`WebSocket available at ws://localhost:${port}/ws`);

@@ -3,47 +3,48 @@ import { db, schema } from "../../db";
 import { eq, and, desc } from "drizzle-orm";
 import { broadcast } from "../ws";
 import { execSync } from "child_process";
+import {
+  repoIdQuerySchema,
+  startPlanSchema,
+  updatePlanSchema,
+  commitPlanSchema,
+  validateOrThrow,
+} from "../../shared/validation";
+import { NotFoundError } from "../middleware/error-handler";
+import type { BranchNamingRule } from "../../shared/types";
 
 export const planRouter = new Hono();
 
 // GET /api/plan/current?repoId=...
 planRouter.get("/current", async (c) => {
-  const repoId = parseInt(c.req.query("repoId") || "0");
-  if (!repoId) {
-    return c.json({ error: "repoId is required" }, 400);
-  }
+  const query = validateOrThrow(repoIdQuerySchema, {
+    repoId: c.req.query("repoId"),
+  });
 
   // Get the latest plan for this repo
   const plans = await db
     .select()
     .from(schema.plans)
-    .where(eq(schema.plans.repoId, repoId))
+    .where(eq(schema.plans.repoId, query.repoId))
     .orderBy(desc(schema.plans.createdAt))
     .limit(1);
 
-  if (plans.length === 0) {
-    return c.json(null);
-  }
-
-  return c.json(plans[0]);
+  const plan = plans[0];
+  return c.json(plan ?? null);
 });
 
 // POST /api/plan/start
 planRouter.post("/start", async (c) => {
   const body = await c.req.json();
-  const { repoId, title } = body;
-
-  if (!repoId || !title) {
-    return c.json({ error: "repoId and title are required" }, 400);
-  }
+  const input = validateOrThrow(startPlanSchema, body);
 
   const now = new Date().toISOString();
 
   const result = await db
     .insert(schema.plans)
     .values({
-      repoId,
-      title,
+      repoId: input.repoId,
+      title: input.title,
       contentMd: "",
       status: "draft",
       createdAt: now,
@@ -52,10 +53,13 @@ planRouter.post("/start", async (c) => {
     .returning();
 
   const plan = result[0];
+  if (!plan) {
+    throw new Error("Failed to create plan");
+  }
 
   broadcast({
     type: "plan.updated",
-    repoId,
+    repoId: input.repoId,
     data: plan,
   });
 
@@ -65,28 +69,23 @@ planRouter.post("/start", async (c) => {
 // POST /api/plan/update
 planRouter.post("/update", async (c) => {
   const body = await c.req.json();
-  const { planId, contentMd } = body;
-
-  if (!planId) {
-    return c.json({ error: "planId is required" }, 400);
-  }
+  const input = validateOrThrow(updatePlanSchema, body);
 
   const now = new Date().toISOString();
 
   const result = await db
     .update(schema.plans)
     .set({
-      contentMd,
+      contentMd: input.contentMd,
       updatedAt: now,
     })
-    .where(eq(schema.plans.id, planId))
+    .where(eq(schema.plans.id, input.planId))
     .returning();
 
-  if (result.length === 0) {
-    return c.json({ error: "Plan not found" }, 404);
-  }
-
   const plan = result[0];
+  if (!plan) {
+    throw new NotFoundError("Plan");
+  }
 
   broadcast({
     type: "plan.updated",
@@ -100,23 +99,18 @@ planRouter.post("/update", async (c) => {
 // POST /api/plan/commit
 planRouter.post("/commit", async (c) => {
   const body = await c.req.json();
-  const { planId } = body;
-
-  if (!planId) {
-    return c.json({ error: "planId is required" }, 400);
-  }
+  const input = validateOrThrow(commitPlanSchema, body);
 
   // Get plan
   const plans = await db
     .select()
     .from(schema.plans)
-    .where(eq(schema.plans.id, planId));
-
-  if (plans.length === 0) {
-    return c.json({ error: "Plan not found" }, 404);
-  }
+    .where(eq(schema.plans.id, input.planId));
 
   const plan = plans[0];
+  if (!plan) {
+    throw new NotFoundError("Plan");
+  }
 
   // Get repo
   const repos = await db
@@ -124,11 +118,10 @@ planRouter.post("/commit", async (c) => {
     .from(schema.repos)
     .where(eq(schema.repos.id, plan.repoId));
 
-  if (repos.length === 0) {
-    return c.json({ error: "Repo not found" }, 404);
-  }
-
   const repo = repos[0];
+  if (!repo) {
+    throw new NotFoundError("Repo");
+  }
 
   // Get branch naming rule
   const rules = await db
@@ -142,28 +135,20 @@ planRouter.post("/commit", async (c) => {
       )
     );
 
-  const branchNaming = rules.length > 0 ? JSON.parse(rules[0].ruleJson) : null;
+  const ruleRecord = rules[0];
+  const branchNaming = ruleRecord
+    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
+    : null;
 
   // Create GitHub Issue with minimal summary
-  const issueBody = `## Goal
-${plan.title}
+  const issueBody = createIssueBody(plan, branchNaming);
+  let issueUrl: string | null = null;
 
-## Project Rules
-### Branch Naming
-- Pattern: \`${branchNaming?.pattern || "N/A"}\`
-- Examples: ${branchNaming?.examples?.map((e: string) => `\`${e}\``).join(", ") || "N/A"}
-
-## Plan Content
-${plan.contentMd.substring(0, 500)}${plan.contentMd.length > 500 ? "..." : ""}
-
----
-*Created by Vibe Tree | planId: ${plan.id}*
-`;
-
-  let issueUrl = null;
   try {
+    const escapedTitle = plan.title.replace(/"/g, '\\"');
+    const escapedBody = issueBody.replace(/"/g, '\\"').replace(/\n/g, "\\n");
     const result = execSync(
-      `cd "${repo.path}" && gh issue create --title "${plan.title.replace(/"/g, '\\"')}" --body "${issueBody.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`,
+      `cd "${repo.path}" && gh issue create --title "${escapedTitle}" --body "${escapedBody}"`,
       { encoding: "utf-8" }
     );
     issueUrl = result.trim();
@@ -181,10 +166,13 @@ ${plan.contentMd.substring(0, 500)}${plan.contentMd.length > 500 ? "..." : ""}
       githubIssueUrl: issueUrl,
       updatedAt: now,
     })
-    .where(eq(schema.plans.id, planId))
+    .where(eq(schema.plans.id, input.planId))
     .returning();
 
   const updatedPlan = result[0];
+  if (!updatedPlan) {
+    throw new Error("Failed to update plan");
+  }
 
   broadcast({
     type: "plan.updated",
@@ -194,3 +182,28 @@ ${plan.contentMd.substring(0, 500)}${plan.contentMd.length > 500 ? "..." : ""}
 
   return c.json(updatedPlan);
 });
+
+function createIssueBody(
+  plan: { id: number; title: string; contentMd: string },
+  branchNaming: BranchNamingRule | null
+): string {
+  const truncatedContent =
+    plan.contentMd.length > 500
+      ? plan.contentMd.substring(0, 500) + "..."
+      : plan.contentMd;
+
+  return `## Goal
+${plan.title}
+
+## Project Rules
+### Branch Naming
+- Pattern: \`${branchNaming?.pattern ?? "N/A"}\`
+- Examples: ${branchNaming?.examples?.map((e) => `\`${e}\``).join(", ") ?? "N/A"}
+
+## Plan Content
+${truncatedContent}
+
+---
+*Created by Vibe Tree | planId: ${plan.id}*
+`;
+}
