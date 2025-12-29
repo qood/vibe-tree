@@ -137,6 +137,30 @@ export interface InstructionLog {
   createdAt: string;
 }
 
+export interface RepoPin {
+  id: number;
+  repoId: string;
+  localPath: string;
+  label: string | null;
+  lastUsedAt: string;
+  createdAt: string;
+}
+
+export interface AgentStatus {
+  pid: number;
+  repoId: string;
+  localPath: string;
+  startedAt: string;
+}
+
+export interface AiStartResult {
+  status: "started" | "already_running";
+  pid: number;
+  repoId: string;
+  startedAt: string;
+  localPath: string;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -249,4 +273,35 @@ export const api = {
     fetchJson<InstructionLog[]>(
       `${API_BASE}/instructions/logs?repoId=${encodeURIComponent(repoId)}`
     ),
+
+  // Repo Pins
+  getRepoPins: () => fetchJson<RepoPin[]>(`${API_BASE}/repo-pins`),
+  createRepoPin: (localPath: string, label?: string) =>
+    fetchJson<RepoPin>(`${API_BASE}/repo-pins`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, label }),
+    }),
+  useRepoPin: (id: number) =>
+    fetchJson<RepoPin>(`${API_BASE}/repo-pins/use`, {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+  deleteRepoPin: (id: number) =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/repo-pins/${id}`, {
+      method: "DELETE",
+    }),
+
+  // AI Agent
+  aiStart: (localPath: string, planId?: number, branch?: string) =>
+    fetchJson<AiStartResult>(`${API_BASE}/ai/start`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, planId, branch }),
+    }),
+  aiStop: (pid: number) =>
+    fetchJson<{ status: string; pid: number }>(`${API_BASE}/ai/stop`, {
+      method: "POST",
+      body: JSON.stringify({ pid }),
+    }),
+  aiStatus: () =>
+    fetchJson<{ agents: AgentStatus[] }>(`${API_BASE}/ai/status`),
 };

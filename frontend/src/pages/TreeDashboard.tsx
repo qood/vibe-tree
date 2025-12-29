@@ -5,11 +5,19 @@ import {
   type Plan,
   type ScanSnapshot,
   type TreeNode,
+  type RepoPin,
+  type AgentStatus,
 } from "../lib/api";
 import { wsClient } from "../lib/ws";
 
 export default function TreeDashboard() {
-  const [localPath, setLocalPath] = useState("");
+  // Repo pins state
+  const [repoPins, setRepoPins] = useState<RepoPin[]>([]);
+  const [selectedPinId, setSelectedPinId] = useState<number | null>(null);
+  const [newLocalPath, setNewLocalPath] = useState("");
+  const [showAddNew, setShowAddNew] = useState(false);
+
+  // Main state
   const [plan, setPlan] = useState<Plan | null>(null);
   const [snapshot, setSnapshot] = useState<ScanSnapshot | null>(null);
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
@@ -17,6 +25,40 @@ export default function TreeDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Agent state
+  const [runningAgent, setRunningAgent] = useState<AgentStatus | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+
+  // Load repo pins on mount
+  useEffect(() => {
+    api.getRepoPins().then((pins) => {
+      setRepoPins(pins);
+      // Auto-select the most recently used one
+      if (pins.length > 0 && !selectedPinId) {
+        setSelectedPinId(pins[0].id);
+      }
+    }).catch(console.error);
+  }, []);
+
+  // Load agent status on mount
+  useEffect(() => {
+    api.aiStatus().then(({ agents }) => {
+      if (agents.length > 0) {
+        setRunningAgent(agents[0]);
+      }
+    }).catch(console.error);
+  }, []);
+
+  // Get selected pin
+  const selectedPin = repoPins.find((p) => p.id === selectedPinId) ?? null;
+
+  // Auto-scan when pin is selected
+  useEffect(() => {
+    if (selectedPin && !snapshot) {
+      handleScan(selectedPin.localPath);
+    }
+  }, [selectedPin?.id]);
 
   // Load plan and connect WS when snapshot is available
   useEffect(() => {
@@ -29,12 +71,32 @@ export default function TreeDashboard() {
       setSnapshot(msg.data as ScanSnapshot);
     });
 
+    const unsubAgentStarted = wsClient.on("agent.started", (msg) => {
+      const data = msg.data as AgentStatus;
+      setRunningAgent(data);
+    });
+
+    const unsubAgentFinished = wsClient.on("agent.finished", (msg) => {
+      setRunningAgent(null);
+      // Auto-rescan when agent finishes
+      if (selectedPin) {
+        handleScan(selectedPin.localPath);
+      }
+    });
+
+    const unsubAgentStopped = wsClient.on("agent.stopped", () => {
+      setRunningAgent(null);
+    });
+
     return () => {
       unsubScan();
+      unsubAgentStarted();
+      unsubAgentFinished();
+      unsubAgentStopped();
     };
-  }, [snapshot?.repoId]);
+  }, [snapshot?.repoId, selectedPin?.localPath]);
 
-  const handleScan = useCallback(async () => {
+  const handleScan = useCallback(async (localPath: string) => {
     if (!localPath) return;
     setLoading(true);
     setError(null);
@@ -46,7 +108,76 @@ export default function TreeDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [localPath]);
+  }, []);
+
+  const handleAddRepoPin = async () => {
+    if (!newLocalPath.trim()) return;
+    try {
+      const pin = await api.createRepoPin(newLocalPath.trim());
+      setRepoPins((prev) => [pin, ...prev]);
+      setSelectedPinId(pin.id);
+      setNewLocalPath("");
+      setShowAddNew(false);
+      setSnapshot(null); // Will trigger auto-scan via useEffect
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleSelectPin = async (id: number) => {
+    setSelectedPinId(id);
+    setSnapshot(null); // Reset to trigger new scan
+    try {
+      await api.useRepoPin(id);
+    } catch (err) {
+      console.error("Failed to mark pin as used:", err);
+    }
+  };
+
+  const handleDeletePin = async (id: number) => {
+    try {
+      await api.deleteRepoPin(id);
+      setRepoPins((prev) => prev.filter((p) => p.id !== id));
+      if (selectedPinId === id) {
+        setSelectedPinId(repoPins[0]?.id ?? null);
+        setSnapshot(null);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleRunClaude = async () => {
+    if (!selectedPin) return;
+    setAgentLoading(true);
+    setError(null);
+    try {
+      const result = await api.aiStart(selectedPin.localPath, plan?.id);
+      setRunningAgent({
+        pid: result.pid,
+        repoId: result.repoId,
+        localPath: result.localPath,
+        startedAt: result.startedAt,
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+
+  const handleStopClaude = async () => {
+    if (!runningAgent) return;
+    setAgentLoading(true);
+    try {
+      await api.aiStop(runningAgent.pid);
+      setRunningAgent(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAgentLoading(false);
+    }
+  };
 
   const handleLogInstruction = async () => {
     if (!snapshot?.repoId || !instruction.trim()) return;
@@ -191,19 +322,88 @@ export default function TreeDashboard() {
 
       {error && <div className="dashboard__error">{error}</div>}
 
-      {/* Local Path Input */}
+      {/* Repo Selector */}
       <div className="dashboard__controls">
-        <input
-          type="text"
-          placeholder="Local path (e.g., /Users/you/projects/repo)"
-          value={localPath}
-          onChange={(e) => setLocalPath(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleScan()}
-          style={{ flex: 1 }}
-        />
-        <button onClick={handleScan} disabled={loading || !localPath}>
+        <div className="repo-selector">
+          <select
+            value={selectedPinId ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "new") {
+                setShowAddNew(true);
+              } else if (val) {
+                handleSelectPin(Number(val));
+              }
+            }}
+          >
+            <option value="">Select a repo...</option>
+            {repoPins.map((pin) => (
+              <option key={pin.id} value={pin.id}>
+                {pin.label || pin.repoId} ({pin.localPath})
+              </option>
+            ))}
+            <option value="new">+ Add new repo...</option>
+          </select>
+          {selectedPin && (
+            <button
+              className="btn-delete"
+              onClick={() => handleDeletePin(selectedPin.id)}
+              title="Remove from list"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {showAddNew && (
+          <div className="add-repo-form">
+            <input
+              type="text"
+              placeholder="Local path (e.g., ~/projects/my-repo)"
+              value={newLocalPath}
+              onChange={(e) => setNewLocalPath(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddRepoPin()}
+            />
+            <button onClick={handleAddRepoPin}>Add</button>
+            <button onClick={() => setShowAddNew(false)}>Cancel</button>
+          </div>
+        )}
+
+        <button
+          onClick={() => selectedPin && handleScan(selectedPin.localPath)}
+          disabled={loading || !selectedPin}
+        >
           {loading ? "Scanning..." : "Scan"}
         </button>
+
+        {/* Claude Agent Controls */}
+        {selectedPin && (
+          <div className="agent-controls">
+            {runningAgent ? (
+              <button
+                className="btn-stop"
+                onClick={handleStopClaude}
+                disabled={agentLoading}
+              >
+                {agentLoading ? "Stopping..." : "Stop Claude"}
+              </button>
+            ) : (
+              <button
+                className="btn-run"
+                onClick={handleRunClaude}
+                disabled={agentLoading || !snapshot}
+              >
+                {agentLoading ? "Starting..." : "Run Claude"}
+              </button>
+            )}
+            {runningAgent && (
+              <span className="agent-status">
+                Running (PID: {runningAgent.pid})
+              </span>
+            )}
+          </div>
+        )}
+
         {plan && (
           <span className="dashboard__plan">
             Plan: <strong>{plan.title}</strong>
@@ -440,12 +640,78 @@ export default function TreeDashboard() {
           background: white;
           border-bottom: 1px solid #ddd;
           align-items: center;
+          flex-wrap: wrap;
         }
-        .dashboard__controls input {
+        .repo-selector {
+          display: flex;
+          gap: 4px;
+          align-items: center;
+        }
+        .repo-selector select {
           padding: 8px 12px;
           border: 1px solid #ddd;
           border-radius: 4px;
           font-size: 14px;
+          min-width: 300px;
+        }
+        .add-repo-form {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+        .add-repo-form input {
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+          width: 300px;
+        }
+        .btn-delete {
+          padding: 4px 8px;
+          background: #fee;
+          color: #c00;
+          border: 1px solid #fcc;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 16px;
+          line-height: 1;
+        }
+        .agent-controls {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          margin-left: 12px;
+          padding-left: 12px;
+          border-left: 1px solid #ddd;
+        }
+        .btn-run {
+          padding: 8px 16px;
+          background: #28a745;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .btn-run:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .btn-stop {
+          padding: 8px 16px;
+          background: #dc3545;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .btn-stop:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .agent-status {
+          font-size: 13px;
+          color: #28a745;
+          font-weight: 500;
         }
         .dashboard__controls button {
           padding: 8px 16px;

@@ -68,3 +68,13 @@ export const worktreeActivity = sqliteTable("worktree_activity", {
   lastSeenAt: text("last_seen_at").notNull(),
   note: text("note"),
 });
+
+// Repo pins (saved repo/localPath pairs for quick access)
+export const repoPins = sqliteTable("repo_pins", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: text("repo_id").notNull(),
+  localPath: text("local_path").notNull().unique(),
+  label: text("label"), // optional display name
+  lastUsedAt: text("last_used_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});

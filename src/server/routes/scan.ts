@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { homedir } from "os";
 import { db, schema } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { broadcast } from "../ws";
+import { expandTilde, getRepoId } from "../utils";
 import {
   scanSchema,
   restartPromptQuerySchema,
@@ -22,17 +22,6 @@ import type {
   ScanSnapshot,
   TreeSpec,
 } from "../../shared/types";
-
-// Expand ~ to home directory
-function expandTilde(path: string): string {
-  if (path.startsWith("~/")) {
-    return join(homedir(), path.slice(2));
-  }
-  if (path === "~") {
-    return homedir();
-  }
-  return path;
-}
 
 interface BranchInfo {
   name: string;
@@ -238,18 +227,6 @@ ${gitStatus || "Clean working directory"}
     restartPromptMd: prompt,
   });
 });
-
-function getRepoId(repoPath: string): string | null {
-  try {
-    const output = execSync(
-      `cd "${repoPath}" && gh repo view --json nameWithOwner --jq .nameWithOwner`,
-      { encoding: "utf-8" }
-    );
-    return output.trim() || null;
-  } catch {
-    return null;
-  }
-}
 
 function getBranches(repoPath: string): BranchInfo[] {
   try {

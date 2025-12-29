@@ -99,6 +99,35 @@ export const restartPromptQuerySchema = z.object({
   worktreePath: z.string().optional(),
 });
 
+// Repo pin schemas
+export const createRepoPinSchema = z.object({
+  localPath: z.string().min(1, "Local path is required"),
+  label: z.string().optional(),
+});
+
+export type CreateRepoPinInput = z.infer<typeof createRepoPinSchema>;
+
+export const useRepoPinSchema = z.object({
+  id: z.number().int().positive("Valid id is required"),
+});
+
+export type UseRepoPinInput = z.infer<typeof useRepoPinSchema>;
+
+// AI agent schemas
+export const aiStartSchema = z.object({
+  localPath: z.string().min(1, "Local path is required"),
+  planId: z.number().int().positive().optional(),
+  branch: z.string().optional(),
+});
+
+export type AiStartInput = z.infer<typeof aiStartSchema>;
+
+export const aiStopSchema = z.object({
+  pid: z.number().int().positive("Valid pid is required"),
+});
+
+export type AiStopInput = z.infer<typeof aiStopSchema>;
+
 // Validation helper
 export function validateOrThrow<T>(
   schema: z.ZodSchema<T>,

@@ -182,12 +182,33 @@ export interface ScanSnapshot {
   treeSpec?: TreeSpec; // 設計ツリー
 }
 
+// Repo pins (saved repo/localPath pairs)
+export interface RepoPin {
+  id: number;
+  repoId: string;
+  localPath: string;
+  label: string | null;
+  lastUsedAt: string;
+  createdAt: string;
+}
+
+// Agent status
+export interface AgentStatus {
+  repoId: string;
+  pid: number;
+  startedAt: string;
+  localPath: string;
+}
+
 // WebSocket message types
 export type WSMessageType =
   | "projectRules.updated"
   | "plan.updated"
   | "scan.updated"
-  | "instructions.logged";
+  | "instructions.logged"
+  | "agent.started"
+  | "agent.finished"
+  | "agent.stopped";
 
 export interface WSMessage<T = unknown> {
   type: WSMessageType;
