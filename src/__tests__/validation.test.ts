@@ -164,27 +164,22 @@ describe("commitPlanSchema", () => {
 });
 
 describe("scanSchema", () => {
-  test("accepts valid repoId and localPath", () => {
+  test("accepts valid localPath", () => {
     const result = scanSchema.safeParse({
-      repoId: "owner/repo",
       localPath: "/path/to/repo",
     });
     expect(result.success).toBe(true);
   });
 
-  test("rejects invalid repoId format", () => {
+  test("rejects empty localPath", () => {
     const result = scanSchema.safeParse({
-      repoId: "invalid",
-      localPath: "/path/to/repo",
+      localPath: "",
     });
     expect(result.success).toBe(false);
   });
 
-  test("rejects empty localPath", () => {
-    const result = scanSchema.safeParse({
-      repoId: "owner/repo",
-      localPath: "",
-    });
+  test("rejects missing localPath", () => {
+    const result = scanSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 });

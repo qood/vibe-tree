@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   api,
-  type Repo,
   type Plan,
   type ScanSnapshot,
   type TreeNode,
@@ -10,8 +9,6 @@ import {
 import { wsClient } from "../lib/ws";
 
 export default function TreeDashboard() {
-  const [repos, setRepos] = useState<Repo[]>([]);
-  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [localPath, setLocalPath] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [snapshot, setSnapshot] = useState<ScanSnapshot | null>(null);
@@ -21,17 +18,12 @@ export default function TreeDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Load repos
+  // Load plan and connect WS when snapshot is available
   useEffect(() => {
-    api.getRepos().then(setRepos).catch(console.error);
-  }, []);
+    if (!snapshot?.repoId) return;
 
-  // Load plan and connect WS when repo is selected
-  useEffect(() => {
-    if (!selectedRepo) return;
-
-    api.getCurrentPlan(selectedRepo.id).then(setPlan).catch(console.error);
-    wsClient.connect(selectedRepo.id);
+    api.getCurrentPlan(snapshot.repoId).then(setPlan).catch(console.error);
+    wsClient.connect(snapshot.repoId);
 
     const unsubScan = wsClient.on("scan.updated", (msg) => {
       setSnapshot(msg.data as ScanSnapshot);
@@ -40,27 +32,27 @@ export default function TreeDashboard() {
     return () => {
       unsubScan();
     };
-  }, [selectedRepo]);
+  }, [snapshot?.repoId]);
 
   const handleScan = useCallback(async () => {
-    if (!selectedRepo || !localPath) return;
+    if (!localPath) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await api.scan(selectedRepo.id, localPath);
+      const result = await api.scan(localPath);
       setSnapshot(result);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [selectedRepo, localPath]);
+  }, [localPath]);
 
   const handleLogInstruction = async () => {
-    if (!selectedRepo || !instruction.trim()) return;
+    if (!snapshot?.repoId || !instruction.trim()) return;
     try {
       await api.logInstruction({
-        repoId: selectedRepo.id,
+        repoId: snapshot.repoId,
         planId: plan?.id,
         branchName: selectedNode?.branchName,
         kind: "user_instruction",
@@ -188,40 +180,28 @@ export default function TreeDashboard() {
       <header className="dashboard__header">
         <h1>Vibe Tree</h1>
         <div className="dashboard__nav">
-          {selectedRepo && (
-            <Link to={`/settings?repoId=${selectedRepo.id}`}>Settings</Link>
+          {snapshot?.repoId && (
+            <>
+              <span className="dashboard__repo">{snapshot.repoId}</span>
+              <Link to={`/settings?repoId=${encodeURIComponent(snapshot.repoId)}`}>Settings</Link>
+            </>
           )}
         </div>
       </header>
 
       {error && <div className="dashboard__error">{error}</div>}
 
-      {/* Repo & Path Selection */}
+      {/* Local Path Input */}
       <div className="dashboard__controls">
-        <select
-          value={selectedRepo?.id || ""}
-          onChange={(e) => {
-            const repo = repos.find((r) => r.id === e.target.value);
-            setSelectedRepo(repo || null);
-            setSnapshot(null);
-            setSelectedNode(null);
-          }}
-        >
-          <option value="">-- Select a repo --</option>
-          {repos.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.fullName}
-            </option>
-          ))}
-        </select>
         <input
           type="text"
-          placeholder="Local path (e.g., /path/to/repo)"
+          placeholder="Local path (e.g., /Users/you/projects/repo)"
           value={localPath}
           onChange={(e) => setLocalPath(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleScan()}
           style={{ flex: 1 }}
         />
-        <button onClick={handleScan} disabled={loading || !selectedRepo || !localPath}>
+        <button onClick={handleScan} disabled={loading || !localPath}>
           {loading ? "Scanning..." : "Scan"}
         </button>
         {plan && (
@@ -403,7 +383,7 @@ export default function TreeDashboard() {
               />
               <button
                 onClick={handleLogInstruction}
-                disabled={!instruction.trim()}
+                disabled={!instruction.trim() || !snapshot?.repoId}
                 className="btn-primary"
               >
                 Log Instruction
@@ -430,9 +410,22 @@ export default function TreeDashboard() {
           margin: 0;
           font-size: 20px;
         }
+        .dashboard__nav {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
         .dashboard__nav a {
           color: #0066cc;
           text-decoration: none;
+        }
+        .dashboard__repo {
+          font-family: monospace;
+          font-size: 14px;
+          color: #666;
+          background: #f0f0f0;
+          padding: 4px 8px;
+          border-radius: 4px;
         }
         .dashboard__error {
           background: #fee;
@@ -448,15 +441,11 @@ export default function TreeDashboard() {
           border-bottom: 1px solid #ddd;
           align-items: center;
         }
-        .dashboard__controls select,
         .dashboard__controls input {
           padding: 8px 12px;
           border: 1px solid #ddd;
           border-radius: 4px;
           font-size: 14px;
-        }
-        .dashboard__controls select {
-          min-width: 250px;
         }
         .dashboard__controls button {
           padding: 8px 16px;

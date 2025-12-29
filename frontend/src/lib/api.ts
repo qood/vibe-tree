@@ -112,6 +112,7 @@ export interface TreeSpec {
 }
 
 export interface ScanSnapshot {
+  repoId: string;
   nodes: TreeNode[];
   edges: TreeEdge[];
   warnings: Warning[];
@@ -196,10 +197,10 @@ export const api = {
     }),
 
   // Scan
-  scan: (repoId: string, localPath: string) =>
+  scan: (localPath: string) =>
     fetchJson<ScanSnapshot>(`${API_BASE}/scan`, {
       method: "POST",
-      body: JSON.stringify({ repoId, localPath }),
+      body: JSON.stringify({ localPath }),
     }),
   getRestartPrompt: (
     repoId: string,

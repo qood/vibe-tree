@@ -43,7 +43,6 @@ export type CommitPlanInput = z.infer<typeof commitPlanSchema>;
 
 // Scan schemas
 export const scanSchema = z.object({
-  repoId: repoIdSchema,
   localPath: z.string().min(1, "Local path is required"),
 });
 

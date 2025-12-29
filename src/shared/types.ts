@@ -172,6 +172,7 @@ export interface TreeSpecEdge {
 }
 
 export interface ScanSnapshot {
+  repoId: string;
   nodes: TreeNode[];
   edges: TreeEdge[];
   warnings: Warning[];

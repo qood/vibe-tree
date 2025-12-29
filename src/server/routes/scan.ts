@@ -50,11 +50,17 @@ export const scanRouter = new Hono();
 scanRouter.post("/", async (c) => {
   const body = await c.req.json();
   const input = validateOrThrow(scanSchema, body);
-  const { repoId, localPath } = input;
+  const { localPath } = input;
 
   // Verify local path exists
   if (!existsSync(localPath)) {
     throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Get repo info from gh CLI
+  const repoId = getRepoId(localPath);
+  if (!repoId) {
+    throw new BadRequestError(`Could not detect GitHub repo at: ${localPath}`);
   }
 
   // 1. Get branches
@@ -112,6 +118,7 @@ scanRouter.post("/", async (c) => {
     : null;
 
   const snapshot: ScanSnapshot = {
+    repoId,
     nodes,
     edges,
     warnings,
@@ -215,6 +222,18 @@ ${gitStatus || "Clean working directory"}
     restartPromptMd: prompt,
   });
 });
+
+function getRepoId(repoPath: string): string | null {
+  try {
+    const output = execSync(
+      `cd "${repoPath}" && gh repo view --json nameWithOwner --jq .nameWithOwner`,
+      { encoding: "utf-8" }
+    );
+    return output.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 function getBranches(repoPath: string): BranchInfo[] {
   try {
