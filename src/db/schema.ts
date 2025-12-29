@@ -78,3 +78,17 @@ export const repoPins = sqliteTable("repo_pins", {
   lastUsedAt: text("last_used_at").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+// Agent sessions (Claude Code sessions)
+export const agentSessions = sqliteTable("agent_sessions", {
+  id: text("id").primaryKey(), // uuid
+  repoId: text("repo_id").notNull(),
+  worktreePath: text("worktree_path").notNull(),
+  branch: text("branch"),
+  status: text("status").notNull(), // 'running' | 'stopped' | 'exited'
+  pid: integer("pid"),
+  startedAt: text("started_at").notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+  endedAt: text("ended_at"),
+  exitCode: integer("exit_code"),
+});

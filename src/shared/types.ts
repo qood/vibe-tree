@@ -200,6 +200,30 @@ export interface AgentStatus {
   localPath: string;
 }
 
+// Agent session
+export type AgentSessionStatus = "running" | "stopped" | "exited";
+
+export interface AgentSession {
+  id: string;
+  repoId: string;
+  worktreePath: string;
+  branch: string | null;
+  status: AgentSessionStatus;
+  pid: number | null;
+  startedAt: string;
+  lastSeenAt: string;
+  endedAt: string | null;
+  exitCode: number | null;
+}
+
+// Agent output event data
+export interface AgentOutputData {
+  sessionId: string;
+  stream: "stdout" | "stderr";
+  data: string;
+  timestamp: string;
+}
+
 // WebSocket message types
 export type WSMessageType =
   | "projectRules.updated"
@@ -208,7 +232,8 @@ export type WSMessageType =
   | "instructions.logged"
   | "agent.started"
   | "agent.finished"
-  | "agent.stopped";
+  | "agent.stopped"
+  | "agent.output";
 
 export interface WSMessage<T = unknown> {
   type: WSMessageType;

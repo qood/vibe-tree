@@ -155,10 +155,34 @@ export interface AgentStatus {
 
 export interface AiStartResult {
   status: "started" | "already_running";
+  sessionId: string;
   pid: number;
   repoId: string;
   startedAt: string;
   localPath: string;
+  branch?: string | null;
+}
+
+export type AgentSessionStatus = "running" | "stopped" | "exited";
+
+export interface AgentSession {
+  id: string;
+  repoId: string;
+  worktreePath: string;
+  branch: string | null;
+  status: AgentSessionStatus;
+  pid: number | null;
+  startedAt: string;
+  lastSeenAt: string;
+  endedAt: string | null;
+  exitCode: number | null;
+}
+
+export interface AgentOutputData {
+  sessionId: string;
+  stream: "stdout" | "stderr";
+  data: string;
+  timestamp: string;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -303,5 +327,9 @@ export const api = {
       body: JSON.stringify({ pid }),
     }),
   aiStatus: () =>
-    fetchJson<{ agents: AgentStatus[] }>(`${API_BASE}/ai/status`),
+    fetchJson<{ agents: AgentSession[] }>(`${API_BASE}/ai/status`),
+  aiSessions: (repoId?: string) => {
+    const params = repoId ? `?repoId=${encodeURIComponent(repoId)}` : "";
+    return fetchJson<{ sessions: AgentSession[] }>(`${API_BASE}/ai/sessions${params}`);
+  },
 };
