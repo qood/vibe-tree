@@ -128,6 +128,41 @@ export const aiStopSchema = z.object({
 
 export type AiStopInput = z.infer<typeof aiStopSchema>;
 
+// Chat schemas
+export const createChatSessionSchema = z.object({
+  repoId: repoIdSchema,
+  worktreePath: z.string().min(1, "Worktree path is required"),
+  planId: z.number().int().positive().optional(),
+});
+
+export type CreateChatSessionInput = z.infer<typeof createChatSessionSchema>;
+
+export const archiveChatSessionSchema = z.object({
+  sessionId: z.string().uuid("Valid session ID is required"),
+});
+
+export type ArchiveChatSessionInput = z.infer<typeof archiveChatSessionSchema>;
+
+export const chatSendSchema = z.object({
+  sessionId: z.string().uuid("Valid session ID is required"),
+  userMessage: z.string().min(1, "Message is required"),
+});
+
+export type ChatSendInput = z.infer<typeof chatSendSchema>;
+
+export const chatSummarizeSchema = z.object({
+  sessionId: z.string().uuid("Valid session ID is required"),
+});
+
+export type ChatSummarizeInput = z.infer<typeof chatSummarizeSchema>;
+
+export const chatPurgeSchema = z.object({
+  sessionId: z.string().uuid("Valid session ID is required"),
+  keepLastN: z.number().int().min(0).default(50),
+});
+
+export type ChatPurgeInput = z.infer<typeof chatPurgeSchema>;
+
 // Validation helper
 export function validateOrThrow<T>(
   schema: z.ZodSchema<T>,

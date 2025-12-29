@@ -8,6 +8,10 @@ import {
   type RepoPin,
   type AgentSession,
   type AgentOutputData,
+  type ChatSession,
+  type ChatMessage,
+  type TreeSpecNode,
+  type TreeSpecEdge,
 } from "../lib/api";
 import { wsClient } from "../lib/ws";
 
@@ -39,6 +43,21 @@ export default function TreeDashboard() {
   const [agentOutput, setAgentOutput] = useState<OutputLine[]>([]);
   const [showConsole, setShowConsole] = useState(false);
   const consoleRef = useRef<HTMLDivElement>(null);
+
+  // Chat state
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const chatRef = useRef<HTMLDivElement>(null);
+
+  // Tree Spec wizard state
+  const [showTreeWizard, setShowTreeWizard] = useState(false);
+  const [wizardNodes, setWizardNodes] = useState<TreeSpecNode[]>([]);
+  const [wizardEdges, setWizardEdges] = useState<TreeSpecEdge[]>([]);
+  const [newNodeName, setNewNodeName] = useState("");
+  const [newNodeParent, setNewNodeParent] = useState("");
 
   // Load repo pins on mount
   useEffect(() => {
@@ -137,12 +156,28 @@ export default function TreeDashboard() {
       } : null);
     });
 
+    const unsubChatMessage = wsClient.on("chat.message", (msg) => {
+      const message = msg.data as ChatMessage;
+      setChatMessages((prev) => {
+        // Avoid duplicates
+        if (prev.some((m) => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
+      // Auto-scroll chat
+      setTimeout(() => {
+        if (chatRef.current) {
+          chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }
+      }, 10);
+    });
+
     return () => {
       unsubScan();
       unsubAgentStarted();
       unsubAgentOutput();
       unsubAgentFinished();
       unsubAgentStopped();
+      unsubChatMessage();
     };
   }, [snapshot?.repoId, selectedPin?.localPath]);
 
@@ -239,6 +274,113 @@ export default function TreeDashboard() {
 
   const handleClearConsole = () => {
     setAgentOutput([]);
+  };
+
+  // Chat functions
+  const handleOpenChat = async (worktreePath: string) => {
+    if (!snapshot?.repoId) return;
+    setChatLoading(true);
+    setError(null);
+    try {
+      // Create or get existing session
+      const session = await api.createChatSession(snapshot.repoId, worktreePath, plan?.id);
+      setChatSession(session);
+      // Load messages
+      const messages = await api.getChatMessages(session.id);
+      setChatMessages(messages);
+      setShowChat(true);
+      // Auto-scroll
+      setTimeout(() => {
+        if (chatRef.current) {
+          chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }
+      }, 10);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleSendChat = async () => {
+    if (!chatSession || !chatInput.trim()) return;
+    setChatLoading(true);
+    setError(null);
+    const message = chatInput;
+    setChatInput("");
+    try {
+      // Note: The response will come via WebSocket, but we also get it here
+      await api.sendChatMessage(chatSession.id, message);
+      // Messages are added via WebSocket handler
+    } catch (err) {
+      setError((err as Error).message);
+      setChatInput(message); // Restore input on error
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleCloseChat = () => {
+    setShowChat(false);
+    setChatSession(null);
+    setChatMessages([]);
+  };
+
+  // Tree Spec wizard functions
+  const handleOpenTreeWizard = () => {
+    // Initialize with existing tree spec if available
+    if (snapshot?.treeSpec) {
+      setWizardNodes(snapshot.treeSpec.specJson.nodes);
+      setWizardEdges(snapshot.treeSpec.specJson.edges);
+    } else {
+      // Start with main branch
+      setWizardNodes([{ branchName: "main" }]);
+      setWizardEdges([]);
+    }
+    setShowTreeWizard(true);
+  };
+
+  const handleAddWizardNode = () => {
+    if (!newNodeName.trim()) return;
+    const branchName = newNodeName.trim();
+    // Check for duplicates
+    if (wizardNodes.some((n) => n.branchName === branchName)) {
+      setError("Branch name already exists");
+      return;
+    }
+    setWizardNodes((prev) => [...prev, { branchName }]);
+    if (newNodeParent) {
+      setWizardEdges((prev) => [...prev, { parent: newNodeParent, child: branchName }]);
+    }
+    setNewNodeName("");
+    setNewNodeParent("");
+  };
+
+  const handleRemoveWizardNode = (branchName: string) => {
+    setWizardNodes((prev) => prev.filter((n) => n.branchName !== branchName));
+    setWizardEdges((prev) => prev.filter((e) => e.parent !== branchName && e.child !== branchName));
+  };
+
+  const handleSaveTreeSpec = async () => {
+    if (!snapshot?.repoId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await api.updateTreeSpec({
+        repoId: snapshot.repoId,
+        nodes: wizardNodes,
+        edges: wizardEdges,
+      });
+      setShowTreeWizard(false);
+      // Rescan to update the view
+      if (selectedPin) {
+        await handleScan(selectedPin.localPath);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogInstruction = async () => {
@@ -349,6 +491,17 @@ export default function TreeDashboard() {
                 {label}
               </span>
             ))}
+            {node.worktree && (
+              <button
+                className="btn-chat-small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenChat(node.worktree!.path);
+                }}
+              >
+                Chat
+              </button>
+            )}
           </div>
         </div>
         {children.map((child) => renderNode(child, depth + 1))}
@@ -517,6 +670,140 @@ export default function TreeDashboard() {
         </div>
       )}
 
+      {/* Chat Panel */}
+      {showChat && chatSession && (
+        <div className="chat-panel">
+          <div className="chat-panel__header">
+            <div className="chat-panel__title">
+              <h3>Chat: {chatSession.branchName || "Session"}</h3>
+              <span className="chat-panel__path">{chatSession.worktreePath}</span>
+            </div>
+            <div className="chat-panel__actions">
+              <button onClick={handleCloseChat}>×</button>
+            </div>
+          </div>
+          <div className="chat-panel__messages" ref={chatRef}>
+            {chatMessages.length === 0 ? (
+              <div className="chat-panel__empty">
+                No messages yet. Start a conversation with Claude.
+              </div>
+            ) : (
+              chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`chat-message chat-message--${msg.role}`}
+                >
+                  <div className="chat-message__role">{msg.role}</div>
+                  <div className="chat-message__content">
+                    <pre>{msg.content}</pre>
+                  </div>
+                  <div className="chat-message__time">
+                    {new Date(msg.createdAt).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))
+            )}
+            {chatLoading && (
+              <div className="chat-message chat-message--loading">
+                <div className="chat-message__role">assistant</div>
+                <div className="chat-message__content">Thinking...</div>
+              </div>
+            )}
+          </div>
+          <div className="chat-panel__input">
+            <textarea
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Type a message..."
+              disabled={chatLoading}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendChat();
+                }
+              }}
+            />
+            <button
+              onClick={handleSendChat}
+              disabled={chatLoading || !chatInput.trim()}
+            >
+              {chatLoading ? "..." : "Send"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tree Spec Wizard Modal */}
+      {showTreeWizard && (
+        <div className="wizard-overlay">
+          <div className="wizard-modal">
+            <div className="wizard-header">
+              <h2>Design Tree Editor</h2>
+              <button onClick={() => setShowTreeWizard(false)}>×</button>
+            </div>
+            <div className="wizard-content">
+              <div className="wizard-section">
+                <h3>Branches ({wizardNodes.length})</h3>
+                <div className="wizard-nodes">
+                  {wizardNodes.map((node) => {
+                    const parentEdge = wizardEdges.find((e) => e.child === node.branchName);
+                    return (
+                      <div key={node.branchName} className="wizard-node">
+                        <span className="wizard-node__name">{node.branchName}</span>
+                        {parentEdge && (
+                          <span className="wizard-node__parent">← {parentEdge.parent}</span>
+                        )}
+                        {node.branchName !== "main" && node.branchName !== "master" && (
+                          <button
+                            className="wizard-node__remove"
+                            onClick={() => handleRemoveWizardNode(node.branchName)}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="wizard-section">
+                <h3>Add Branch</h3>
+                <div className="wizard-add-form">
+                  <input
+                    type="text"
+                    placeholder="Branch name"
+                    value={newNodeName}
+                    onChange={(e) => setNewNodeName(e.target.value)}
+                  />
+                  <select
+                    value={newNodeParent}
+                    onChange={(e) => setNewNodeParent(e.target.value)}
+                  >
+                    <option value="">No parent (root)</option>
+                    {wizardNodes.map((n) => (
+                      <option key={n.branchName} value={n.branchName}>
+                        {n.branchName}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={handleAddWizardNode} disabled={!newNodeName.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="wizard-footer">
+              <button className="btn-secondary" onClick={() => setShowTreeWizard(false)}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={handleSaveTreeSpec} disabled={loading}>
+                {loading ? "Saving..." : "Save Design Tree"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       {snapshot && (
         <div className="dashboard__main">
@@ -525,7 +812,12 @@ export default function TreeDashboard() {
             <div className="panel">
               <div className="panel__header">
                 <h3>Branch Tree</h3>
-                <span className="panel__count">{snapshot.nodes.length} branches</span>
+                <div className="panel__header-actions">
+                  <button className="btn-wizard" onClick={handleOpenTreeWizard}>
+                    Edit Design Tree
+                  </button>
+                  <span className="panel__count">{snapshot.nodes.length} branches</span>
+                </div>
               </div>
               <div className="tree-list">
                 {getRootNodes()
@@ -1169,6 +1461,312 @@ export default function TreeDashboard() {
         .btn-primary:disabled {
           background: #ccc;
           cursor: not-allowed;
+        }
+        .btn-chat-small {
+          padding: 2px 8px;
+          background: #6c5ce7;
+          color: white;
+          border: none;
+          border-radius: 3px;
+          font-size: 10px;
+          cursor: pointer;
+          margin-left: auto;
+        }
+        .btn-chat-small:hover {
+          background: #5b4cdb;
+        }
+        .chat-panel {
+          position: fixed;
+          right: 20px;
+          bottom: 20px;
+          width: 450px;
+          max-height: 600px;
+          background: white;
+          border: 1px solid #ddd;
+          border-radius: 12px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+          display: flex;
+          flex-direction: column;
+          z-index: 1000;
+        }
+        .chat-panel__header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding: 12px 16px;
+          background: #6c5ce7;
+          color: white;
+          border-radius: 12px 12px 0 0;
+        }
+        .chat-panel__title h3 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 600;
+        }
+        .chat-panel__path {
+          font-size: 11px;
+          opacity: 0.8;
+          display: block;
+          margin-top: 2px;
+        }
+        .chat-panel__actions button {
+          background: rgba(255,255,255,0.2);
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 4px 8px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .chat-panel__actions button:hover {
+          background: rgba(255,255,255,0.3);
+        }
+        .chat-panel__messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 12px;
+          max-height: 400px;
+          background: #f8f9fa;
+        }
+        .chat-panel__empty {
+          color: #999;
+          text-align: center;
+          padding: 40px 20px;
+          font-size: 13px;
+        }
+        .chat-message {
+          margin-bottom: 12px;
+          padding: 10px 12px;
+          border-radius: 8px;
+          max-width: 90%;
+        }
+        .chat-message--user {
+          background: #6c5ce7;
+          color: white;
+          margin-left: auto;
+        }
+        .chat-message--assistant {
+          background: white;
+          border: 1px solid #e0e0e0;
+        }
+        .chat-message--system {
+          background: #fff3cd;
+          border: 1px solid #ffc107;
+          font-size: 12px;
+        }
+        .chat-message--loading {
+          background: #e8e8e8;
+          color: #666;
+        }
+        .chat-message__role {
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+          opacity: 0.7;
+        }
+        .chat-message--user .chat-message__role {
+          color: rgba(255,255,255,0.8);
+        }
+        .chat-message__content {
+          font-size: 13px;
+          line-height: 1.5;
+        }
+        .chat-message__content pre {
+          margin: 0;
+          white-space: pre-wrap;
+          word-break: break-word;
+          font-family: inherit;
+        }
+        .chat-message__time {
+          font-size: 10px;
+          margin-top: 4px;
+          opacity: 0.6;
+          text-align: right;
+        }
+        .chat-panel__input {
+          display: flex;
+          gap: 8px;
+          padding: 12px;
+          border-top: 1px solid #e0e0e0;
+          background: white;
+          border-radius: 0 0 12px 12px;
+        }
+        .chat-panel__input textarea {
+          flex: 1;
+          padding: 10px 12px;
+          border: 1px solid #ddd;
+          border-radius: 8px;
+          font-size: 13px;
+          font-family: inherit;
+          resize: none;
+          min-height: 40px;
+          max-height: 100px;
+        }
+        .chat-panel__input textarea:focus {
+          outline: none;
+          border-color: #6c5ce7;
+        }
+        .chat-panel__input button {
+          padding: 10px 20px;
+          background: #6c5ce7;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 500;
+        }
+        .chat-panel__input button:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .chat-panel__input button:hover:not(:disabled) {
+          background: #5b4cdb;
+        }
+        .panel__header-actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .btn-wizard {
+          padding: 4px 10px;
+          background: #9c27b0;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .btn-wizard:hover {
+          background: #7b1fa2;
+        }
+        .wizard-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+        }
+        .wizard-modal {
+          background: white;
+          border-radius: 12px;
+          width: 500px;
+          max-height: 80vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .wizard-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid #e0e0e0;
+        }
+        .wizard-header h2 {
+          margin: 0;
+          font-size: 18px;
+        }
+        .wizard-header button {
+          background: none;
+          border: none;
+          font-size: 20px;
+          cursor: pointer;
+          color: #666;
+        }
+        .wizard-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 20px;
+        }
+        .wizard-section {
+          margin-bottom: 20px;
+        }
+        .wizard-section h3 {
+          margin: 0 0 12px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #333;
+        }
+        .wizard-nodes {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .wizard-node {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background: #f5f5f5;
+          border-radius: 6px;
+        }
+        .wizard-node__name {
+          font-family: monospace;
+          font-weight: 600;
+        }
+        .wizard-node__parent {
+          font-size: 12px;
+          color: #666;
+        }
+        .wizard-node__remove {
+          margin-left: auto;
+          background: #fee;
+          color: #c00;
+          border: none;
+          border-radius: 4px;
+          padding: 2px 8px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .wizard-add-form {
+          display: flex;
+          gap: 8px;
+        }
+        .wizard-add-form input {
+          flex: 1;
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 14px;
+        }
+        .wizard-add-form select {
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 14px;
+        }
+        .wizard-add-form button {
+          padding: 8px 16px;
+          background: #9c27b0;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        .wizard-add-form button:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .wizard-footer {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          padding: 16px 20px;
+          border-top: 1px solid #e0e0e0;
+        }
+        .btn-secondary {
+          padding: 10px 20px;
+          background: #f5f5f5;
+          color: #333;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        .btn-secondary:hover {
+          background: #e8e8e8;
         }
       `}</style>
     </div>

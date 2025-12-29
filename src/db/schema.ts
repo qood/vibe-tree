@@ -92,3 +92,53 @@ export const agentSessions = sqliteTable("agent_sessions", {
   endedAt: text("ended_at"),
   exitCode: integer("exit_code"),
 });
+
+// Chat sessions (worktree単位の対話セッション)
+export const chatSessions = sqliteTable("chat_sessions", {
+  id: text("id").primaryKey(), // uuid
+  repoId: text("repo_id").notNull(),
+  worktreePath: text("worktree_path").notNull(),
+  branchName: text("branch_name"),
+  planId: integer("plan_id").references(() => plans.id),
+  status: text("status").notNull().default("active"), // 'active' | 'archived'
+  lastUsedAt: text("last_used_at").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// Chat messages
+export const chatMessages = sqliteTable("chat_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => chatSessions.id),
+  role: text("role").notNull(), // 'user' | 'assistant' | 'system'
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+// Chat summaries (会話圧縮用)
+export const chatSummaries = sqliteTable("chat_summaries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => chatSessions.id),
+  summaryMarkdown: text("summary_markdown").notNull(),
+  coveredUntilMessageId: integer("covered_until_message_id").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+// Agent runs (Claude Code実行ログ)
+export const agentRuns = sqliteTable("agent_runs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id").references(() => chatSessions.id),
+  repoId: text("repo_id").notNull(),
+  worktreePath: text("worktree_path").notNull(),
+  inputPromptDigest: text("input_prompt_digest"), // hash of prompt
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+  status: text("status").notNull(), // 'running' | 'success' | 'failed'
+  stdoutSnippet: text("stdout_snippet"),
+  stderrSnippet: text("stderr_snippet"),
+  createdAt: text("created_at").notNull(),
+});

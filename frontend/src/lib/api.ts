@@ -185,6 +185,39 @@ export interface AgentOutputData {
   timestamp: string;
 }
 
+// Chat types
+export type ChatSessionStatus = "active" | "archived";
+
+export interface ChatSession {
+  id: string;
+  repoId: string;
+  worktreePath: string;
+  branchName: string | null;
+  planId: number | null;
+  status: ChatSessionStatus;
+  lastUsedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChatMessageRole = "user" | "assistant" | "system";
+
+export interface ChatMessage {
+  id: number;
+  sessionId: string;
+  role: ChatMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatSummary {
+  id: number;
+  sessionId: string;
+  summaryMarkdown: string;
+  coveredUntilMessageId: number;
+  createdAt: string;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -332,4 +365,35 @@ export const api = {
     const params = repoId ? `?repoId=${encodeURIComponent(repoId)}` : "";
     return fetchJson<{ sessions: AgentSession[] }>(`${API_BASE}/ai/sessions${params}`);
   },
+
+  // Chat
+  getChatSessions: (repoId: string) =>
+    fetchJson<ChatSession[]>(`${API_BASE}/chat/sessions?repoId=${encodeURIComponent(repoId)}`),
+  createChatSession: (repoId: string, worktreePath: string, planId?: number) =>
+    fetchJson<ChatSession>(`${API_BASE}/chat/sessions`, {
+      method: "POST",
+      body: JSON.stringify({ repoId, worktreePath, planId }),
+    }),
+  archiveChatSession: (sessionId: string) =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/chat/sessions/archive`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  getChatMessages: (sessionId: string) =>
+    fetchJson<ChatMessage[]>(`${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`),
+  sendChatMessage: (sessionId: string, userMessage: string) =>
+    fetchJson<{ assistantMessage: ChatMessage }>(`${API_BASE}/chat/send`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId, userMessage }),
+    }),
+  summarizeChat: (sessionId: string) =>
+    fetchJson<ChatSummary | { message: string }>(`${API_BASE}/chat/summarize`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  purgeChat: (sessionId: string, keepLastN?: number) =>
+    fetchJson<{ deleted: number; remaining: number }>(`${API_BASE}/chat/purge`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId, keepLastN: keepLastN ?? 50 }),
+    }),
 };

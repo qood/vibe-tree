@@ -224,6 +224,61 @@ export interface AgentOutputData {
   timestamp: string;
 }
 
+// Chat session (worktree単位の対話)
+export type ChatSessionStatus = "active" | "archived";
+
+export interface ChatSession {
+  id: string;
+  repoId: string;
+  worktreePath: string;
+  branchName: string | null;
+  planId: number | null;
+  status: ChatSessionStatus;
+  lastUsedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChatMessageRole = "user" | "assistant" | "system";
+
+export interface ChatMessage {
+  id: number;
+  sessionId: string;
+  role: ChatMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatSummary {
+  id: number;
+  sessionId: string;
+  summaryMarkdown: string;
+  coveredUntilMessageId: number;
+  createdAt: string;
+}
+
+export type AgentRunStatus = "running" | "success" | "failed";
+
+export interface AgentRun {
+  id: number;
+  sessionId: string | null;
+  repoId: string;
+  worktreePath: string;
+  inputPromptDigest: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  status: AgentRunStatus;
+  stdoutSnippet: string | null;
+  stderrSnippet: string | null;
+  createdAt: string;
+}
+
+// Chat send response
+export interface ChatSendResponse {
+  assistantMessage: ChatMessage;
+  updatedScan?: ScanSnapshot;
+}
+
 // WebSocket message types
 export type WSMessageType =
   | "projectRules.updated"
@@ -233,7 +288,8 @@ export type WSMessageType =
   | "agent.started"
   | "agent.finished"
   | "agent.stopped"
-  | "agent.output";
+  | "agent.output"
+  | "chat.message";
 
 export interface WSMessage<T = unknown> {
   type: WSMessageType;
