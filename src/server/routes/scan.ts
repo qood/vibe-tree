@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { homedir } from "os";
 import { db, schema } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { execSync } from "child_process";
@@ -21,6 +22,17 @@ import type {
   ScanSnapshot,
   TreeSpec,
 } from "../../shared/types";
+
+// Expand ~ to home directory
+function expandTilde(path: string): string {
+  if (path.startsWith("~/")) {
+    return join(homedir(), path.slice(2));
+  }
+  if (path === "~") {
+    return homedir();
+  }
+  return path;
+}
 
 interface BranchInfo {
   name: string;
@@ -50,7 +62,7 @@ export const scanRouter = new Hono();
 scanRouter.post("/", async (c) => {
   const body = await c.req.json();
   const input = validateOrThrow(scanSchema, body);
-  const { localPath } = input;
+  const localPath = expandTilde(input.localPath);
 
   // Verify local path exists
   if (!existsSync(localPath)) {
@@ -147,7 +159,11 @@ scanRouter.get("/restart-prompt", async (c) => {
     worktreePath: c.req.query("worktreePath"),
   });
 
-  const { repoId, localPath } = query;
+  const repoId = query.repoId;
+  const localPath = expandTilde(query.localPath);
+  const worktreePath = query.worktreePath
+    ? expandTilde(query.worktreePath)
+    : undefined;
 
   // Get plan if provided
   let plan = null;
@@ -177,7 +193,7 @@ scanRouter.get("/restart-prompt", async (c) => {
     : null;
 
   // Get git status for worktree
-  const targetPath = query.worktreePath ?? localPath;
+  const targetPath = worktreePath ?? localPath;
   let gitStatus = "";
   try {
     gitStatus = execSync(`cd "${targetPath}" && git status --short`, {
