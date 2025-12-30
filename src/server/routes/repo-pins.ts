@@ -25,6 +25,7 @@ repoPinsRouter.get("/", async (c) => {
     repoId: p.repoId,
     localPath: p.localPath,
     label: p.label,
+    baseBranch: p.baseBranch ?? null,
     lastUsedAt: p.lastUsedAt,
     createdAt: p.createdAt,
   }));
@@ -74,6 +75,7 @@ repoPinsRouter.post("/", async (c) => {
       repoId,
       localPath,
       label: input.label ?? existingPin.label,
+      baseBranch: existingPin.baseBranch ?? null,
       lastUsedAt: now,
       createdAt: existingPin.createdAt,
     };
@@ -102,6 +104,7 @@ repoPinsRouter.post("/", async (c) => {
     repoId: inserted.repoId,
     localPath: inserted.localPath,
     label: inserted.label,
+    baseBranch: inserted.baseBranch ?? null,
     lastUsedAt: inserted.lastUsedAt,
     createdAt: inserted.createdAt,
   };
@@ -135,6 +138,7 @@ repoPinsRouter.post("/use", async (c) => {
     repoId: existingPin.repoId,
     localPath: existingPin.localPath,
     label: existingPin.label,
+    baseBranch: existingPin.baseBranch ?? null,
     lastUsedAt: now,
     createdAt: existingPin.createdAt,
   };

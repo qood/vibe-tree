@@ -89,6 +89,7 @@ export interface TreeEdge {
 }
 
 export type TaskStatus = "todo" | "doing" | "done";
+export type TreeSpecStatus = "draft" | "confirmed" | "generated";
 
 export interface TreeSpecNode {
   id: string; // UUID for task identification
@@ -96,6 +97,8 @@ export interface TreeSpecNode {
   description?: string; // 完了条件/メモ
   status: TaskStatus;
   branchName?: string; // 未確定ならundefined
+  worktreePath?: string; // Path to worktree (set after creation)
+  chatSessionId?: string; // Linked chat session ID
   // Legacy fields (optional for backward compat)
   intendedIssue?: number;
   intendedPr?: number;
@@ -110,6 +113,7 @@ export interface TreeSpec {
   id: number;
   repoId: string;
   baseBranch: string; // default branch (develop, main, master, etc.)
+  status: TreeSpecStatus;
   specJson: {
     nodes: TreeSpecNode[];
     edges: TreeSpecEdge[];
@@ -151,6 +155,7 @@ export interface RepoPin {
   repoId: string;
   localPath: string;
   label: string | null;
+  baseBranch: string | null;
   lastUsedAt: string;
   createdAt: string;
 }
@@ -322,6 +327,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  confirmTreeSpec: (repoId: string) =>
+    fetchJson<TreeSpec>(`${API_BASE}/tree-spec/confirm`, {
+      method: "POST",
+      body: JSON.stringify({ repoId }),
+    }),
+  unconfirmTreeSpec: (repoId: string) =>
+    fetchJson<TreeSpec>(`${API_BASE}/tree-spec/unconfirm`, {
+      method: "POST",
+      body: JSON.stringify({ repoId }),
+    }),
 
   // Instructions
   logInstruction: (data: {
@@ -385,6 +400,32 @@ export const api = {
         body: JSON.stringify({ localPath, branchName, baseBranch }),
       }
     ),
+  createTree: (
+    repoId: string,
+    localPath: string,
+    tasks: Array<{
+      id: string;
+      branchName: string;
+      parentBranch: string;
+      worktreeName: string;
+    }>
+  ) =>
+    fetchJson<{
+      success: boolean;
+      worktreesDir: string;
+      results: Array<{
+        taskId: string;
+        branchName: string;
+        worktreePath: string;
+        chatSessionId: string;
+        success: boolean;
+        error?: string;
+      }>;
+      summary: { total: number; success: number; failed: number };
+    }>(`${API_BASE}/branch/create-tree`, {
+      method: "POST",
+      body: JSON.stringify({ repoId, localPath, tasks }),
+    }),
 
   // Chat
   getChatSessions: (repoId: string) =>

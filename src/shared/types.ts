@@ -147,11 +147,15 @@ export interface RestartInfo {
   restartPromptMd: string;
 }
 
+// TreeSpec status
+export type TreeSpecStatus = "draft" | "confirmed" | "generated";
+
 // 設計ツリー (tree_specs) - タスク戦略ツール
 export interface TreeSpec {
   id: number;
   repoId: string;
   baseBranch: string; // default branch (develop, main, master, etc.)
+  status: TreeSpecStatus;
   specJson: {
     nodes: TreeSpecNode[];
     edges: TreeSpecEdge[];
@@ -168,6 +172,8 @@ export interface TreeSpecNode {
   description?: string; // 完了条件/メモ
   status: TaskStatus;
   branchName?: string; // 未確定ならundefined
+  worktreePath?: string; // Path to worktree (set after creation)
+  chatSessionId?: string; // Linked chat session ID
   // Legacy fields (optional for backward compat)
   intendedIssue?: number;
   intendedPr?: number;
@@ -197,6 +203,7 @@ export interface RepoPin {
   repoId: string;
   localPath: string;
   label: string | null;
+  baseBranch: string | null; // user-selected base branch
   lastUsedAt: string;
   createdAt: string;
 }

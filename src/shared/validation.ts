@@ -75,6 +75,8 @@ export const treeSpecNodeSchema = z.object({
   description: z.string().optional(), // 完了条件/メモ
   status: taskStatusSchema.default("todo"),
   branchName: z.string().optional(), // 未確定ならundefined
+  worktreePath: z.string().optional(), // Path to worktree
+  chatSessionId: z.string().optional(), // Linked chat session ID
   // Legacy fields (optional for backward compat)
   intendedIssue: z.number().int().positive().optional(),
   intendedPr: z.number().int().positive().optional(),
@@ -128,6 +130,23 @@ export const createBranchSchema = z.object({
 });
 
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+
+// Batch worktree creation schema
+export const createTreeTaskSchema = z.object({
+  id: z.string().min(1, "Task ID is required"),
+  branchName: z.string().min(1, "Branch name is required"),
+  parentBranch: z.string().min(1, "Parent branch is required"),
+  worktreeName: z.string().min(1, "Worktree name is required"),
+});
+
+export const createTreeSchema = z.object({
+  repoId: repoIdSchema,
+  localPath: z.string().min(1, "Local path is required"),
+  tasks: z.array(createTreeTaskSchema).min(1, "At least one task is required"),
+});
+
+export type CreateTreeInput = z.infer<typeof createTreeSchema>;
+export type CreateTreeTaskInput = z.infer<typeof createTreeTaskSchema>;
 
 // AI agent schemas
 export const aiStartSchema = z.object({

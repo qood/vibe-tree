@@ -68,8 +68,17 @@ scanRouter.post("/", async (c) => {
   const branches = getBranches(localPath);
   const branchNames = branches.map((b) => b.name);
 
-  // 2. Detect default branch dynamically
-  const defaultBranch = getDefaultBranch(localPath, branchNames);
+  // 2. Check if user has saved a preferred base branch in repo_pins
+  const repoPinRecords = await db
+    .select()
+    .from(schema.repoPins)
+    .where(eq(schema.repoPins.repoId, repoId));
+  const savedBaseBranch = repoPinRecords[0]?.baseBranch;
+
+  // 3. Detect default branch dynamically (use saved if available and valid)
+  const defaultBranch = savedBaseBranch && branchNames.includes(savedBaseBranch)
+    ? savedBaseBranch
+    : getDefaultBranch(localPath, branchNames);
 
   // 3. Get worktrees with heartbeat
   const worktrees = getWorktrees(localPath);
@@ -108,6 +117,7 @@ scanRouter.post("/", async (c) => {
         id: treeSpecs[0].id,
         repoId: treeSpecs[0].repoId,
         baseBranch: treeSpecs[0].baseBranch ?? defaultBranch,
+        status: (treeSpecs[0].status ?? "draft") as TreeSpec["status"],
         specJson: JSON.parse(treeSpecs[0].specJson),
         createdAt: treeSpecs[0].createdAt,
         updatedAt: treeSpecs[0].updatedAt,

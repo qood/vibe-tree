@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
   api,
   type Plan,
   type ScanSnapshot,
@@ -10,10 +18,162 @@ import {
   type TreeSpecNode,
   type TreeSpecEdge,
   type TaskStatus,
+  type TreeSpecStatus,
   type BranchNamingRule,
 } from "../lib/api";
 import { wsClient } from "../lib/ws";
 import BranchGraph from "../components/BranchGraph";
+
+// Draggable task item component
+function DraggableTask({
+  task,
+  children,
+}: {
+  task: TreeSpecNode;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.id,
+    data: { task },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ opacity: isDragging ? 0.5 : 1, cursor: "grab" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Droppable zone for tree nodes
+function DroppableTreeNode({
+  id,
+  children,
+  isOver,
+}: {
+  id: string;
+  children: React.ReactNode;
+  isOver?: boolean;
+}) {
+  const { setNodeRef, isOver: dropIsOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`droppable-zone ${dropIsOver || isOver ? "droppable-zone--over" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Task card component for reuse
+function TaskCard({
+  task,
+  onStatusChange,
+  onRemove,
+  onStart,
+  onClick,
+  onConsult,
+  loading,
+  compact,
+  isLocked,
+}: {
+  task: TreeSpecNode;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onRemove: (taskId: string) => void;
+  onStart: (taskId: string) => void;
+  onClick?: (task: TreeSpecNode) => void;
+  onConsult?: (task: TreeSpecNode) => void;
+  loading: boolean;
+  compact?: boolean;
+  isLocked?: boolean;
+}) {
+  const hasWorktree = !!task.worktreePath;
+
+  return (
+    <div
+      className={`task-card task-card--${task.status} ${compact ? "task-card--compact" : ""} ${hasWorktree ? "task-card--clickable" : ""}`}
+      onClick={() => hasWorktree && onClick?.(task)}
+    >
+      <div className="task-card__header">
+        <select
+          value={task.status}
+          onChange={(e) => onStatusChange(task.id, e.target.value as TaskStatus)}
+          className="task-card__status"
+          onClick={(e) => e.stopPropagation()}
+          disabled={isLocked}
+        >
+          <option value="todo">Todo</option>
+          <option value="doing">Doing</option>
+          <option value="done">Done</option>
+        </select>
+        <span className="task-card__title">{task.title}</span>
+        <div className="task-card__actions">
+          {hasWorktree ? (
+            <button
+              className="task-card__open"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick?.(task);
+              }}
+            >
+              開く
+            </button>
+          ) : (
+            <button
+              className="task-card__consult"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConsult?.(task);
+              }}
+            >
+              相談
+            </button>
+          )}
+          {!isLocked && !task.branchName && task.status === "todo" && (
+            <button
+              className="task-card__start"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStart(task.id);
+              }}
+              disabled={loading}
+            >
+              Start
+            </button>
+          )}
+          {!isLocked && (
+            <button
+              className="task-card__remove"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(task.id);
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+      {!compact && task.description && (
+        <div className="task-card__description">{task.description}</div>
+      )}
+      <div className="task-card__meta">
+        {task.branchName && (
+          <span className="task-card__branch">{task.branchName}</span>
+        )}
+        {task.worktreePath && (
+          <span className="task-card__worktree">WT</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function TreeDashboard() {
   // Repo pins state
@@ -47,6 +207,8 @@ export default function TreeDashboard() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskParent, setNewTaskParent] = useState("");
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [wizardStatus, setWizardStatus] = useState<TreeSpecStatus>("draft");
 
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
@@ -62,10 +224,7 @@ export default function TreeDashboard() {
   useEffect(() => {
     api.getRepoPins().then((pins) => {
       setRepoPins(pins);
-      // Auto-select the most recently used one
-      if (pins.length > 0 && !selectedPinId) {
-        setSelectedPinId(pins[0].id);
-      }
+      // Don't auto-select - show project list first
     }).catch(console.error);
   }, []);
 
@@ -219,12 +378,14 @@ export default function TreeDashboard() {
       setWizardBaseBranch(snapshot.treeSpec.baseBranch);
       setWizardNodes(snapshot.treeSpec.specJson.nodes);
       setWizardEdges(snapshot.treeSpec.specJson.edges);
+      setWizardStatus(snapshot.treeSpec.status);
     } else {
       // Start fresh with detected default branch
       const baseBranch = snapshot?.defaultBranch ?? "main";
       setWizardBaseBranch(baseBranch);
       setWizardNodes([]);
       setWizardEdges([]);
+      setWizardStatus("draft");
     }
     setShowTreeWizard(true);
   };
@@ -249,9 +410,120 @@ export default function TreeDashboard() {
     setNewTaskParent("");
   };
 
-  const handleRemoveWizardTask = (taskId: string) => {
-    setWizardNodes((prev) => prev.filter((n) => n.id !== taskId));
-    setWizardEdges((prev) => prev.filter((e) => e.parent !== taskId && e.child !== taskId));
+  const handleRemoveWizardTask = async (taskId: string) => {
+    const newNodes = wizardNodes.filter((n) => n.id !== taskId);
+    const newEdges = wizardEdges.filter((e) => e.parent !== taskId && e.child !== taskId);
+    setWizardNodes(newNodes);
+    setWizardEdges(newEdges);
+
+    // Auto-save after deletion
+    if (snapshot?.repoId) {
+      try {
+        await api.updateTreeSpec({
+          repoId: snapshot.repoId,
+          baseBranch: wizardBaseBranch,
+          nodes: newNodes,
+          edges: newEdges,
+        });
+      } catch (err) {
+        console.error("Failed to save after deletion:", err);
+      }
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
+
+    if (!over) return;
+
+    const taskId = active.id as string;
+    const targetId = over.id as string;
+
+    // Don't drop on itself
+    if (taskId === targetId) return;
+
+    // Handle dropping on "backlog" zone - remove from tree
+    if (targetId === "backlog-zone") {
+      setWizardEdges((prev) => prev.filter((e) => e.child !== taskId));
+      return;
+    }
+
+    // Handle dropping on "tree-root" - make it a root task (child of base branch)
+    if (targetId === "tree-root") {
+      // Remove existing parent edge if any
+      setWizardEdges((prev) => prev.filter((e) => e.child !== taskId));
+      return;
+    }
+
+    // Handle dropping on another task - set that task as parent
+    const targetTask = wizardNodes.find((n) => n.id === targetId);
+    if (targetTask) {
+      // Remove existing parent edge
+      setWizardEdges((prev) => {
+        const filtered = prev.filter((e) => e.child !== taskId);
+        // Add new edge
+        return [...filtered, { parent: targetId, child: taskId }];
+      });
+    }
+  };
+
+  // Get tasks for backlog (no parent edge)
+  const backlogTasks = wizardNodes.filter(
+    (n) => !wizardEdges.some((e) => e.child === n.id)
+  );
+
+  // Get tasks in tree (has parent edge or is root)
+  const treeTasks = wizardNodes.filter(
+    (n) => wizardEdges.some((e) => e.child === n.id)
+  );
+
+  // Build tree structure for display
+  const buildTreeStructure = () => {
+    // Find root tasks (in tree but no parent, or all tasks without parent edge)
+    const rootTasks = wizardNodes.filter(
+      (n) => !wizardEdges.some((e) => e.child === n.id)
+    );
+
+    const getChildren = (parentId: string): TreeSpecNode[] => {
+      const childEdges = wizardEdges.filter((e) => e.parent === parentId);
+      return childEdges.map((e) => wizardNodes.find((n) => n.id === e.child)!).filter(Boolean);
+    };
+
+    const renderTreeNode = (task: TreeSpecNode, depth: number): React.ReactNode => {
+      const children = getChildren(task.id);
+      return (
+        <div key={task.id} className="tree-builder__node" style={{ marginLeft: depth * 20 }}>
+          <DroppableTreeNode id={task.id}>
+            <DraggableTask task={task}>
+              <TaskCard
+                task={task}
+                onStatusChange={handleUpdateTaskStatus}
+                onRemove={handleRemoveWizardTask}
+                onStart={handleStartTask}
+                onClick={handleTaskNodeClick}
+                onConsult={handleConsultTask}
+                loading={loading}
+                compact
+                isLocked={isLocked}
+              />
+            </DraggableTask>
+          </DroppableTreeNode>
+          {children.length > 0 && (
+            <div className="tree-builder__children">
+              {children.map((child) => renderTreeNode(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    return rootTasks.map((task) => renderTreeNode(task, 0));
   };
 
   const handleUpdateTaskStatus = (taskId: string, status: TaskStatus) => {
@@ -345,6 +617,328 @@ export default function TreeDashboard() {
     }
   };
 
+  // State for generation logs
+  const [generateLogs, setGenerateLogs] = useState<string[]>([]);
+  const [showGenerateLogs, setShowGenerateLogs] = useState(false);
+
+  // Topological sort for nodes (parent → child order)
+  const topologicalSort = (nodes: TreeSpecNode[], edges: TreeSpecEdge[]): TreeSpecNode[] => {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    const inDegree = new Map<string, number>();
+    const children = new Map<string, string[]>();
+
+    // Initialize
+    nodes.forEach(n => {
+      inDegree.set(n.id, 0);
+      children.set(n.id, []);
+    });
+
+    // Build graph
+    edges.forEach(e => {
+      inDegree.set(e.child, (inDegree.get(e.child) || 0) + 1);
+      children.get(e.parent)?.push(e.child);
+    });
+
+    // Find roots (nodes with no incoming edges)
+    const queue = nodes.filter(n => (inDegree.get(n.id) || 0) === 0);
+    const sorted: TreeSpecNode[] = [];
+
+    while (queue.length > 0) {
+      const node = queue.shift()!;
+      sorted.push(node);
+
+      for (const childId of children.get(node.id) || []) {
+        const newDegree = (inDegree.get(childId) || 1) - 1;
+        inDegree.set(childId, newDegree);
+        if (newDegree === 0) {
+          const childNode = nodeMap.get(childId);
+          if (childNode) queue.push(childNode);
+        }
+      }
+    }
+
+    return sorted;
+  };
+
+  // Batch create worktrees for all tasks
+  const handleBatchCreateWorktrees = async () => {
+    if (!selectedPin || !snapshot) return;
+
+    // Filter tasks that need worktrees (no worktreePath yet)
+    const tasksNeedingWorktrees = wizardNodes.filter(
+      (n) => !n.worktreePath
+    );
+
+    if (tasksNeedingWorktrees.length === 0) {
+      setError("No tasks to create worktrees for");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setGenerateLogs([]);
+    setShowGenerateLogs(true);
+
+    const addLog = (msg: string) => {
+      setGenerateLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    };
+
+    try {
+      addLog(`Starting generation for ${tasksNeedingWorktrees.length} tasks...`);
+
+      // Sort tasks in topological order (parent → child)
+      const sortedTasks = topologicalSort(tasksNeedingWorktrees, wizardEdges);
+      addLog(`Topological order: ${sortedTasks.map(t => t.title).join(' → ')}`);
+
+      // Track generated branch names for parent lookup
+      const generatedBranchNames = new Map<string, string>();
+
+      // Build task list with branch names and parent branches
+      const tasks = sortedTasks.map((task) => {
+        // Generate branch name if not set
+        const branchName = task.branchName || generateBranchName(task.title);
+        generatedBranchNames.set(task.id, branchName);
+
+        // Find parent branch: check if this task has a parent edge
+        const parentEdge = wizardEdges.find((e) => e.child === task.id);
+        let parentBranch = wizardBaseBranch;
+        if (parentEdge) {
+          // Use the generated branch name of the parent
+          const parentBranchName = generatedBranchNames.get(parentEdge.parent);
+          if (parentBranchName) {
+            parentBranch = parentBranchName;
+          }
+        }
+
+        addLog(`Task "${task.title}": branch=${branchName}, parent=${parentBranch}`);
+
+        // Generate worktree name from branch name (replace / with -)
+        const worktreeName = branchName.replace(/\//g, "-");
+
+        return {
+          id: task.id,
+          branchName,
+          parentBranch,
+          worktreeName,
+        };
+      });
+
+      addLog(`Creating branches and worktrees...`);
+
+      // Call API to create branches and worktrees
+      const result = await api.createTree(
+        snapshot.repoId,
+        selectedPin.localPath,
+        tasks
+      );
+
+      // Log results
+      for (const r of result.results) {
+        if (r.success) {
+          addLog(`✓ ${r.branchName} → ${r.worktreePath}`);
+        } else {
+          addLog(`✗ ${r.branchName}: ${r.error}`);
+        }
+      }
+
+      // Update wizard nodes with results
+      const updatedNodes = wizardNodes.map((node) => {
+        const taskResult = result.results.find((r) => r.taskId === node.id);
+        if (taskResult && taskResult.success) {
+          return {
+            ...node,
+            branchName: taskResult.branchName,
+            worktreePath: taskResult.worktreePath,
+            chatSessionId: taskResult.chatSessionId,
+            status: "doing" as TaskStatus,
+          };
+        }
+        // Even if failed, set branchName if it was generated
+        const taskData = tasks.find(t => t.id === node.id);
+        if (taskData && !node.branchName) {
+          return { ...node, branchName: taskData.branchName };
+        }
+        return node;
+      });
+      setWizardNodes(updatedNodes);
+      setWizardStatus("generated");
+
+      // Save tree spec and update local snapshot
+      const updatedSpec = await api.updateTreeSpec({
+        repoId: snapshot.repoId,
+        baseBranch: wizardBaseBranch,
+        nodes: updatedNodes,
+        edges: wizardEdges,
+      });
+      setSnapshot((prev) =>
+        prev ? { ...prev, treeSpec: { ...updatedSpec, status: "generated" } } : prev
+      );
+
+      addLog(`Done! Created ${result.summary.success}/${result.summary.total} worktrees.`);
+
+      // Show error summary if any failed
+      if (result.summary.failed > 0) {
+        setError(`${result.summary.failed} worktrees failed to create. Check logs for details.`);
+      }
+
+      // Rescan in background to update branch graph
+      handleScan(selectedPin.localPath);
+    } catch (err) {
+      addLog(`Error: ${(err as Error).message}`);
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Count tasks that can have worktrees created
+  const tasksReadyForWorktrees = wizardNodes.filter(
+    (n) => !n.worktreePath
+  ).length;
+
+  // Handle clicking a task node to open its chat session
+  const handleTaskNodeClick = async (task: TreeSpecNode) => {
+    if (!task.worktreePath || !snapshot) return;
+
+    // If chat session exists, open it
+    if (task.chatSessionId) {
+      // Load chat session
+      try {
+        const sessions = await api.getChatSessions(snapshot.repoId);
+        const session = sessions.find(s => s.id === task.chatSessionId);
+        if (session) {
+          setChatSession(session);
+          const messages = await api.getChatMessages(session.id);
+          setChatMessages(messages);
+          setShowChat(true);
+          setShowTreeWizard(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to load chat session:", err);
+      }
+    }
+
+    // Create new chat session if needed
+    try {
+      const newSession = await api.createChatSession(
+        snapshot.repoId,
+        task.worktreePath,
+        plan?.id
+      );
+
+      // Add system message with task context
+      const systemContent = `# Task: ${task.title}
+
+## Worktree
+\`${task.worktreePath}\`
+
+## Branch
+\`${task.branchName}\`
+
+${task.description ? `## Done Condition\n${task.description}` : ""}
+
+---
+このworktreeで作業を開始してください。`;
+
+      await api.sendChatMessage(newSession.id, systemContent);
+
+      // Open the chat
+      setChatSession(newSession);
+      const messages = await api.getChatMessages(newSession.id);
+      setChatMessages(messages);
+      setShowChat(true);
+      setShowTreeWizard(false);
+    } catch (err) {
+      setError(`Failed to create chat session: ${(err as Error).message}`);
+    }
+  };
+
+  // Handle consulting about a task (without worktree)
+  const handleConsultTask = async (task: TreeSpecNode) => {
+    if (!snapshot || !selectedPin) return;
+
+    try {
+      // Create chat session using main repo path
+      const newSession = await api.createChatSession(
+        snapshot.repoId,
+        selectedPin.localPath,
+        plan?.id
+      );
+
+      // Add system message with task context for consultation
+      const systemContent = `# タスク相談: ${task.title}
+
+${task.description ? `## タスク内容\n${task.description}\n` : ""}
+## リポジトリ
+\`${selectedPin.localPath}\`
+
+---
+このタスクについて相談してください。実装方針、技術的な質問、タスクの分解などお手伝いします。`;
+
+      await api.sendChatMessage(newSession.id, systemContent);
+
+      // Open the chat
+      setChatSession(newSession);
+      const messages = await api.getChatMessages(newSession.id);
+      setChatMessages(messages);
+      setShowChat(true);
+      setShowTreeWizard(false);
+    } catch (err) {
+      setError(`Failed to create chat session: ${(err as Error).message}`);
+    }
+  };
+
+  // Check if can confirm: has base branch, has nodes, has at least one root
+  const childIds = new Set(wizardEdges.map((e) => e.child));
+  const rootNodes = wizardNodes.filter((n) => !childIds.has(n.id));
+  const canConfirm = wizardBaseBranch && wizardNodes.length > 0 && rootNodes.length > 0;
+  const isLocked = wizardStatus === "confirmed" || wizardStatus === "generated";
+
+  // Confirm tree spec
+  const handleConfirmTreeSpec = async () => {
+    if (!snapshot?.repoId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // First save current state
+      await api.updateTreeSpec({
+        repoId: snapshot.repoId,
+        baseBranch: wizardBaseBranch,
+        nodes: wizardNodes,
+        edges: wizardEdges,
+      });
+      // Then confirm
+      const updatedSpec = await api.confirmTreeSpec(snapshot.repoId);
+      setWizardStatus(updatedSpec.status);
+      setSnapshot((prev) =>
+        prev ? { ...prev, treeSpec: updatedSpec } : prev
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Unconfirm tree spec
+  const handleUnconfirmTreeSpec = async () => {
+    if (!snapshot?.repoId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const updatedSpec = await api.unconfirmTreeSpec(snapshot.repoId);
+      setWizardStatus(updatedSpec.status);
+      setSnapshot((prev) =>
+        prev ? { ...prev, treeSpec: updatedSpec } : prev
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogInstruction = async () => {
     if (!snapshot?.repoId || !instruction.trim()) return;
     try {
@@ -421,86 +1015,223 @@ export default function TreeDashboard() {
     setSettingsExamples(settingsExamples.filter((e) => e !== ex));
   };
 
+  // If no project selected, show project list
+  if (!selectedPinId) {
+    return (
+      <div className="project-list-page">
+        <div className="project-list-header">
+          <h1>Vibe Tree</h1>
+          <p>プロジェクトを選択してください</p>
+        </div>
+        <div className="project-list">
+          {repoPins.map((pin) => (
+            <div
+              key={pin.id}
+              className="project-card"
+              onClick={() => handleSelectPin(pin.id)}
+            >
+              <div className="project-card__name">{pin.label || pin.repoId}</div>
+              <div className="project-card__path">{pin.localPath}</div>
+              <button
+                className="project-card__delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeletePin(pin.id);
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {repoPins.length === 0 && !showAddNew && (
+            <div className="project-list__empty">
+              プロジェクトがありません
+            </div>
+          )}
+        </div>
+        {showAddNew ? (
+          <div className="add-project-form">
+            <input
+              type="text"
+              placeholder="ローカルパス（例: ~/projects/my-app）"
+              value={newLocalPath}
+              onChange={(e) => setNewLocalPath(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddRepoPin()}
+              autoFocus
+            />
+            <div className="add-project-form__buttons">
+              <button className="btn-primary" onClick={handleAddRepoPin}>追加</button>
+              <button className="btn-secondary" onClick={() => setShowAddNew(false)}>キャンセル</button>
+            </div>
+          </div>
+        ) : (
+          <button className="add-project-btn" onClick={() => setShowAddNew(true)}>
+            + 新しいプロジェクトを追加
+          </button>
+        )}
+        {error && <div className="project-list__error">{error}</div>}
+
+        <style>{`
+          .project-list-page {
+            min-height: 100vh;
+            background: #f5f5f5;
+            padding: 60px 20px;
+            max-width: 600px;
+            margin: 0 auto;
+          }
+          .project-list-header {
+            text-align: center;
+            margin-bottom: 40px;
+          }
+          .project-list-header h1 {
+            margin: 0 0 8px;
+            font-size: 32px;
+            color: #333;
+          }
+          .project-list-header p {
+            margin: 0;
+            color: #666;
+          }
+          .project-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+          }
+          .project-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            position: relative;
+            transition: all 0.2s;
+          }
+          .project-card:hover {
+            border-color: #2196f3;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+          }
+          .project-card__name {
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 4px;
+          }
+          .project-card__path {
+            font-size: 13px;
+            color: #888;
+            font-family: monospace;
+          }
+          .project-card__delete {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #fee;
+            color: #c00;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 0.2s;
+          }
+          .project-card:hover .project-card__delete {
+            opacity: 1;
+          }
+          .project-list__empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+          }
+          .add-project-btn {
+            width: 100%;
+            padding: 16px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+          }
+          .add-project-btn:hover {
+            background: #1976d2;
+          }
+          .add-project-form {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+          }
+          .add-project-form input {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 12px;
+          }
+          .add-project-form input:focus {
+            outline: none;
+            border-color: #2196f3;
+          }
+          .add-project-form__buttons {
+            display: flex;
+            gap: 12px;
+          }
+          .add-project-form__buttons button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+          }
+          .project-list__error {
+            margin-top: 16px;
+            padding: 12px;
+            background: #fee;
+            color: #c00;
+            border-radius: 8px;
+            text-align: center;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard dashboard--with-sidebar">
       {/* Left Sidebar */}
       <aside className="sidebar">
         <div className="sidebar__header">
-          <h1>Vibe Tree</h1>
+          <button className="sidebar__back" onClick={() => {
+            setSelectedPinId(null);
+            setSnapshot(null);
+          }}>
+            ← Projects
+          </button>
         </div>
 
-        {/* Repo Selection */}
+        {/* Current Project */}
         <div className="sidebar__section">
-          <h3>Repository</h3>
-          <div className="repo-selector">
-            <select
-              value={selectedPinId ?? ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === "new") {
-                  setShowAddNew(true);
-                } else if (val) {
-                  handleSelectPin(Number(val));
-                }
-              }}
-            >
-              <option value="">Select a repo...</option>
-              {repoPins.map((pin) => (
-                <option key={pin.id} value={pin.id}>
-                  {pin.label || pin.repoId}
-                </option>
-              ))}
-              <option value="new">+ Add new...</option>
-            </select>
-            {selectedPin && (
-              <button
-                className="btn-delete"
-                onClick={() => handleDeletePin(selectedPin.id)}
-                title="Remove from list"
-              >
-                ×
-              </button>
-            )}
-          </div>
-          {selectedPin && (
-            <div className="sidebar__path">{selectedPin.localPath}</div>
-          )}
-
-          {showAddNew && (
-            <div className="add-repo-form">
-              <input
-                type="text"
-                placeholder="Local path..."
-                value={newLocalPath}
-                onChange={(e) => setNewLocalPath(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddRepoPin()}
-              />
-              <div className="add-repo-form__buttons">
-                <button onClick={handleAddRepoPin}>Add</button>
-                <button onClick={() => setShowAddNew(false)}>Cancel</button>
-              </div>
-            </div>
-          )}
+          <h3>Project</h3>
+          <div className="sidebar__project-name">{selectedPin?.label || selectedPin?.repoId}</div>
+          <div className="sidebar__path">{selectedPin?.localPath}</div>
         </div>
 
         {/* Actions */}
-        <div className="sidebar__section">
-          <button
-            className="sidebar__btn sidebar__btn--primary"
-            onClick={() => selectedPin && handleScan(selectedPin.localPath)}
-            disabled={loading || !selectedPin}
-          >
-            {loading ? "Scanning..." : "Scan"}
-          </button>
-          {snapshot && (
+        {snapshot && (
+          <div className="sidebar__section">
             <button
               className="sidebar__btn"
               onClick={handleOpenSettings}
             >
               Settings
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Plan Info */}
         {plan && (
@@ -555,9 +1286,6 @@ export default function TreeDashboard() {
                 <div className="panel__header">
                   <h3>Branch Graph</h3>
                   <div className="panel__header-actions">
-                    <button className="btn-wizard" onClick={handleOpenTreeWizard}>
-                      Edit Task Tree
-                    </button>
                     <span className="panel__count">{snapshot.nodes.length} branches</span>
                   </div>
                 </div>
@@ -588,6 +1316,166 @@ export default function TreeDashboard() {
                   ))}
                 </div>
               )}
+
+              {/* Task Tree Panel - Inline */}
+              <div className="panel panel--task-tree">
+                <div className="panel__header">
+                  <h3>Task Tree</h3>
+                  <div className="panel__header-actions">
+                    <span className={`status-badge status-badge--${wizardStatus}`}>
+                      {wizardStatus}
+                    </span>
+                    <span className="panel__count">{wizardNodes.length} tasks</span>
+                  </div>
+                </div>
+
+                {/* Base Branch Selector */}
+                <div className="task-tree-panel__settings">
+                  <label>Base Branch:</label>
+                  <select
+                    value={wizardBaseBranch}
+                    onChange={(e) => setWizardBaseBranch(e.target.value)}
+                    disabled={isLocked}
+                  >
+                    {snapshot.branches.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Add Task Form */}
+                {!isLocked && (
+                  <div className="task-tree-panel__add">
+                    <input
+                      type="text"
+                      placeholder="Task title..."
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddWizardTask()}
+                    />
+                    <button onClick={handleAddWizardTask} disabled={!newTaskTitle.trim()}>
+                      Add
+                    </button>
+                  </div>
+                )}
+
+                {/* D&D Task Tree */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div className="task-tree-panel__content">
+                    {/* Tree Area */}
+                    <DroppableTreeNode id="tree-root">
+                      <div className="task-tree-panel__tree">
+                        <div className="tree-label">
+                          {wizardBaseBranch} (base)
+                        </div>
+                        {getChildren(null).map((task) => renderTreeNode(task, 0))}
+                        {getChildren(null).length === 0 && (
+                          <div className="tree-empty">ドラッグしてタスクを配置</div>
+                        )}
+                      </div>
+                    </DroppableTreeNode>
+
+                    {/* Backlog */}
+                    <DroppableTreeNode id="backlog-zone">
+                      <div className="task-tree-panel__backlog">
+                        <div className="backlog-label">Backlog ({backlogTasks.length})</div>
+                        {backlogTasks.map((task) => (
+                          <DraggableTask key={task.id} task={task}>
+                            <TaskCard
+                              task={task}
+                              onStatusChange={handleUpdateTaskStatus}
+                              onRemove={handleRemoveWizardTask}
+                              onStart={handleStartTask}
+                              onClick={handleTaskNodeClick}
+                              onConsult={handleConsultTask}
+                              loading={loading}
+                              isLocked={isLocked}
+                            />
+                          </DraggableTask>
+                        ))}
+                      </div>
+                    </DroppableTreeNode>
+                  </div>
+
+                  <DragOverlay>
+                    {activeDragId && (
+                      <div className="task-card task-card--dragging">
+                        {wizardNodes.find((n) => n.id === activeDragId)?.title}
+                      </div>
+                    )}
+                  </DragOverlay>
+                </DndContext>
+
+                {/* Generation Logs */}
+                {showGenerateLogs && (
+                  <div className="generate-logs">
+                    <div className="generate-logs__header">
+                      <span>Generation Logs</span>
+                      <button onClick={() => setShowGenerateLogs(false)}>×</button>
+                    </div>
+                    <div className="generate-logs__content">
+                      {generateLogs.map((log, i) => (
+                        <div key={i} className="generate-logs__line">{log}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="task-tree-panel__actions">
+                  {wizardStatus === "draft" && (
+                    <>
+                      <button
+                        className="btn-secondary"
+                        onClick={handleSaveTreeSpec}
+                        disabled={loading}
+                      >
+                        下書き保存
+                      </button>
+                      <button
+                        className="btn-primary"
+                        onClick={handleConfirmTreeSpec}
+                        disabled={loading || !canConfirm}
+                        title={!canConfirm ? "Base branch, at least one task required" : ""}
+                      >
+                        確定
+                      </button>
+                    </>
+                  )}
+                  {wizardStatus === "confirmed" && (
+                    <>
+                      <button
+                        className="btn-secondary"
+                        onClick={handleUnconfirmTreeSpec}
+                        disabled={loading}
+                      >
+                        編集に戻す
+                      </button>
+                      <button
+                        className="btn-primary"
+                        onClick={handleBatchCreateWorktrees}
+                        disabled={loading || tasksReadyForWorktrees === 0}
+                      >
+                        Worktree生成 ({tasksReadyForWorktrees})
+                      </button>
+                    </>
+                  )}
+                  {wizardStatus === "generated" && (
+                    <button
+                      className="btn-secondary"
+                      onClick={handleUnconfirmTreeSpec}
+                      disabled={loading}
+                    >
+                      編集に戻す
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Right: Details */}
@@ -782,22 +1670,18 @@ export default function TreeDashboard() {
         </div>
       )}
 
-      {/* Task Tree Wizard Modal */}
+      {/* Task Tree Builder Modal */}
       {showTreeWizard && (
         <div className="wizard-overlay">
-          <div className="wizard-modal">
+          <div className="wizard-modal wizard-modal--wide">
             <div className="wizard-header">
-              <h2>Task Strategy Tree</h2>
-              <button onClick={() => setShowTreeWizard(false)}>×</button>
-            </div>
-            <div className="wizard-content">
-              {/* Base Branch Selection */}
-              <div className="wizard-section">
-                <h3>Base Branch</h3>
+              <h2>Task Tree Builder</h2>
+              <div className="wizard-header__controls">
                 <select
                   value={wizardBaseBranch}
                   onChange={(e) => setWizardBaseBranch(e.target.value)}
-                  className="wizard-base-select"
+                  className="wizard-base-select-inline"
+                  disabled={isLocked}
                 >
                   {snapshot?.branches.map((branch) => (
                     <option key={branch} value={branch}>
@@ -805,108 +1689,151 @@ export default function TreeDashboard() {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              {/* Task List */}
-              <div className="wizard-section">
-                <h3>Tasks ({wizardNodes.length})</h3>
-                <div className="wizard-tasks">
-                  {wizardNodes.map((task) => {
-                    const parentEdge = wizardEdges.find((e) => e.child === task.id);
-                    const parentTask = parentEdge
-                      ? wizardNodes.find((n) => n.id === parentEdge.parent)
-                      : null;
-                    return (
-                      <div key={task.id} className={`wizard-task wizard-task--${task.status}`}>
-                        <div className="wizard-task__header">
-                          <select
-                            value={task.status}
-                            onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value as TaskStatus)}
-                            className="wizard-task__status"
-                          >
-                            <option value="todo">Todo</option>
-                            <option value="doing">Doing</option>
-                            <option value="done">Done</option>
-                          </select>
-                          <span className="wizard-task__title">{task.title}</span>
-                          {!task.branchName && task.status === "todo" && (
-                            <button
-                              className="wizard-task__start"
-                              onClick={() => handleStartTask(task.id)}
-                              disabled={loading}
-                            >
-                              Start
-                            </button>
-                          )}
-                          <button
-                            className="wizard-task__remove"
-                            onClick={() => handleRemoveWizardTask(task.id)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                        {task.description && (
-                          <div className="wizard-task__description">{task.description}</div>
-                        )}
-                        <div className="wizard-task__meta">
-                          {parentTask && (
-                            <span className="wizard-task__parent">depends on: {parentTask.title}</span>
-                          )}
-                          {task.branchName && (
-                            <span className="wizard-task__branch">branch: {task.branchName}</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {wizardNodes.length === 0 && (
-                    <div className="wizard-empty">No tasks yet. Add one below.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Add Task Form */}
-              <div className="wizard-section">
-                <h3>Add Task</h3>
-                <div className="wizard-add-form wizard-add-form--vertical">
-                  <input
-                    type="text"
-                    placeholder="Task title"
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Description (optional)"
-                    value={newTaskDescription}
-                    onChange={(e) => setNewTaskDescription(e.target.value)}
-                  />
-                  <div className="wizard-add-row">
-                    <select
-                      value={newTaskParent}
-                      onChange={(e) => setNewTaskParent(e.target.value)}
-                    >
-                      <option value="">No dependency (root task)</option>
-                      {wizardNodes.map((n) => (
-                        <option key={n.id} value={n.id}>
-                          {n.title}
-                        </option>
-                      ))}
-                    </select>
-                    <button onClick={handleAddWizardTask} disabled={!newTaskTitle.trim()}>
-                      Add Task
-                    </button>
-                  </div>
-                </div>
+                <button onClick={() => setShowTreeWizard(false)}>×</button>
               </div>
             </div>
+            {isLocked && (
+              <div className="wizard-locked-notice">
+                確定済みのため編集できません。編集するには「確定解除」してください。
+              </div>
+            )}
+            <DndContext onDragStart={isLocked ? undefined : handleDragStart} onDragEnd={isLocked ? undefined : handleDragEnd}>
+              <div className={`tree-builder ${isLocked ? "tree-builder--locked" : ""}`}>
+                {/* Left: Backlog */}
+                <div className="tree-builder__backlog">
+                  <h3>Backlog ({backlogTasks.length})</h3>
+                  <DroppableTreeNode id="backlog-zone">
+                    <div className="tree-builder__backlog-list">
+                      {backlogTasks.map((task) => (
+                        <DraggableTask key={task.id} task={task}>
+                          <TaskCard
+                            task={task}
+                            onStatusChange={handleUpdateTaskStatus}
+                            onRemove={handleRemoveWizardTask}
+                            onStart={handleStartTask}
+                            onClick={handleTaskNodeClick}
+                            onConsult={handleConsultTask}
+                            loading={loading}
+                            isLocked={isLocked}
+                          />
+                        </DraggableTask>
+                      ))}
+                      {backlogTasks.length === 0 && (
+                        <div className="tree-builder__empty">
+                          ドラッグしてここに戻す
+                        </div>
+                      )}
+                    </div>
+                  </DroppableTreeNode>
+                  {/* Add Task Form */}
+                  {!isLocked && (
+                    <div className="tree-builder__add-form">
+                      <input
+                        type="text"
+                        placeholder="新しいタスク名"
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddWizardTask()}
+                      />
+                      <button onClick={handleAddWizardTask} disabled={!newTaskTitle.trim()}>
+                        追加
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Tree */}
+                <div className="tree-builder__tree">
+                  <h3>Task Tree ({treeTasks.length})</h3>
+                  <DroppableTreeNode id="tree-root">
+                    <div className="tree-builder__tree-root">
+                      <div className="tree-builder__base-branch">
+                        {wizardBaseBranch}
+                      </div>
+                      <div className="tree-builder__tree-content">
+                        {buildTreeStructure()}
+                        {wizardNodes.length === 0 && (
+                          <div className="tree-builder__empty">
+                            左からドラッグしてタスクを配置
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </DroppableTreeNode>
+                </div>
+              </div>
+
+              {/* Drag Overlay */}
+              <DragOverlay>
+                {activeDragId ? (
+                  <div className="task-card task-card--dragging">
+                    {wizardNodes.find((n) => n.id === activeDragId)?.title}
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+
+            {/* Generation Logs */}
+            {showGenerateLogs && generateLogs.length > 0 && (
+              <div className="generate-logs">
+                <div className="generate-logs__header">
+                  <h4>Generation Log</h4>
+                  <button onClick={() => setShowGenerateLogs(false)}>×</button>
+                </div>
+                <div className="generate-logs__content">
+                  {generateLogs.map((log, i) => (
+                    <div key={i} className={`generate-logs__line ${log.includes('✗') ? 'generate-logs__line--error' : log.includes('✓') ? 'generate-logs__line--success' : ''}`}>
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="wizard-footer">
-              <button className="btn-secondary" onClick={() => setShowTreeWizard(false)}>
-                Cancel
-              </button>
-              <button className="btn-primary" onClick={handleSaveTreeSpec} disabled={loading}>
-                {loading ? "Saving..." : "Save Task Tree"}
-              </button>
+              <div className="wizard-footer__left">
+                <span className={`wizard-status wizard-status--${wizardStatus}`}>
+                  {wizardStatus === "draft" && "下書き"}
+                  {wizardStatus === "confirmed" && "確定済み"}
+                  {wizardStatus === "generated" && "生成済み"}
+                </span>
+              </div>
+              <div className="wizard-footer__right">
+                <button className="btn-secondary" onClick={() => setShowTreeWizard(false)}>
+                  閉じる
+                </button>
+                {wizardStatus === "draft" && (
+                  <>
+                    <button className="btn-secondary" onClick={handleSaveTreeSpec} disabled={loading}>
+                      {loading ? "保存中..." : "下書き保存"}
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={handleConfirmTreeSpec}
+                      disabled={loading || !canConfirm}
+                      title={!canConfirm ? "確定するには: ベースブランチ選択、1つ以上のタスク、ルートタスクが必要" : ""}
+                    >
+                      {loading ? "確定中..." : "確定"}
+                    </button>
+                  </>
+                )}
+                {(wizardStatus === "confirmed" || wizardStatus === "generated") && (
+                  <>
+                    <button className="btn-secondary" onClick={handleUnconfirmTreeSpec} disabled={loading}>
+                      {loading ? "解除中..." : "確定解除"}
+                    </button>
+                    {tasksReadyForWorktrees > 0 && (
+                      <button
+                        className="btn-create-all"
+                        onClick={handleBatchCreateWorktrees}
+                        disabled={loading}
+                      >
+                        {loading ? "作成中..." : `Worktree生成 (${tasksReadyForWorktrees})`}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1018,6 +1945,22 @@ export default function TreeDashboard() {
           margin: 0;
           font-size: 18px;
           color: #333;
+        }
+        .sidebar__back {
+          background: none;
+          border: none;
+          color: #666;
+          font-size: 13px;
+          cursor: pointer;
+          padding: 0;
+        }
+        .sidebar__back:hover {
+          color: #333;
+        }
+        .sidebar__project-name {
+          font-weight: 600;
+          font-size: 16px;
+          margin-bottom: 4px;
         }
         .sidebar__section {
           padding: 16px 20px;
@@ -1253,6 +2196,139 @@ export default function TreeDashboard() {
         }
         .panel--warnings {
           border-color: #f90;
+        }
+        .panel--task-tree {
+          margin-top: 16px;
+        }
+        .task-tree-panel__settings {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #eee;
+        }
+        .task-tree-panel__settings label {
+          font-size: 13px;
+          color: #666;
+        }
+        .task-tree-panel__settings select {
+          flex: 1;
+          padding: 6px 8px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 13px;
+        }
+        .task-tree-panel__add {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .task-tree-panel__add input {
+          flex: 1;
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 13px;
+        }
+        .task-tree-panel__add button {
+          padding: 8px 16px;
+          background: #2196f3;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 13px;
+        }
+        .task-tree-panel__add button:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .task-tree-panel__content {
+          display: flex;
+          gap: 16px;
+          min-height: 150px;
+        }
+        .task-tree-panel__tree {
+          flex: 2;
+          min-height: 100px;
+          padding: 12px;
+          background: #f8f9fa;
+          border: 2px dashed #ddd;
+          border-radius: 8px;
+        }
+        .task-tree-panel__backlog {
+          flex: 1;
+          min-height: 100px;
+          padding: 12px;
+          background: #fff3e0;
+          border: 2px dashed #ffcc80;
+          border-radius: 8px;
+        }
+        .tree-label, .backlog-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #666;
+          margin-bottom: 8px;
+          padding-bottom: 6px;
+          border-bottom: 1px solid #ddd;
+        }
+        .tree-empty {
+          font-size: 12px;
+          color: #999;
+          text-align: center;
+          padding: 20px;
+        }
+        .task-tree-panel__actions {
+          display: flex;
+          gap: 8px;
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid #eee;
+        }
+        .btn-primary {
+          padding: 8px 16px;
+          background: #2196f3;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 13px;
+        }
+        .btn-primary:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .btn-secondary {
+          padding: 8px 16px;
+          background: white;
+          color: #333;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 13px;
+        }
+        .btn-secondary:hover {
+          background: #f5f5f5;
+        }
+        .status-badge {
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+        .status-badge--draft {
+          background: #e0e0e0;
+          color: #666;
+        }
+        .status-badge--confirmed {
+          background: #fff3e0;
+          color: #e65100;
+        }
+        .status-badge--generated {
+          background: #e8f5e9;
+          color: #2e7d32;
         }
         .panel--restart {
           background: #e8f4f8;
@@ -1868,6 +2944,305 @@ export default function TreeDashboard() {
           padding: 1px 4px;
           border-radius: 3px;
         }
+        .wizard-task__worktree {
+          background: #4caf50;
+          color: white;
+          padding: 1px 6px;
+          border-radius: 3px;
+          font-weight: 500;
+        }
+
+        /* Tree Builder styles */
+        .wizard-modal--wide {
+          width: 900px;
+          max-width: 95vw;
+        }
+        .wizard-header__controls {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .wizard-base-select-inline {
+          padding: 6px 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 13px;
+        }
+        .tree-builder {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+          min-height: 400px;
+        }
+        .tree-builder--locked {
+          opacity: 0.8;
+          pointer-events: none;
+        }
+        .tree-builder--locked .task-card {
+          cursor: default;
+        }
+        .tree-builder__backlog,
+        .tree-builder__tree {
+          display: flex;
+          flex-direction: column;
+          background: #f8f9fa;
+          border-radius: 8px;
+          padding: 12px;
+        }
+        .tree-builder__backlog h3,
+        .tree-builder__tree h3 {
+          margin: 0 0 12px;
+          font-size: 14px;
+          color: #666;
+        }
+        .tree-builder__backlog-list,
+        .tree-builder__tree-content {
+          flex: 1;
+          min-height: 200px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .tree-builder__tree-root {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        .tree-builder__base-branch {
+          padding: 8px 12px;
+          background: #2196f3;
+          color: white;
+          border-radius: 6px;
+          font-family: monospace;
+          font-weight: 600;
+          margin-bottom: 8px;
+        }
+        .tree-builder__empty {
+          padding: 40px 20px;
+          text-align: center;
+          color: #999;
+          border: 2px dashed #ddd;
+          border-radius: 8px;
+          font-size: 13px;
+        }
+        .tree-builder__add-form {
+          display: flex;
+          gap: 8px;
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid #e0e0e0;
+        }
+        .tree-builder__add-form input {
+          flex: 1;
+          padding: 8px 10px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 13px;
+        }
+        .tree-builder__add-form button {
+          padding: 8px 16px;
+          background: #4caf50;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 500;
+        }
+        .tree-builder__add-form button:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .tree-builder__node {
+          margin-bottom: 4px;
+        }
+        .tree-builder__children {
+          border-left: 2px solid #e0e0e0;
+          margin-left: 12px;
+          padding-left: 8px;
+        }
+
+        /* Task Card styles */
+        .task-card {
+          background: white;
+          border-radius: 8px;
+          padding: 10px 12px;
+          border-left: 4px solid #9e9e9e;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .task-card--todo {
+          border-left-color: #9e9e9e;
+        }
+        .task-card--doing {
+          border-left-color: #2196f3;
+          background: #e3f2fd;
+        }
+        .task-card--done {
+          border-left-color: #4caf50;
+          background: #e8f5e9;
+        }
+        .task-card--compact {
+          padding: 6px 10px;
+        }
+        .task-card--dragging {
+          background: white;
+          padding: 10px 12px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+          font-weight: 600;
+        }
+        .task-card__header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .task-card__status {
+          padding: 2px 6px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 11px;
+          background: white;
+        }
+        .task-card__title {
+          flex: 1;
+          font-weight: 600;
+          font-size: 13px;
+        }
+        .task-card__actions {
+          display: flex;
+          gap: 4px;
+        }
+        .task-card__start {
+          background: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 2px 8px;
+          cursor: pointer;
+          font-size: 11px;
+        }
+        .task-card__start:disabled {
+          background: #ccc;
+        }
+        .task-card__remove {
+          background: #fee;
+          color: #c00;
+          border: none;
+          border-radius: 4px;
+          padding: 2px 6px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .task-card__description {
+          margin-top: 6px;
+          font-size: 12px;
+          color: #666;
+        }
+        .task-card__meta {
+          display: flex;
+          gap: 8px;
+          margin-top: 6px;
+          font-size: 10px;
+        }
+        .task-card__branch {
+          font-family: monospace;
+          background: #e0e0e0;
+          padding: 1px 4px;
+          border-radius: 3px;
+        }
+        .task-card__worktree {
+          background: #4caf50;
+          color: white;
+          padding: 1px 4px;
+          border-radius: 3px;
+          font-weight: 600;
+        }
+        .task-card--clickable {
+          cursor: pointer;
+          border: 2px solid transparent;
+        }
+        .task-card--clickable:hover {
+          border-color: #2196f3;
+        }
+        .task-card__open {
+          background: #2196f3;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 2px 8px;
+          cursor: pointer;
+          font-size: 11px;
+        }
+        .task-card__open:hover {
+          background: #1976d2;
+        }
+        .task-card__consult {
+          background: #9c27b0;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 2px 8px;
+          cursor: pointer;
+          font-size: 11px;
+        }
+        .task-card__consult:hover {
+          background: #7b1fa2;
+        }
+
+        /* Generation logs */
+        .generate-logs {
+          margin: 12px 0;
+          border: 1px solid #e0e0e0;
+          border-radius: 8px;
+          background: #1e1e1e;
+          color: #d4d4d4;
+          font-family: monospace;
+          font-size: 12px;
+        }
+        .generate-logs__header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 12px;
+          background: #2d2d2d;
+          border-radius: 8px 8px 0 0;
+        }
+        .generate-logs__header h4 {
+          margin: 0;
+          font-size: 12px;
+          color: #fff;
+        }
+        .generate-logs__header button {
+          background: none;
+          border: none;
+          color: #999;
+          cursor: pointer;
+          font-size: 16px;
+        }
+        .generate-logs__content {
+          padding: 12px;
+          max-height: 200px;
+          overflow-y: auto;
+        }
+        .generate-logs__line {
+          padding: 2px 0;
+        }
+        .generate-logs__line--success {
+          color: #4caf50;
+        }
+        .generate-logs__line--error {
+          color: #f44336;
+        }
+
+        /* Droppable zone styles */
+        .droppable-zone {
+          transition: background 0.2s;
+          border-radius: 6px;
+        }
+        .droppable-zone--over {
+          background: rgba(33, 150, 243, 0.1);
+          outline: 2px dashed #2196f3;
+        }
+
         .wizard-empty {
           text-align: center;
           color: #999;
@@ -1890,10 +3265,46 @@ export default function TreeDashboard() {
         }
         .wizard-footer {
           display: flex;
-          justify-content: flex-end;
+          justify-content: space-between;
+          align-items: center;
           gap: 12px;
           padding: 16px 20px;
           border-top: 1px solid #e0e0e0;
+        }
+        .wizard-footer__left {
+          display: flex;
+          align-items: center;
+        }
+        .wizard-footer__right {
+          display: flex;
+          gap: 12px;
+        }
+        .wizard-status {
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .wizard-status--draft {
+          background: #fff3e0;
+          color: #e65100;
+        }
+        .wizard-status--confirmed {
+          background: #e3f2fd;
+          color: #1565c0;
+        }
+        .wizard-status--generated {
+          background: #e8f5e9;
+          color: #2e7d32;
+        }
+        .wizard-locked-notice {
+          background: #fff3e0;
+          color: #e65100;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          text-align: center;
+          margin-bottom: 12px;
         }
         .btn-secondary {
           padding: 10px 20px;
@@ -1905,6 +3316,22 @@ export default function TreeDashboard() {
         }
         .btn-secondary:hover {
           background: #e8e8e8;
+        }
+        .btn-create-all {
+          padding: 10px 20px;
+          background: #ff9800;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+        .btn-create-all:hover {
+          background: #f57c00;
+        }
+        .btn-create-all:disabled {
+          background: #ccc;
+          cursor: not-allowed;
         }
 
         /* Modal styles */

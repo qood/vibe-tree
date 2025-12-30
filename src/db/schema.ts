@@ -54,6 +54,7 @@ export const treeSpecs = sqliteTable("tree_specs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   repoId: text("repo_id").notNull(),
   baseBranch: text("base_branch"), // default branch (develop, main, master, etc.)
+  status: text("status").notNull().default("draft"), // 'draft' | 'confirmed' | 'generated'
   specJson: text("spec_json").notNull(), // JSON: { nodes: TreeSpecNode[], edges: TreeSpecEdge[] }
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -76,6 +77,7 @@ export const repoPins = sqliteTable("repo_pins", {
   repoId: text("repo_id").notNull(),
   localPath: text("local_path").notNull().unique(),
   label: text("label"), // optional display name
+  baseBranch: text("base_branch"), // user-selected base branch
   lastUsedAt: text("last_used_at").notNull(),
   createdAt: text("created_at").notNull(),
 });
