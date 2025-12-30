@@ -97,11 +97,6 @@ treeSpecRouter.post("/", async (c) => {
     updatedAt: spec.updatedAt,
   };
 
-  broadcast({
-    type: "scan.updated",
-    repoId: input.repoId,
-  });
-
   return c.json(response);
 });
 
