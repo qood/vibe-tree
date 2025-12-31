@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { db, schema } from "../../db";
 import { eq } from "drizzle-orm";
-import { broadcast } from "../ws";
 import {
   repoIdQuerySchema,
   updateTreeSpecSchema,

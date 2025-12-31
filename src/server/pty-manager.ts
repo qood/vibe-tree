@@ -1,7 +1,7 @@
-import { spawn, type Pty } from "bun-pty";
+import { spawn, type IPty } from "bun-pty";
 
 interface PtySession {
-  pty: Pty;
+  pty: IPty;
   sessionId: string;
   worktreePath: string;
   outputBuffer: string;
@@ -28,7 +28,8 @@ class PtyManager {
 
     const shell = process.env.SHELL || "/bin/bash";
 
-    const pty = await spawn(shell, ["-l"], {
+    const pty = spawn(shell, ["-l"], {
+      name: "xterm-256color",
       cwd: worktreePath,
       env: {
         ...process.env,
@@ -130,7 +131,7 @@ class PtyManager {
 
   // Mark all sessions as stopped on server restart
   cleanup(): void {
-    for (const [sessionId, session] of this.sessions) {
+    for (const [_sessionId, session] of this.sessions) {
       try {
         session.pty.kill();
       } catch {

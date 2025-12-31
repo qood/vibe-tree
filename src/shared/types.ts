@@ -174,9 +174,6 @@ export interface TreeSpecNode {
   branchName?: string; // 未確定ならundefined
   worktreePath?: string; // Path to worktree (set after creation)
   chatSessionId?: string; // Linked chat session ID
-  // Legacy fields (optional for backward compat)
-  intendedIssue?: number;
-  intendedPr?: number;
 }
 
 export interface TreeSpecEdge {

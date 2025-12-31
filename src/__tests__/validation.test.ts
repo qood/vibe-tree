@@ -300,7 +300,7 @@ describe("updateTreeSpecSchema", () => {
       baseBranch: "main",
       nodes: [
         { id: "task-1", title: "Setup auth", status: "todo" },
-        { id: "task-2", title: "Implement login", status: "doing", branchName: "feature/auth", intendedIssue: 123 },
+        { id: "task-2", title: "Implement login", status: "doing", branchName: "feature/auth" },
       ],
       edges: [{ parent: "task-1", child: "task-2" }],
     });

@@ -79,9 +79,6 @@ export const treeSpecNodeSchema = z.object({
   chatSessionId: z.string().optional(), // Linked chat session ID
   prUrl: z.string().optional(), // PR URL (created by batch generation)
   prNumber: z.number().int().positive().optional(), // PR number
-  // Legacy fields (optional for backward compat)
-  intendedIssue: z.number().int().positive().optional(),
-  intendedPr: z.number().int().positive().optional(),
 });
 
 export const treeSpecEdgeSchema = z.object({

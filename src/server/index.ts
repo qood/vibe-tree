@@ -66,10 +66,13 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 console.log(`Starting Vibe Tree server...`);
 
+// WebSocket data type
+type WsData = { type: "main" } | { type: "term"; sessionId: string };
+
 // Terminal WebSocket clients map
 const terminalClients = new Map<WebSocket, { sessionId: string; unsubscribe: () => void }>();
 
-Bun.serve({
+Bun.serve<WsData>({
   port,
   fetch(req, server) {
     const url = new URL(req.url);
@@ -101,9 +104,8 @@ Bun.serve({
   },
   websocket: {
     open(ws) {
-      const data = (ws as { data?: { type: string; sessionId?: string } }).data;
-      if (data?.type === "term") {
-        const sessionId = data.sessionId!;
+      if (ws.data.type === "term") {
+        const sessionId = ws.data.sessionId;
         console.log(`Terminal WebSocket connected for session: ${sessionId}`);
 
         // Subscribe to PTY output
@@ -143,9 +145,8 @@ Bun.serve({
       }
     },
     message(ws, message) {
-      const data = (ws as { data?: { type: string; sessionId?: string } }).data;
-      if (data?.type === "term") {
-        const sessionId = data.sessionId!;
+      if (ws.data.type === "term") {
+        const sessionId = ws.data.sessionId;
         try {
           const msg = JSON.parse(message.toString());
           if (msg.type === "input") {
@@ -161,14 +162,13 @@ Bun.serve({
       }
     },
     close(ws) {
-      const data = (ws as { data?: { type: string; sessionId?: string } }).data;
-      if (data?.type === "term") {
+      if (ws.data.type === "term") {
         const client = terminalClients.get(ws as unknown as WebSocket);
         if (client) {
           client.unsubscribe();
           terminalClients.delete(ws as unknown as WebSocket);
         }
-        console.log(`Terminal WebSocket disconnected for session: ${data.sessionId}`);
+        console.log(`Terminal WebSocket disconnected for session: ${ws.data.sessionId}`);
       } else {
         removeClient(ws as unknown as WSClient);
         console.log("WebSocket client disconnected");

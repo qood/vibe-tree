@@ -101,9 +101,6 @@ export interface TreeSpecNode {
   chatSessionId?: string; // Linked chat session ID
   prUrl?: string; // PR URL (set after creation)
   prNumber?: number; // PR number (set after creation)
-  // Legacy fields (optional for backward compat)
-  intendedIssue?: number;
-  intendedPr?: number;
 }
 
 export interface TreeSpecEdge {
