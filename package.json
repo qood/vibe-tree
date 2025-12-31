@@ -30,8 +30,10 @@
     "@hono/node-server": "^1.19.7",
     "@hono/node-ws": "^1.2.0",
     "better-sqlite3": "^12.5.0",
+    "bun-pty": "^0.4.2",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.3",
+    "node-pty": "^1.1.0",
     "zod": "^4.2.1"
   }
 }

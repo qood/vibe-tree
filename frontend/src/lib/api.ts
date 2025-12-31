@@ -99,6 +99,8 @@ export interface TreeSpecNode {
   branchName?: string; // 未確定ならundefined
   worktreePath?: string; // Path to worktree (set after creation)
   chatSessionId?: string; // Linked chat session ID
+  prUrl?: string; // PR URL (set after creation)
+  prNumber?: number; // PR number (set after creation)
   // Legacy fields (optional for backward compat)
   intendedIssue?: number;
   intendedPr?: number;
@@ -230,6 +232,36 @@ export interface ChatSummary {
   summaryMarkdown: string;
   coveredUntilMessageId: number;
   createdAt: string;
+}
+
+// Terminal types
+export type TerminalSessionStatus = "running" | "stopped";
+
+export interface TerminalSession {
+  id: string;
+  repoId: string;
+  worktreePath: string;
+  pid: number | null;
+  status: TerminalSessionStatus;
+  lastOutput: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string;
+}
+
+// Requirements types
+export type RequirementsNoteType = "prd" | "notion" | "memo" | "task_breakdown";
+
+export interface RequirementsNote {
+  id: number;
+  repoId: string;
+  planId: number | null;
+  noteType: RequirementsNoteType;
+  title: string | null;
+  content: string;
+  notionUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -408,7 +440,10 @@ export const api = {
       branchName: string;
       parentBranch: string;
       worktreeName: string;
-    }>
+      title?: string;
+      description?: string;
+    }>,
+    options?: { createPrs?: boolean; baseBranch?: string }
   ) =>
     fetchJson<{
       success: boolean;
@@ -418,13 +453,21 @@ export const api = {
         branchName: string;
         worktreePath: string;
         chatSessionId: string;
+        prUrl?: string;
+        prNumber?: number;
         success: boolean;
         error?: string;
       }>;
       summary: { total: number; success: number; failed: number };
     }>(`${API_BASE}/branch/create-tree`, {
       method: "POST",
-      body: JSON.stringify({ repoId, localPath, tasks }),
+      body: JSON.stringify({
+        repoId,
+        localPath,
+        tasks,
+        createPrs: options?.createPrs ?? false,
+        baseBranch: options?.baseBranch,
+      }),
     }),
 
   // Chat
@@ -457,4 +500,63 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ sessionId, keepLastN: keepLastN ?? 50 }),
     }),
+
+  // Terminal
+  createTerminalSession: (repoId: string, worktreePath: string) =>
+    fetchJson<TerminalSession>(`${API_BASE}/term/sessions`, {
+      method: "POST",
+      body: JSON.stringify({ repoId, worktreePath }),
+    }),
+  startTerminalSession: (sessionId: string, cols?: number, rows?: number) =>
+    fetchJson<{ id: string; status: string; pid: number; message?: string }>(
+      `${API_BASE}/term/sessions/${sessionId}/start`,
+      {
+        method: "POST",
+        body: JSON.stringify({ cols, rows }),
+      }
+    ),
+  stopTerminalSession: (sessionId: string) =>
+    fetchJson<{ id: string; status: string }>(`${API_BASE}/term/sessions/${sessionId}/stop`, {
+      method: "POST",
+    }),
+  getTerminalSession: (sessionId: string) =>
+    fetchJson<TerminalSession>(`${API_BASE}/term/sessions/${sessionId}`),
+
+  // Requirements
+  getRequirements: (repoId: string) =>
+    fetchJson<RequirementsNote[]>(`${API_BASE}/requirements?repoId=${encodeURIComponent(repoId)}`),
+  createRequirement: (data: {
+    repoId: string;
+    planId?: number;
+    noteType: RequirementsNoteType;
+    title?: string;
+    content?: string;
+    notionUrl?: string;
+  }) =>
+    fetchJson<RequirementsNote>(`${API_BASE}/requirements`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateRequirement: (id: number, data: {
+    noteType?: RequirementsNoteType;
+    title?: string;
+    content?: string;
+    notionUrl?: string;
+  }) =>
+    fetchJson<RequirementsNote>(`${API_BASE}/requirements/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteRequirement: (id: number) =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/requirements/${id}`, {
+      method: "DELETE",
+    }),
+  parseTasks: (content: string) =>
+    fetchJson<{ tasks: { title: string; description?: string }[] }>(
+      `${API_BASE}/requirements/parse-tasks`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      }
+    ),
 };

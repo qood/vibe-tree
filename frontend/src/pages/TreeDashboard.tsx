@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,8 +17,6 @@ import {
   type ScanSnapshot,
   type TreeNode,
   type RepoPin,
-  type ChatSession,
-  type ChatMessage,
   type TreeSpecNode,
   type TreeSpecEdge,
   type TaskStatus,
@@ -27,6 +25,8 @@ import {
 } from "../lib/api";
 import { wsClient } from "../lib/ws";
 import BranchGraph from "../components/BranchGraph";
+import { TerminalPanel } from "../components/TerminalPanel";
+import { RequirementsPanel } from "../components/RequirementsPanel";
 
 // Draggable task item component
 function DraggableTask({
@@ -86,6 +86,7 @@ function TaskCard({
   loading,
   compact,
   isLocked,
+  showClaudeButton,
 }: {
   task: TreeSpecNode;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
@@ -96,6 +97,7 @@ function TaskCard({
   loading: boolean;
   compact?: boolean;
   isLocked?: boolean;
+  showClaudeButton?: boolean;
 }) {
   const hasWorktree = !!task.worktreePath;
 
@@ -118,25 +120,31 @@ function TaskCard({
         </select>
         <span className="task-card__title">{task.title}</span>
         <div className="task-card__actions">
-          {hasWorktree ? (
+          {showClaudeButton && (
+            <button
+              className="task-card__claude"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConsult?.(task);
+              }}
+              title="Claudeでこのタスクについて相談"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            Claude
+          </button>
+          )}
+          {showClaudeButton && hasWorktree && (
             <button
               className="task-card__open"
               onClick={(e) => {
                 e.stopPropagation();
                 onClick?.(task);
               }}
+              title="ターミナルを開く"
             >
-              開く
-            </button>
-          ) : (
-            <button
-              className="task-card__consult"
-              onClick={(e) => {
-                e.stopPropagation();
-                onConsult?.(task);
-              }}
-            >
-              相談
+              Terminal
             </button>
           )}
           {!isLocked && !task.branchName && task.status === "todo" && (
@@ -195,13 +203,18 @@ export default function TreeDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Chat state
-  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [showChat, setShowChat] = useState(false);
-  const chatRef = useRef<HTMLDivElement>(null);
+  // Workspace Phase: requirements → planning → execution
+  type WorkspacePhase = "requirements" | "planning" | "execution";
+  const [workspacePhase, setWorkspacePhase] = useState<WorkspacePhase>("requirements");
+
+  // Requirements Panel state (now always shown in requirements phase)
+  const [showRequirements, setShowRequirements] = useState(false);
+
+  // Terminal state
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalWorktreePath, setTerminalWorktreePath] = useState<string | null>(null);
+  const [terminalTaskContext, setTerminalTaskContext] = useState<{ title: string; description?: string } | undefined>(undefined);
+  const [terminalAutoRunClaude, setTerminalAutoRunClaude] = useState(false);
 
   // Tree Spec state (Task-based)
   const [wizardBaseBranch, setWizardBaseBranch] = useState<string>("main");
@@ -212,6 +225,7 @@ export default function TreeDashboard() {
   const [newTaskParent, setNewTaskParent] = useState("");
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [wizardStatus, setWizardStatus] = useState<TreeSpecStatus>("draft");
+  const [createPrsOnGenerate, setCreatePrsOnGenerate] = useState(false);
 
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
@@ -255,31 +269,15 @@ export default function TreeDashboard() {
     api.getCurrentPlan(snapshot.repoId).then(setPlan).catch(console.error);
     wsClient.connect(snapshot.repoId);
 
-    const unsubScan = wsClient.on("scan.updated", () => {
-      // Re-scan to get updated data (broadcast only sends repoId, not full snapshot)
-      if (selectedPin) {
-        api.scan(selectedPin.localPath).then(setSnapshot).catch(console.error);
+    const unsubScan = wsClient.on("scan.updated", (msg) => {
+      // Use the snapshot data from the broadcast directly (don't re-scan to avoid infinite loop)
+      if (msg.data && typeof msg.data === "object" && "repoId" in msg.data) {
+        setSnapshot(msg.data as ScanSnapshot);
       }
-    });
-
-    const unsubChatMessage = wsClient.on("chat.message", (msg) => {
-      const message = msg.data as ChatMessage;
-      setChatMessages((prev) => {
-        // Avoid duplicates
-        if (prev.some((m) => m.id === message.id)) return prev;
-        return [...prev, message];
-      });
-      // Auto-scroll chat
-      setTimeout(() => {
-        if (chatRef.current) {
-          chatRef.current.scrollTop = chatRef.current.scrollHeight;
-        }
-      }, 10);
     });
 
     return () => {
       unsubScan();
-      unsubChatMessage();
     };
   }, [snapshot?.repoId]);
 
@@ -334,54 +332,40 @@ export default function TreeDashboard() {
     }
   };
 
-  // Chat functions
-  const handleOpenChat = async (worktreePath: string) => {
-    if (!snapshot?.repoId) return;
-    setChatLoading(true);
-    setError(null);
-    try {
-      // Create or get existing session
-      const session = await api.createChatSession(snapshot.repoId, worktreePath, plan?.id);
-      setChatSession(session);
-      // Load messages
-      const messages = await api.getChatMessages(session.id);
-      setChatMessages(messages);
-      setShowChat(true);
-      // Auto-scroll
-      setTimeout(() => {
-        if (chatRef.current) {
-          chatRef.current.scrollTop = chatRef.current.scrollHeight;
-        }
-      }, 10);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setChatLoading(false);
+  // Requirements panel handlers
+  const handleTasksExtracted = (tasks: { title: string; description?: string }[]) => {
+    // Add extracted tasks to backlog
+    const newNodes: TreeSpecNode[] = tasks.map((t) => ({
+      id: crypto.randomUUID(),
+      title: t.title,
+      description: t.description,
+      status: "todo" as TaskStatus,
+    }));
+    setWizardNodes((prev) => [...prev, ...newNodes]);
+    // Auto-save after adding tasks
+    if (snapshot?.repoId) {
+      api.updateTreeSpec({
+        repoId: snapshot.repoId,
+        baseBranch: wizardBaseBranch,
+        nodes: [...wizardNodes, ...newNodes],
+        edges: wizardEdges,
+      }).catch(console.error);
     }
   };
 
-  const handleSendChat = async () => {
-    if (!chatSession || !chatInput.trim()) return;
-    setChatLoading(true);
-    setError(null);
-    const message = chatInput;
-    setChatInput("");
-    try {
-      // Note: The response will come via WebSocket, but we also get it here
-      await api.sendChatMessage(chatSession.id, message);
-      // Messages are added via WebSocket handler
-    } catch (err) {
-      setError((err as Error).message);
-      setChatInput(message); // Restore input on error
-    } finally {
-      setChatLoading(false);
-    }
+  // Terminal handlers
+  const handleOpenTerminal = (worktreePath: string, taskContext?: { title: string; description?: string }, autoRunClaude = false) => {
+    setTerminalWorktreePath(worktreePath);
+    setTerminalTaskContext(taskContext);
+    setTerminalAutoRunClaude(autoRunClaude);
+    setShowTerminal(true);
   };
 
-  const handleCloseChat = () => {
-    setShowChat(false);
-    setChatSession(null);
-    setChatMessages([]);
+  const handleCloseTerminal = () => {
+    setShowTerminal(false);
+    setTerminalWorktreePath(null);
+    setTerminalTaskContext(undefined);
+    setTerminalAutoRunClaude(false);
   };
 
   // Initialize tree spec state when snapshot changes
@@ -518,6 +502,7 @@ export default function TreeDashboard() {
               loading={loading}
               compact
               isLocked={isLocked}
+              showClaudeButton={workspacePhase === "execution"}
             />
           </DraggableTask>
         </DroppableTreeNode>
@@ -537,12 +522,20 @@ export default function TreeDashboard() {
   };
 
   // Generate branch name from task title
-  const generateBranchName = (title: string): string => {
-    const slug = title
+  const generateBranchName = (title: string, taskId?: string): string => {
+    let slug = title
       .toLowerCase()
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9-]/g, "")
+      .replace(/-+/g, "-")  // collapse multiple dashes
+      .replace(/^-|-$/g, "") // trim leading/trailing dashes
       .substring(0, 50);
+
+    // Fallback if slug is empty (e.g., Japanese-only title)
+    if (!slug) {
+      slug = taskId ? taskId.substring(0, 8) : `task-${Date.now()}`;
+    }
+
     // Use branch naming rule if available
     const pattern = snapshot?.rules?.branchNaming?.pattern;
     if (pattern && pattern.includes("{taskSlug}")) {
@@ -564,7 +557,7 @@ export default function TreeDashboard() {
       return;
     }
 
-    const branchName = generateBranchName(task.title);
+    const branchName = generateBranchName(task.title, task.id);
     setLoading(true);
     setError(null);
 
@@ -699,7 +692,7 @@ export default function TreeDashboard() {
       // Build task list with branch names and parent branches
       const tasks = sortedTasks.map((task) => {
         // Generate branch name if not set
-        const branchName = task.branchName || generateBranchName(task.title);
+        const branchName = task.branchName || generateBranchName(task.title, task.id);
         generatedBranchNames.set(task.id, branchName);
 
         // Find parent branch: check if this task has a parent edge
@@ -723,22 +716,26 @@ export default function TreeDashboard() {
           branchName,
           parentBranch,
           worktreeName,
+          title: task.title,
+          description: task.description,
         };
       });
 
-      addLog(`Creating branches and worktrees...`);
+      addLog(`Creating branches and worktrees${createPrsOnGenerate ? " + PRs" : ""}...`);
 
       // Call API to create branches and worktrees
       const result = await api.createTree(
         snapshot.repoId,
         selectedPin.localPath,
-        tasks
+        tasks,
+        { createPrs: createPrsOnGenerate, baseBranch: wizardBaseBranch }
       );
 
       // Log results
       for (const r of result.results) {
         if (r.success) {
-          addLog(`✓ ${r.branchName} → ${r.worktreePath}`);
+          const prInfo = r.prUrl ? ` (PR: ${r.prUrl})` : "";
+          addLog(`✓ ${r.branchName} → ${r.worktreePath}${prInfo}`);
         } else {
           addLog(`✗ ${r.branchName}: ${r.error}`);
         }
@@ -753,6 +750,8 @@ export default function TreeDashboard() {
             branchName: taskResult.branchName,
             worktreePath: taskResult.worktreePath,
             chatSessionId: taskResult.chatSessionId,
+            prUrl: taskResult.prUrl,
+            prNumber: taskResult.prNumber,
             status: "doing" as TaskStatus,
           };
         }
@@ -799,94 +798,24 @@ export default function TreeDashboard() {
     (n) => !n.worktreePath
   ).length;
 
-  // Handle clicking a task node to open its chat session
-  const handleTaskNodeClick = async (task: TreeSpecNode) => {
-    if (!task.worktreePath || !snapshot) return;
-
-    // If chat session exists, open it
-    if (task.chatSessionId) {
-      // Load chat session
-      try {
-        const sessions = await api.getChatSessions(snapshot.repoId);
-        const session = sessions.find(s => s.id === task.chatSessionId);
-        if (session) {
-          setChatSession(session);
-          const messages = await api.getChatMessages(session.id);
-          setChatMessages(messages);
-          setShowChat(true);
-          return;
-        }
-      } catch (err) {
-        console.error("Failed to load chat session:", err);
-      }
-    }
-
-    // Create new chat session if needed
-    try {
-      const newSession = await api.createChatSession(
-        snapshot.repoId,
-        task.worktreePath,
-        plan?.id
-      );
-
-      // Add system message with task context
-      const systemContent = `# Task: ${task.title}
-
-## Worktree
-\`${task.worktreePath}\`
-
-## Branch
-\`${task.branchName}\`
-
-${task.description ? `## Done Condition\n${task.description}` : ""}
-
----
-このworktreeで作業を開始してください。`;
-
-      await api.sendChatMessage(newSession.id, systemContent);
-
-      // Open the chat
-      setChatSession(newSession);
-      const messages = await api.getChatMessages(newSession.id);
-      setChatMessages(messages);
-      setShowChat(true);
-    } catch (err) {
-      setError(`Failed to create chat session: ${(err as Error).message}`);
-    }
+  // Handle clicking a task node to open its terminal
+  const handleTaskNodeClick = (task: TreeSpecNode) => {
+    if (!task.worktreePath) return;
+    handleOpenTerminal(task.worktreePath, {
+      title: task.title,
+      description: task.description,
+    });
   };
 
-  // Handle consulting about a task (without worktree)
-  const handleConsultTask = async (task: TreeSpecNode) => {
-    if (!snapshot || !selectedPin) return;
-
-    try {
-      // Create chat session using main repo path
-      const newSession = await api.createChatSession(
-        snapshot.repoId,
-        selectedPin.localPath,
-        plan?.id
-      );
-
-      // Add system message with task context for consultation
-      const systemContent = `# タスク相談: ${task.title}
-
-${task.description ? `## タスク内容\n${task.description}\n` : ""}
-## リポジトリ
-\`${selectedPin.localPath}\`
-
----
-このタスクについて相談してください。実装方針、技術的な質問、タスクの分解などお手伝いします。`;
-
-      await api.sendChatMessage(newSession.id, systemContent);
-
-      // Open the chat
-      setChatSession(newSession);
-      const messages = await api.getChatMessages(newSession.id);
-      setChatMessages(messages);
-      setShowChat(true);
-    } catch (err) {
-      setError(`Failed to create chat session: ${(err as Error).message}`);
-    }
+  // Handle consulting about a task - open terminal with Claude (auto-run)
+  const handleConsultTask = (task: TreeSpecNode) => {
+    if (!selectedPin) return;
+    // Use worktree path if available, otherwise use main repo path
+    const terminalPath = task.worktreePath || selectedPin.localPath;
+    handleOpenTerminal(terminalPath, {
+      title: task.title,
+      description: task.description,
+    }, true); // Auto-run Claude
   };
 
   // Check if can confirm: has base branch, has nodes, has at least one root
@@ -1225,6 +1154,12 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
         {snapshot && (
           <div className="sidebar__section">
             <button
+              className="sidebar__btn sidebar__btn--primary"
+              onClick={() => setShowRequirements(true)}
+            >
+              📋 Requirements
+            </button>
+            <button
               className="sidebar__btn"
               onClick={handleOpenSettings}
             >
@@ -1260,11 +1195,11 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
                 >
                   <span className="sidebar__worktree-branch">{wt.branch}</span>
                   <button
-                    className="sidebar__worktree-chat"
-                    onClick={() => handleOpenChat(wt.path)}
-                    title="Open chat"
+                    className="sidebar__worktree-terminal"
+                    onClick={() => handleOpenTerminal(wt.path)}
+                    title="Open terminal"
                   >
-                    Chat
+                    ⌨
                   </button>
                 </div>
               ))}
@@ -1276,6 +1211,57 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
       {/* Main Content */}
       <main className="main-content">
         {error && <div className="dashboard__error">{error}</div>}
+
+        {/* Phase Control Bar */}
+        {snapshot && (
+          <div className="phase-bar">
+            <div className="phase-bar__steps">
+              <button
+                className={`phase-step ${workspacePhase === "requirements" ? "phase-step--active" : ""} ${workspacePhase !== "requirements" ? "phase-step--done" : ""}`}
+                onClick={() => setWorkspacePhase("requirements")}
+              >
+                <span className="phase-step__number">1</span>
+                <span className="phase-step__label">Requirements</span>
+              </button>
+              <div className="phase-arrow">→</div>
+              <button
+                className={`phase-step ${workspacePhase === "planning" ? "phase-step--active" : ""} ${workspacePhase === "execution" ? "phase-step--done" : ""}`}
+                onClick={() => setWorkspacePhase("planning")}
+              >
+                <span className="phase-step__number">2</span>
+                <span className="phase-step__label">Planning</span>
+              </button>
+              <div className="phase-arrow">→</div>
+              <button
+                className={`phase-step ${workspacePhase === "execution" ? "phase-step--active" : ""}`}
+                onClick={() => setWorkspacePhase("execution")}
+              >
+                <span className="phase-step__number">3</span>
+                <span className="phase-step__label">Execution</span>
+              </button>
+            </div>
+            <div className="phase-bar__actions">
+              {workspacePhase === "requirements" && (
+                <button
+                  className="phase-btn phase-btn--primary"
+                  onClick={() => {
+                    setShowRequirements(true);
+                  }}
+                >
+                  Open Requirements
+                </button>
+              )}
+              {workspacePhase === "planning" && wizardStatus === "confirmed" && (
+                <button
+                  className="phase-btn phase-btn--success"
+                  onClick={() => setWorkspacePhase("execution")}
+                >
+                  Start Development →
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tree View */}
         {snapshot && (
@@ -1395,6 +1381,7 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
                               onConsult={handleConsultTask}
                               loading={loading}
                               isLocked={isLocked}
+                              showClaudeButton={workspacePhase === "execution"}
                             />
                           </DraggableTask>
                         ))}
@@ -1456,12 +1443,20 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
                       >
                         編集に戻す
                       </button>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={createPrsOnGenerate}
+                          onChange={(e) => setCreatePrsOnGenerate(e.target.checked)}
+                        />
+                        PRも作成
+                      </label>
                       <button
                         className="btn-primary"
                         onClick={handleBatchCreateWorktrees}
                         disabled={loading || tasksReadyForWorktrees === 0}
                       >
-                        Worktree生成 ({tasksReadyForWorktrees})
+                        {createPrsOnGenerate ? "Worktree + PR生成" : "Worktree生成"} ({tasksReadyForWorktrees})
                       </button>
                     </>
                   )}
@@ -1522,10 +1517,10 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
                         </div>
                       )}
                       <button
-                        className="btn-chat"
-                        onClick={() => handleOpenChat(selectedNode.worktree!.path)}
+                        className="btn-terminal"
+                        onClick={() => handleOpenTerminal(selectedNode.worktree!.path)}
                       >
-                        Open Chat
+                        Open Terminal
                       </button>
                     </div>
                   )}
@@ -1607,66 +1602,34 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
         )}
       </main>
 
-      {/* Chat Panel (floating) */}
-      {showChat && chatSession && (
-        <div className="chat-panel">
-          <div className="chat-panel__header">
-            <div className="chat-panel__title">
-              <h3>Chat: {chatSession.branchName || "Session"}</h3>
-              <span className="chat-panel__path">{chatSession.worktreePath}</span>
-            </div>
-            <div className="chat-panel__actions">
-              <button onClick={handleCloseChat}>×</button>
-            </div>
-          </div>
-          <div className="chat-panel__messages" ref={chatRef}>
-            {chatMessages.length === 0 ? (
-              <div className="chat-panel__empty">
-                No messages yet. Start a conversation with Claude.
-              </div>
-            ) : (
-              chatMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`chat-message chat-message--${msg.role}`}
-                >
-                  <div className="chat-message__role">{msg.role}</div>
-                  <div className="chat-message__content">
-                    <pre>{msg.content}</pre>
-                  </div>
-                  <div className="chat-message__time">
-                    {new Date(msg.createdAt).toLocaleTimeString()}
-                  </div>
-                </div>
-              ))
-            )}
-            {chatLoading && (
-              <div className="chat-message chat-message--loading">
-                <div className="chat-message__role">assistant</div>
-                <div className="chat-message__content">Thinking...</div>
-              </div>
-            )}
-          </div>
-          <div className="chat-panel__input">
-            <textarea
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Type a message..."
-              disabled={chatLoading}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendChat();
-                }
-              }}
-            />
-            <button
-              onClick={handleSendChat}
-              disabled={chatLoading || !chatInput.trim()}
-            >
-              {chatLoading ? "..." : "Send"}
-            </button>
-          </div>
+      {/* Requirements Panel (floating or integrated based on phase) */}
+      {showRequirements && snapshot && (
+        <div className="requirements-panel-container">
+          <RequirementsPanel
+            repoId={snapshot.repoId}
+            plan={plan}
+            onPlanUpdate={setPlan}
+            onTasksExtracted={handleTasksExtracted}
+          />
+          <button
+            className="requirements-panel-close"
+            onClick={() => setShowRequirements(false)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Terminal Panel (floating) */}
+      {showTerminal && terminalWorktreePath && snapshot && (
+        <div className="terminal-panel">
+          <TerminalPanel
+            repoId={snapshot.repoId}
+            worktreePath={terminalWorktreePath}
+            onClose={handleCloseTerminal}
+            taskContext={terminalTaskContext}
+            autoRunClaude={terminalAutoRunClaude}
+          />
         </div>
       )}
 
@@ -1878,17 +1841,17 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .sidebar__worktree-chat {
+        .sidebar__worktree-terminal {
           padding: 2px 8px;
-          background: #6c5ce7;
+          background: #1a1b26;
           color: white;
           border: none;
           border-radius: 3px;
-          font-size: 10px;
+          font-size: 12px;
           cursor: pointer;
         }
-        .sidebar__worktree-chat:hover {
-          background: #5b4cdb;
+        .sidebar__worktree-terminal:hover {
+          background: #24283b;
         }
 
         /* Repo selector in sidebar */
@@ -2116,6 +2079,23 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
           margin-top: 12px;
           padding-top: 12px;
           border-top: 1px solid #eee;
+          align-items: center;
+        }
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+          cursor: pointer;
+          padding: 4px 8px;
+          background: #f5f5f5;
+          border-radius: 4px;
+        }
+        .checkbox-label:hover {
+          background: #e8e8e8;
+        }
+        .checkbox-label input {
+          cursor: pointer;
         }
         .btn-primary {
           padding: 8px 16px;
@@ -2551,6 +2531,59 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
         }
         .chat-panel__input button:hover:not(:disabled) {
           background: #5b4cdb;
+        }
+        .chat-panel__terminal-btn {
+          font-size: 16px;
+          margin-right: 4px;
+        }
+        .chat-panel__actions {
+          display: flex;
+          gap: 4px;
+        }
+        /* Requirements Panel Container */
+        .requirements-panel-container {
+          position: fixed;
+          right: 20px;
+          top: 80px;
+          width: 400px;
+          height: calc(100vh - 100px);
+          z-index: 1000;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        .requirements-panel-close {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          width: 28px;
+          height: 28px;
+          background: #f44336;
+          color: white;
+          border: none;
+          border-radius: 50%;
+          font-size: 14px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10;
+          transition: background 0.2s;
+        }
+        .requirements-panel-close:hover {
+          background: #d32f2f;
+        }
+        /* Terminal Panel */
+        .terminal-panel {
+          position: fixed;
+          left: 20px;
+          bottom: 20px;
+          width: 700px;
+          height: 450px;
+          z-index: 1000;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+          border-radius: 8px;
+          overflow: hidden;
         }
         .panel__header-actions {
           display: flex;
@@ -3006,17 +3039,28 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
         .task-card__open:hover {
           background: #1976d2;
         }
-        .task-card__consult {
-          background: #9c27b0;
+        .task-card__claude {
+          background: linear-gradient(135deg, #d97706 0%, #ea580c 100%);
           color: white;
           border: none;
           border-radius: 4px;
-          padding: 2px 8px;
+          padding: 3px 10px;
           cursor: pointer;
           font-size: 11px;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          transition: all 0.15s ease;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
-        .task-card__consult:hover {
-          background: #7b1fa2;
+        .task-card__claude:hover {
+          background: linear-gradient(135deg, #b45309 0%, #c2410c 100%);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .task-card__claude svg {
+          flex-shrink: 0;
         }
 
         /* Generation logs */
@@ -3315,19 +3359,112 @@ ${task.description ? `## タスク内容\n${task.description}\n` : ""}
           font-size: 13px;
         }
 
-        /* Chat button in details panel */
-        .btn-chat {
+        /* Terminal button in details panel */
+        .btn-terminal {
           margin-top: 8px;
           padding: 8px 16px;
-          background: #6c5ce7;
+          background: #1a1b26;
           color: white;
           border: none;
           border-radius: 6px;
           cursor: pointer;
           font-size: 13px;
         }
-        .btn-chat:hover {
-          background: #5b4cdb;
+        .btn-terminal:hover {
+          background: #24283b;
+        }
+        /* Phase Bar */
+        .phase-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 20px;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+          margin-bottom: 16px;
+        }
+        .phase-bar__steps {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .phase-step {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background: #f5f5f5;
+          border: 2px solid transparent;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .phase-step:hover {
+          background: #eeeeee;
+        }
+        .phase-step--active {
+          background: #e3f2fd;
+          border-color: #2196f3;
+        }
+        .phase-step--active .phase-step__number {
+          background: #2196f3;
+          color: white;
+        }
+        .phase-step--done {
+          background: #e8f5e9;
+        }
+        .phase-step--done .phase-step__number {
+          background: #4caf50;
+          color: white;
+        }
+        .phase-step__number {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          background: #e0e0e0;
+          color: #757575;
+          border-radius: 50%;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .phase-step__label {
+          font-size: 13px;
+          font-weight: 500;
+          color: #333;
+        }
+        .phase-arrow {
+          color: #bdbdbd;
+          font-size: 16px;
+        }
+        .phase-bar__actions {
+          display: flex;
+          gap: 8px;
+        }
+        .phase-btn {
+          padding: 8px 16px;
+          border: none;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .phase-btn--primary {
+          background: #2196f3;
+          color: white;
+        }
+        .phase-btn--primary:hover {
+          background: #1976d2;
+        }
+        .phase-btn--success {
+          background: #4caf50;
+          color: white;
+        }
+        .phase-btn--success:hover {
+          background: #388e3c;
         }
       `}</style>
     </div>

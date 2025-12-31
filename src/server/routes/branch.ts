@@ -67,8 +67,51 @@ interface TaskResult {
   branchName: string;
   worktreePath: string;
   chatSessionId: string;
+  prUrl?: string;
+  prNumber?: number;
   success: boolean;
   error?: string;
+}
+
+// Check if PR already exists for branch
+function getExistingPr(localPath: string, branchName: string): { url: string; number: number } | null {
+  try {
+    const result = execSync(
+      `cd "${localPath}" && gh pr view "${branchName}" --json url,number 2>/dev/null || true`,
+      { encoding: "utf-8" }
+    ).trim();
+    if (result) {
+      const pr = JSON.parse(result);
+      return { url: pr.url, number: pr.number };
+    }
+  } catch {
+    // No existing PR
+  }
+  return null;
+}
+
+// Create PR for branch
+function createPr(
+  localPath: string,
+  branchName: string,
+  baseBranch: string,
+  title: string,
+  body: string
+): { url: string; number: number } {
+  // First push the branch
+  execSync(`cd "${localPath}" && git push -u origin "${branchName}"`, {
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  // Create PR
+  const result = execSync(
+    `cd "${localPath}" && gh pr create --head "${branchName}" --base "${baseBranch}" --title "${title.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --json url,number`,
+    { encoding: "utf-8" }
+  ).trim();
+
+  const pr = JSON.parse(result);
+  return { url: pr.url, number: pr.number };
 }
 
 // POST /api/branch/create-tree - Batch create branches + worktrees + chat sessions
@@ -152,6 +195,48 @@ branchRouter.post("/create-tree", async (c) => {
       });
 
       result.chatSessionId = sessionId;
+
+      // Create PR if requested
+      if (input.createPrs) {
+        try {
+          // Check for existing PR
+          const existingPr = getExistingPr(localPath, task.branchName);
+          if (existingPr) {
+            result.prUrl = existingPr.url;
+            result.prNumber = existingPr.number;
+            console.log(`PR already exists for ${task.branchName}: ${existingPr.url}`);
+          } else {
+            // Create new PR
+            const prTitle = task.title || task.branchName;
+            const prBody = [
+              task.description ? `## Task\n${task.description}` : "",
+              `## Branch\n\`${task.branchName}\``,
+              `## Base\n\`${task.parentBranch}\``,
+              "",
+              "---",
+              "*Created by VibeTree*",
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            const pr = createPr(
+              localPath,
+              task.branchName,
+              task.parentBranch,
+              prTitle,
+              prBody
+            );
+            result.prUrl = pr.url;
+            result.prNumber = pr.number;
+            console.log(`Created PR for ${task.branchName}: ${pr.url}`);
+          }
+        } catch (prErr) {
+          // PR creation failed but branch/worktree succeeded
+          console.error(`Failed to create PR for ${task.branchName}:`, prErr);
+          // Don't fail the whole task, just log the error
+        }
+      }
+
       result.success = true;
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);

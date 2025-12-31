@@ -11,7 +11,10 @@ import { repoPinsRouter } from "./routes/repo-pins";
 import { aiRouter } from "./routes/ai";
 import { chatRouter } from "./routes/chat";
 import { branchRouter } from "./routes/branch";
+import { termRouter } from "./routes/term";
+import { requirementsRouter } from "./routes/requirements";
 import { errorHandler } from "./middleware/error-handler";
+import { ptyManager } from "./pty-manager";
 import { handleWsMessage, addClient, removeClient, type WSClient } from "./ws";
 
 const app = new Hono();
@@ -51,6 +54,8 @@ app.route("/api/repo-pins", repoPinsRouter);
 app.route("/api/ai", aiRouter);
 app.route("/api/chat", chatRouter);
 app.route("/api/branch", branchRouter);
+app.route("/api/term", termRouter);
+app.route("/api/requirements", requirementsRouter);
 
 // 404 handler for API routes
 app.notFound((c) => {
@@ -61,14 +66,30 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 console.log(`Starting Vibe Tree server...`);
 
+// Terminal WebSocket clients map
+const terminalClients = new Map<WebSocket, { sessionId: string; unsubscribe: () => void }>();
+
 Bun.serve({
   port,
   fetch(req, server) {
     const url = new URL(req.url);
 
-    // Handle WebSocket upgrade
+    // Handle WebSocket upgrade for main ws
     if (url.pathname === "/ws") {
-      const upgraded = server.upgrade(req);
+      const upgraded = server.upgrade(req, { data: { type: "main" } });
+      if (upgraded) {
+        return undefined;
+      }
+      return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+
+    // Handle WebSocket upgrade for terminal
+    if (url.pathname === "/ws/term") {
+      const sessionId = url.searchParams.get("sessionId");
+      if (!sessionId) {
+        return new Response("sessionId required", { status: 400 });
+      }
+      const upgraded = server.upgrade(req, { data: { type: "term", sessionId } });
       if (upgraded) {
         return undefined;
       }
@@ -80,15 +101,78 @@ Bun.serve({
   },
   websocket: {
     open(ws) {
-      addClient(ws as unknown as WSClient);
-      console.log("WebSocket client connected");
+      const data = (ws as { data?: { type: string; sessionId?: string } }).data;
+      if (data?.type === "term") {
+        const sessionId = data.sessionId!;
+        console.log(`Terminal WebSocket connected for session: ${sessionId}`);
+
+        // Subscribe to PTY output
+        const unsubscribe = ptyManager.onData(sessionId, (output) => {
+          try {
+            ws.send(JSON.stringify({ type: "data", data: output }));
+          } catch {
+            // Client disconnected
+          }
+        });
+
+        // Subscribe to PTY exit
+        const unsubscribeExit = ptyManager.onExit(sessionId, (code) => {
+          try {
+            ws.send(JSON.stringify({ type: "exit", code }));
+          } catch {
+            // Client disconnected
+          }
+        });
+
+        terminalClients.set(ws as unknown as WebSocket, {
+          sessionId,
+          unsubscribe: () => {
+            unsubscribe();
+            unsubscribeExit();
+          },
+        });
+
+        // Send current buffer if any
+        const buffer = ptyManager.getOutputBuffer(sessionId);
+        if (buffer) {
+          ws.send(JSON.stringify({ type: "data", data: buffer }));
+        }
+      } else {
+        addClient(ws as unknown as WSClient);
+        console.log("WebSocket client connected");
+      }
     },
     message(ws, message) {
-      handleWsMessage(ws as unknown as WSClient, message);
+      const data = (ws as { data?: { type: string; sessionId?: string } }).data;
+      if (data?.type === "term") {
+        const sessionId = data.sessionId!;
+        try {
+          const msg = JSON.parse(message.toString());
+          if (msg.type === "input") {
+            ptyManager.write(sessionId, msg.data);
+          } else if (msg.type === "resize") {
+            ptyManager.resize(sessionId, msg.cols, msg.rows);
+          }
+        } catch {
+          // Invalid message
+        }
+      } else {
+        handleWsMessage(ws as unknown as WSClient, message);
+      }
     },
     close(ws) {
-      removeClient(ws as unknown as WSClient);
-      console.log("WebSocket client disconnected");
+      const data = (ws as { data?: { type: string; sessionId?: string } }).data;
+      if (data?.type === "term") {
+        const client = terminalClients.get(ws as unknown as WebSocket);
+        if (client) {
+          client.unsubscribe();
+          terminalClients.delete(ws as unknown as WebSocket);
+        }
+        console.log(`Terminal WebSocket disconnected for session: ${data.sessionId}`);
+      } else {
+        removeClient(ws as unknown as WSClient);
+        console.log("WebSocket client disconnected");
+      }
     },
   },
 });

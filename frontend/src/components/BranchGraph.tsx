@@ -24,11 +24,25 @@ interface LayoutEdge {
   isDesigned: boolean;
 }
 
-const NODE_WIDTH = 250;
+const NODE_WIDTH = 280;
 const NODE_HEIGHT = 36;
 const HORIZONTAL_GAP = 40;
-const VERTICAL_GAP = 20;
+const VERTICAL_GAP = 28;
 const PADDING = 20;
+
+// Badge colors
+const CI_COLORS: Record<string, string> = {
+  SUCCESS: "#4caf50",
+  FAILURE: "#f44336",
+  PENDING: "#ff9800",
+  NEUTRAL: "#9e9e9e",
+};
+
+const REVIEW_COLORS: Record<string, string> = {
+  APPROVED: "#4caf50",
+  CHANGES_REQUESTED: "#f44336",
+  REVIEW_REQUIRED: "#ff9800",
+};
 
 export default function BranchGraph({
   nodes,
@@ -256,6 +270,7 @@ export default function BranchGraph({
 
         {hasPR && (
           <g>
+            {/* PR state badge */}
             <rect
               x={x + NODE_WIDTH - 28}
               y={y + 4}
@@ -275,6 +290,56 @@ export default function BranchGraph({
             >
               PR
             </text>
+
+            {/* CI status badge */}
+            {node.pr?.checks && (
+              <g>
+                <rect
+                  x={x + NODE_WIDTH - 54}
+                  y={y + 4}
+                  width={22}
+                  height={14}
+                  rx={2}
+                  fill={CI_COLORS[node.pr.checks] || CI_COLORS.NEUTRAL}
+                />
+                <text
+                  x={x + NODE_WIDTH - 43}
+                  y={y + 12}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={7}
+                  fill="white"
+                  fontWeight="bold"
+                >
+                  {node.pr.checks === "SUCCESS" ? "✓" : node.pr.checks === "FAILURE" ? "✗" : node.pr.checks === "PENDING" ? "…" : "−"}
+                </text>
+              </g>
+            )}
+
+            {/* Review decision badge */}
+            {node.pr?.reviewDecision && (
+              <g>
+                <rect
+                  x={x + NODE_WIDTH - (node.pr?.checks ? 78 : 54)}
+                  y={y + 4}
+                  width={20}
+                  height={14}
+                  rx={2}
+                  fill={REVIEW_COLORS[node.pr.reviewDecision] || "#9e9e9e"}
+                />
+                <text
+                  x={x + NODE_WIDTH - (node.pr?.checks ? 68 : 44)}
+                  y={y + 12}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={7}
+                  fill="white"
+                  fontWeight="bold"
+                >
+                  {node.pr.reviewDecision === "APPROVED" ? "✓R" : node.pr.reviewDecision === "CHANGES_REQUESTED" ? "✗R" : "?R"}
+                </text>
+              </g>
+            )}
           </g>
         )}
 

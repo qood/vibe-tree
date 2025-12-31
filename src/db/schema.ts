@@ -131,6 +131,32 @@ export const chatSummaries = sqliteTable("chat_summaries", {
   createdAt: text("created_at").notNull(),
 });
 
+// Terminal sessions (PTY sessions for worktrees)
+export const terminalSessions = sqliteTable("terminal_sessions", {
+  id: text("id").primaryKey(), // uuid
+  repoId: text("repo_id").notNull(),
+  worktreePath: text("worktree_path").notNull().unique(),
+  pid: integer("pid"),
+  status: text("status").notNull().default("stopped"), // 'running' | 'stopped'
+  lastOutput: text("last_output"), // Last N KB of output for reconnection
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  lastUsedAt: text("last_used_at").notNull(),
+});
+
+// Requirements notes (PRD/Notion/分解メモ)
+export const requirementsNotes = sqliteTable("requirements_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: text("repo_id").notNull(),
+  planId: integer("plan_id").references(() => plans.id),
+  noteType: text("note_type").notNull(), // 'prd' | 'notion' | 'memo' | 'task_breakdown'
+  title: text("title"),
+  content: text("content").notNull().default(""), // Optional - can be empty for notion links
+  notionUrl: text("notion_url"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // Agent runs (Claude Code実行ログ)
 export const agentRuns = sqliteTable("agent_runs", {
   id: integer("id").primaryKey({ autoIncrement: true }),

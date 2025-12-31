@@ -77,6 +77,8 @@ export const treeSpecNodeSchema = z.object({
   branchName: z.string().optional(), // 未確定ならundefined
   worktreePath: z.string().optional(), // Path to worktree
   chatSessionId: z.string().optional(), // Linked chat session ID
+  prUrl: z.string().optional(), // PR URL (created by batch generation)
+  prNumber: z.number().int().positive().optional(), // PR number
   // Legacy fields (optional for backward compat)
   intendedIssue: z.number().int().positive().optional(),
   intendedPr: z.number().int().positive().optional(),
@@ -137,12 +139,16 @@ export const createTreeTaskSchema = z.object({
   branchName: z.string().min(1, "Branch name is required"),
   parentBranch: z.string().min(1, "Parent branch is required"),
   worktreeName: z.string().min(1, "Worktree name is required"),
+  title: z.string().optional(), // For PR title
+  description: z.string().optional(), // For PR body
 });
 
 export const createTreeSchema = z.object({
   repoId: repoIdSchema,
   localPath: z.string().min(1, "Local path is required"),
   tasks: z.array(createTreeTaskSchema).min(1, "At least one task is required"),
+  createPrs: z.boolean().default(false), // Whether to create PRs
+  baseBranch: z.string().optional(), // Base branch for root PRs
 });
 
 export type CreateTreeInput = z.infer<typeof createTreeSchema>;
