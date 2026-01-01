@@ -212,6 +212,8 @@ export function PlanningPanel({
     setLoading(true);
     try {
       await api.discardPlanningSession(selectedSession.id);
+      // Remove from list
+      setSessions((prev) => prev.filter((s) => s.id !== selectedSession.id));
       setSelectedSession(null);
       onSessionSelect?.(null);
     } catch (err) {
