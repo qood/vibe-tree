@@ -74,7 +74,13 @@ export function PlanningPanel({
     const unsubCreated = wsClient.on("planning.created", (msg) => {
       if (msg.data && typeof msg.data === "object" && "id" in msg.data) {
         const newSession = msg.data as PlanningSession;
-        setSessions((prev) => [newSession, ...prev]);
+        // Check for duplicates before adding
+        setSessions((prev) => {
+          if (prev.some((s) => s.id === newSession.id)) {
+            return prev;
+          }
+          return [newSession, ...prev];
+        });
       }
     });
 
