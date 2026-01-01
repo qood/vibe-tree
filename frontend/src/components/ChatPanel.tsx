@@ -104,17 +104,17 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
                 <div
                   key={i}
                   style={{
-                    border: "1px solid #93c5fd",
-                    background: "#eff6ff",
+                    border: "1px solid #374151",
+                    background: "#1f2937",
                     borderRadius: 6,
                     padding: 12,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                     <div>
-                      <p style={{ margin: 0, fontWeight: 500, color: "#1e3a5f" }}>{task.label}</p>
+                      <p style={{ margin: 0, fontWeight: 500, color: "#f3f4f6" }}>{task.label}</p>
                       {task.description && (
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#1d4ed8" }}>{task.description}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#9ca3af" }}>{task.description}</p>
                       )}
                     </div>
                     <button
@@ -128,8 +128,8 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
                         fontWeight: 500,
                         border: "none",
                         cursor: isAdded ? "default" : "pointer",
-                        background: isAdded ? "#dcfce7" : "#2563eb",
-                        color: isAdded ? "#166534" : "white",
+                        background: isAdded ? "#14532d" : "#3b82f6",
+                        color: isAdded ? "#4ade80" : "white",
                       }}
                     >
                       {isAdded ? "Added" : "+ Add"}
@@ -149,9 +149,7 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
       display: "flex",
       flexDirection: "column",
       height: "100%",
-      background: "white",
-      borderRadius: 8,
-      border: "1px solid #e5e7eb",
+      background: "#111827",
       overflow: "hidden",
     }}>
       {/* Messages */}
@@ -176,8 +174,8 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
                 maxWidth: "80%",
                 borderRadius: 12,
                 padding: 12,
-                background: msg.role === "user" ? "#2563eb" : "#f3f4f6",
-                color: msg.role === "user" ? "white" : "#1f2937",
+                background: msg.role === "user" ? "#3b82f6" : "#374151",
+                color: "#f3f4f6",
               }}
             >
               {renderMessage(msg)}
@@ -190,8 +188,8 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
             <div style={{
               borderRadius: 12,
               padding: 12,
-              background: "#f3f4f6",
-              color: "#6b7280",
+              background: "#374151",
+              color: "#9ca3af",
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -211,9 +209,9 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
       {error && (
         <div style={{
           padding: "8px 16px",
-          background: "#fef2f2",
-          borderTop: "1px solid #fecaca",
-          color: "#b91c1c",
+          background: "#7f1d1d",
+          borderTop: "1px solid #991b1b",
+          color: "#fca5a5",
           fontSize: 13,
         }}>
           {error}
@@ -222,10 +220,10 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
 
       {/* Input */}
       <div style={{
-        borderTop: "1px solid #e5e7eb",
-        padding: 16,
+        borderTop: "1px solid #374151",
+        padding: 12,
       }}>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <textarea
             ref={inputRef}
             value={input}
@@ -235,12 +233,14 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
             style={{
               flex: 1,
               resize: "none",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
+              border: "1px solid #374151",
+              borderRadius: 4,
               padding: "8px 12px",
               fontSize: 14,
               fontFamily: "inherit",
               outline: "none",
+              background: "#1f2937",
+              color: "#f3f4f6",
             }}
             rows={2}
             disabled={loading}
@@ -249,14 +249,14 @@ export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
             onClick={sendMessage}
             disabled={!input.trim() || loading}
             style={{
-              padding: "8px 20px",
-              background: !input.trim() || loading ? "#9ca3af" : "#2563eb",
+              padding: "8px 16px",
+              background: !input.trim() || loading ? "#4b5563" : "#3b82f6",
               color: "white",
               border: "none",
-              borderRadius: 8,
+              borderRadius: 4,
               cursor: !input.trim() || loading ? "not-allowed" : "pointer",
               fontWeight: 500,
-              fontSize: 14,
+              fontSize: 13,
             }}
           >
             Send
