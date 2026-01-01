@@ -1657,9 +1657,9 @@ export default function TreeDashboard() {
           display: flex;
           flex-direction: column;
           overflow: hidden;
-        }
-        .panel--planning .panel__header {
-          flex-shrink: 0;
+          background: transparent;
+          border: none;
+          padding: 0;
         }
         .planning-panel__layout {
           flex: 1;
