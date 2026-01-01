@@ -8,6 +8,7 @@ import { expandTilde } from "../utils";
 import { broadcast } from "../ws";
 import {
   createChatSessionSchema,
+  createPlanningSessionSchema,
   archiveChatSessionSchema,
   chatSendSchema,
   chatSummarizeSchema,
@@ -136,6 +137,81 @@ chatRouter.post("/sessions", async (c) => {
   return c.json(session);
 });
 
+// POST /api/chat/sessions/planning - Create or get planning session (no worktree needed)
+chatRouter.post("/sessions/planning", async (c) => {
+  const body = await c.req.json();
+  const input = validateOrThrow(createPlanningSessionSchema, body);
+  const localPath = expandTilde(input.localPath);
+
+  // Use localPath as worktreePath for planning sessions
+  const planningWorktreePath = `planning:${localPath}`;
+
+  // Check if planning session already exists for this repo
+  const existing = await db
+    .select()
+    .from(schema.chatSessions)
+    .where(
+      and(
+        eq(schema.chatSessions.repoId, input.repoId),
+        eq(schema.chatSessions.worktreePath, planningWorktreePath),
+        eq(schema.chatSessions.status, "active")
+      )
+    );
+
+  if (existing[0]) {
+    // Update lastUsedAt
+    const now = new Date().toISOString();
+    await db
+      .update(schema.chatSessions)
+      .set({ lastUsedAt: now, updatedAt: now })
+      .where(eq(schema.chatSessions.id, existing[0].id));
+
+    return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now }));
+  }
+
+  // Create new planning session
+  const now = new Date().toISOString();
+  const sessionId = randomUUID();
+
+  await db.insert(schema.chatSessions).values({
+    id: sessionId,
+    repoId: input.repoId,
+    worktreePath: planningWorktreePath,
+    branchName: null,
+    planId: null,
+    status: "active",
+    lastUsedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Add initial assistant message
+  const initialMessage = `こんにちは！何を作りたいですか？
+
+URLやドキュメント（Notion、Google Docs など）があれば共有してください。内容を確認して、タスクを分解するお手伝いをします。`;
+
+  await db.insert(schema.chatMessages).values({
+    sessionId,
+    role: "assistant",
+    content: initialMessage,
+    createdAt: now,
+  });
+
+  const session: ChatSession = {
+    id: sessionId,
+    repoId: input.repoId,
+    worktreePath: planningWorktreePath,
+    branchName: null,
+    planId: null,
+    status: "active",
+    lastUsedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  return c.json(session);
+});
+
 // POST /api/chat/sessions/archive - Archive a session
 chatRouter.post("/sessions/archive", async (c) => {
   const body = await c.req.json();
@@ -182,9 +258,14 @@ chatRouter.post("/send", async (c) => {
     throw new NotFoundError("Session not found");
   }
 
-  const worktreePath = session.worktreePath;
+  // Handle planning sessions (worktreePath starts with "planning:")
+  const isPlanningSession = session.worktreePath.startsWith("planning:");
+  const worktreePath = isPlanningSession
+    ? session.worktreePath.replace("planning:", "")
+    : session.worktreePath;
+
   if (!existsSync(worktreePath)) {
-    throw new BadRequestError(`Worktree path does not exist: ${worktreePath}`);
+    throw new BadRequestError(`Path does not exist: ${worktreePath}`);
   }
 
   const now = new Date().toISOString();
@@ -429,12 +510,57 @@ chatRouter.post("/purge", async (c) => {
   return c.json({ deleted: toDelete.length, remaining: input.keepLastN });
 });
 
+// Planning system prompt
+const PLANNING_SYSTEM_PROMPT = `あなたはプロジェクト計画のアシスタントです。
+
+## 役割
+1. ユーザーの要件を理解するために積極的に質問する
+2. URLやドキュメントの内容を整理する
+3. タスクを分解して提案する
+
+## 質問例（状況に応じて使う）
+- "どんな機能が必要ですか？"
+- "優先度の高い機能は何ですか？"
+- "技術的な制約はありますか？"
+- "デザインやUIの参考はありますか？"
+- "デッドラインはありますか？"
+
+## タスク提案フォーマット
+タスクを提案する際は、必ず以下の形式を使ってください：
+
+<<TASK>>
+{"label": "タスク名", "description": "タスクの説明（完了条件など）"}
+<</TASK>>
+
+例：
+<<TASK>>
+{"label": "認証機能の実装", "description": "ログイン・ログアウト・セッション管理を実装する"}
+<</TASK>>
+
+## 注意点
+- 1つのメッセージで複数のタスクを提案してOK
+- タスクは具体的に、1〜2日で完了できる粒度に
+- 依存関係がある場合は説明に含める
+- ユーザーが情報を共有したら、まず内容を理解・整理してから質問やタスク提案を行う
+`;
+
 // Helper: Build prompt with full context
 async function buildPrompt(
   session: typeof schema.chatSessions.$inferSelect,
   userMessage: string
 ): Promise<string> {
   const parts: string[] = [];
+
+  // Check if this is a planning session
+  const isPlanningSession = session.worktreePath.startsWith("planning:");
+  const actualPath = isPlanningSession
+    ? session.worktreePath.replace("planning:", "")
+    : session.worktreePath;
+
+  if (isPlanningSession) {
+    parts.push(PLANNING_SYSTEM_PROMPT);
+    parts.push(`## Repository: ${session.repoId}\n`);
+  }
 
   // 1. System: Project rules
   const rules = await db
@@ -452,32 +578,36 @@ async function buildPrompt(
     ? (JSON.parse(rules[0].ruleJson) as BranchNamingRule)
     : null;
 
-  parts.push(`# System Context
+  if (!isPlanningSession) {
+    parts.push(`# System Context
 
 ## Working Directory
-- Path: ${session.worktreePath}
+- Path: ${actualPath}
 - Branch: ${session.branchName ?? "unknown"}
 - Repository: ${session.repoId}
 
 ## Project Rules
 ${branchNaming ? `- Branch naming: \`${branchNaming.pattern}\`` : "- No specific rules configured"}
 `);
-
-  // 2. Context: Git status
-  let gitStatus = "";
-  try {
-    gitStatus = execSync(`cd "${session.worktreePath}" && git status --short`, {
-      encoding: "utf-8",
-    }).trim();
-  } catch {
-    gitStatus = "";
   }
 
-  parts.push(`## Current Git Status
+  // 2. Context: Git status (skip for planning sessions)
+  if (!isPlanningSession) {
+    let gitStatus = "";
+    try {
+      gitStatus = execSync(`cd "${actualPath}" && git status --short`, {
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      gitStatus = "";
+    }
+
+    parts.push(`## Current Git Status
 \`\`\`
 ${gitStatus || "Clean working directory"}
 \`\`\`
 `);
+  }
 
   // 3. Plan if available
   if (session.planId) {

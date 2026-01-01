@@ -1,0 +1,288 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { api, type ChatMessage } from "../lib/api";
+import { extractTaskSuggestions, removeTaskTags, type TaskSuggestion } from "../lib/task-parser";
+
+interface ChatPanelProps {
+  sessionId: string;
+  onTaskSuggested?: (task: TaskSuggestion) => void;
+}
+
+export function ChatPanel({ sessionId, onTaskSuggested }: ChatPanelProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [addedTasks, setAddedTasks] = useState<Set<string>>(new Set());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load messages
+  const loadMessages = useCallback(async () => {
+    try {
+      const msgs = await api.getChatMessages(sessionId);
+      setMessages(msgs);
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
+
+  // Auto scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Send message
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage = input.trim();
+    setInput("");
+    setLoading(true);
+    setError(null);
+
+    // Optimistic update
+    const tempUserMsg: ChatMessage = {
+      id: Date.now(),
+      sessionId,
+      role: "user",
+      content: userMessage,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, tempUserMsg]);
+
+    try {
+      const result = await api.sendChatMessage(sessionId, userMessage);
+      setMessages((prev) => [
+        ...prev.slice(0, -1),
+        { ...tempUserMsg, id: result.assistantMessage.id - 1 },
+        result.assistantMessage,
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+      setMessages((prev) => prev.slice(0, -1));
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const handleAddTask = (task: TaskSuggestion, index: number) => {
+    const key = `${task.label}-${index}`;
+    if (addedTasks.has(key)) return;
+    setAddedTasks((prev) => new Set(prev).add(key));
+    onTaskSuggested?.(task);
+  };
+
+  const renderMessage = (msg: ChatMessage) => {
+    if (msg.role !== "assistant") {
+      return <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{msg.content}</p>;
+    }
+
+    const suggestions = extractTaskSuggestions(msg.content);
+    const cleanContent = removeTaskTags(msg.content);
+
+    return (
+      <>
+        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{cleanContent}</p>
+        {suggestions.length > 0 && (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            {suggestions.map((task, i) => {
+              const key = `${task.label}-${i}`;
+              const isAdded = addedTasks.has(key);
+              return (
+                <div
+                  key={i}
+                  style={{
+                    border: "1px solid #93c5fd",
+                    background: "#eff6ff",
+                    borderRadius: 6,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 500, color: "#1e3a5f" }}>{task.label}</p>
+                      {task.description && (
+                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#1d4ed8" }}>{task.description}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleAddTask(task, i)}
+                      disabled={isAdded}
+                      style={{
+                        flexShrink: 0,
+                        padding: "4px 12px",
+                        borderRadius: 4,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        border: "none",
+                        cursor: isAdded ? "default" : "pointer",
+                        background: isAdded ? "#dcfce7" : "#2563eb",
+                        color: isAdded ? "#166534" : "white",
+                      }}
+                    >
+                      {isAdded ? "Added" : "+ Add"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      background: "white",
+      borderRadius: 8,
+      border: "1px solid #e5e7eb",
+      overflow: "hidden",
+    }}>
+      {/* Messages */}
+      <div style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}>
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              display: "flex",
+              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+            }}
+          >
+            <div
+              style={{
+                maxWidth: "80%",
+                borderRadius: 12,
+                padding: 12,
+                background: msg.role === "user" ? "#2563eb" : "#f3f4f6",
+                color: msg.role === "user" ? "white" : "#1f2937",
+              }}
+            >
+              {renderMessage(msg)}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <div style={{
+              borderRadius: 12,
+              padding: 12,
+              background: "#f3f4f6",
+              color: "#6b7280",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}>
+              <span className="chat-dots">
+                <span></span><span></span><span></span>
+              </span>
+              <span>Thinking...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{
+          padding: "8px 16px",
+          background: "#fef2f2",
+          borderTop: "1px solid #fecaca",
+          color: "#b91c1c",
+          fontSize: 13,
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{
+        borderTop: "1px solid #e5e7eb",
+        padding: 16,
+      }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message... (Shift+Enter for new line)"
+            style={{
+              flex: 1,
+              resize: "none",
+              border: "1px solid #d1d5db",
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 14,
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+            rows={2}
+            disabled={loading}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || loading}
+            style={{
+              padding: "8px 20px",
+              background: !input.trim() || loading ? "#9ca3af" : "#2563eb",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              cursor: !input.trim() || loading ? "not-allowed" : "pointer",
+              fontWeight: 500,
+              fontSize: 14,
+            }}
+          >
+            Send
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        .chat-dots {
+          display: flex;
+          gap: 4px;
+        }
+        .chat-dots span {
+          width: 6px;
+          height: 6px;
+          background: #9ca3af;
+          border-radius: 50%;
+          animation: chat-bounce 1.4s infinite ease-in-out both;
+        }
+        .chat-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .chat-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes chat-bounce {
+          0%, 80%, 100% { transform: scale(0); }
+          40% { transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+}

@@ -175,6 +175,14 @@ export const createChatSessionSchema = z.object({
 
 export type CreateChatSessionInput = z.infer<typeof createChatSessionSchema>;
 
+// Planning session schema (no worktreePath required)
+export const createPlanningSessionSchema = z.object({
+  repoId: repoIdSchema,
+  localPath: z.string().min(1, "Local path is required"),
+});
+
+export type CreatePlanningSessionInput = z.infer<typeof createPlanningSessionSchema>;
+
 export const archiveChatSessionSchema = z.object({
   sessionId: z.string().uuid("Valid session ID is required"),
 });

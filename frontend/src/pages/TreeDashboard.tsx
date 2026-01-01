@@ -24,9 +24,10 @@ import {
 import { wsClient } from "../lib/ws";
 import BranchGraph from "../components/BranchGraph";
 import { TerminalPanel } from "../components/TerminalPanel";
-import { RequirementsPanel } from "../components/RequirementsPanel";
+import { ChatPanel } from "../components/ChatPanel";
 import { TaskCard } from "../components/TaskCard";
 import { DraggableTask, DroppableTreeNode } from "../components/DndComponents";
+import type { TaskSuggestion } from "../lib/task-parser";
 
 export default function TreeDashboard() {
   // Repo pins state
@@ -44,12 +45,10 @@ export default function TreeDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Workspace Phase: requirements → planning → execution
-  type WorkspacePhase = "requirements" | "planning" | "execution";
-  const [workspacePhase, setWorkspacePhase] = useState<WorkspacePhase>("requirements");
 
-  // Requirements Panel state (now always shown in requirements phase)
-  const [showRequirements, setShowRequirements] = useState(false);
+  // Planning Chat state
+  const [planningSessionId, setPlanningSessionId] = useState<string | null>(null);
+  const [planningSessionLoading, setPlanningSessionLoading] = useState(false);
 
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false);
@@ -122,6 +121,28 @@ export default function TreeDashboard() {
     };
   }, [snapshot?.repoId]);
 
+  // Create planning session when snapshot is loaded
+  useEffect(() => {
+    if (!snapshot?.repoId || !selectedPin?.localPath) {
+      return;
+    }
+    if (planningSessionId || planningSessionLoading) {
+      return;
+    }
+
+    setPlanningSessionLoading(true);
+    api.createPlanningSession(snapshot.repoId, selectedPin.localPath)
+      .then((session) => {
+        setPlanningSessionId(session.id);
+      })
+      .catch((err) => {
+        console.error("Failed to create planning session:", err);
+      })
+      .finally(() => {
+        setPlanningSessionLoading(false);
+      });
+  }, [snapshot?.repoId, selectedPin?.localPath, planningSessionId, planningSessionLoading]);
+
   const handleScan = useCallback(async (localPath: string) => {
     if (!localPath) return;
     setLoading(true);
@@ -173,22 +194,22 @@ export default function TreeDashboard() {
     }
   };
 
-  // Requirements panel handlers
-  const handleTasksExtracted = (tasks: { title: string; description?: string }[]) => {
-    // Add extracted tasks to backlog
-    const newNodes: TreeSpecNode[] = tasks.map((t) => ({
+  // Chat task suggestion handler
+  const handleChatTaskSuggested = (suggestion: TaskSuggestion) => {
+    const newNode: TreeSpecNode = {
       id: crypto.randomUUID(),
-      title: t.title,
-      description: t.description,
+      title: suggestion.label,
+      description: suggestion.description,
       status: "todo" as TaskStatus,
-    }));
-    setWizardNodes((prev) => [...prev, ...newNodes]);
-    // Auto-save after adding tasks
+    };
+    const updatedNodes = [...wizardNodes, newNode];
+    setWizardNodes(updatedNodes);
+    // Auto-save
     if (snapshot?.repoId) {
       api.updateTreeSpec({
         repoId: snapshot.repoId,
         baseBranch: wizardBaseBranch,
-        nodes: [...wizardNodes, ...newNodes],
+        nodes: updatedNodes,
         edges: wizardEdges,
       }).catch(console.error);
     }
@@ -343,7 +364,7 @@ export default function TreeDashboard() {
               loading={loading}
               compact
               isLocked={isLocked}
-              showClaudeButton={workspacePhase === "execution"}
+              showClaudeButton={true}
             />
           </DraggableTask>
         </DroppableTreeNode>
@@ -995,12 +1016,6 @@ export default function TreeDashboard() {
         {snapshot && (
           <div className="sidebar__section">
             <button
-              className="sidebar__btn sidebar__btn--primary"
-              onClick={() => setShowRequirements(true)}
-            >
-              📋 Requirements
-            </button>
-            <button
               className="sidebar__btn"
               onClick={handleOpenSettings}
             >
@@ -1053,57 +1068,6 @@ export default function TreeDashboard() {
       <main className="main-content">
         {error && <div className="dashboard__error">{error}</div>}
 
-        {/* Phase Control Bar */}
-        {snapshot && (
-          <div className="phase-bar">
-            <div className="phase-bar__steps">
-              <button
-                className={`phase-step ${workspacePhase === "requirements" ? "phase-step--active" : ""} ${workspacePhase !== "requirements" ? "phase-step--done" : ""}`}
-                onClick={() => setWorkspacePhase("requirements")}
-              >
-                <span className="phase-step__number">1</span>
-                <span className="phase-step__label">Requirements</span>
-              </button>
-              <div className="phase-arrow">→</div>
-              <button
-                className={`phase-step ${workspacePhase === "planning" ? "phase-step--active" : ""} ${workspacePhase === "execution" ? "phase-step--done" : ""}`}
-                onClick={() => setWorkspacePhase("planning")}
-              >
-                <span className="phase-step__number">2</span>
-                <span className="phase-step__label">Planning</span>
-              </button>
-              <div className="phase-arrow">→</div>
-              <button
-                className={`phase-step ${workspacePhase === "execution" ? "phase-step--active" : ""}`}
-                onClick={() => setWorkspacePhase("execution")}
-              >
-                <span className="phase-step__number">3</span>
-                <span className="phase-step__label">Execution</span>
-              </button>
-            </div>
-            <div className="phase-bar__actions">
-              {workspacePhase === "requirements" && (
-                <button
-                  className="phase-btn phase-btn--primary"
-                  onClick={() => {
-                    setShowRequirements(true);
-                  }}
-                >
-                  Open Requirements
-                </button>
-              )}
-              {workspacePhase === "planning" && wizardStatus === "confirmed" && (
-                <button
-                  className="phase-btn phase-btn--success"
-                  onClick={() => setWorkspacePhase("execution")}
-                >
-                  Start Development →
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Tree View */}
         {snapshot && (
           <div className="tree-view">
@@ -1144,10 +1108,10 @@ export default function TreeDashboard() {
                 </div>
               )}
 
-              {/* Task Tree Panel - Inline */}
-              <div className="panel panel--task-tree">
+              {/* Planning Panel - Chat + Task Tree */}
+              <div className="panel panel--planning">
                 <div className="panel__header">
-                  <h3>Task Tree</h3>
+                  <h3>Planning</h3>
                   <div className="panel__header-actions">
                     <span className={`status-badge status-badge--${wizardStatus}`}>
                       {wizardStatus}
@@ -1156,38 +1120,60 @@ export default function TreeDashboard() {
                   </div>
                 </div>
 
-                {/* Base Branch Selector */}
-                <div className="task-tree-panel__settings">
-                  <label>Base Branch:</label>
-                  <select
-                    value={wizardBaseBranch}
-                    onChange={(e) => setWizardBaseBranch(e.target.value)}
-                    disabled={isLocked}
-                  >
-                    {snapshot.branches.map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Add Task Form */}
-                {!isLocked && (
-                  <div className="task-tree-panel__add">
-                    <input
-                      type="text"
-                      placeholder="Task title..."
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddWizardTask()}
-                    />
-                    <button onClick={handleAddWizardTask} disabled={!newTaskTitle.trim()}>
-                      Add
-                    </button>
+                <div className="planning-panel__layout">
+                  {/* Left: Chat */}
+                  <div className="planning-panel__chat">
+                    {planningSessionId ? (
+                      <ChatPanel
+                        sessionId={planningSessionId}
+                        onTaskSuggested={handleChatTaskSuggested}
+                      />
+                    ) : planningSessionLoading ? (
+                      <div className="planning-chat-loading">
+                        <div className="spinner" />
+                        <span>Loading...</span>
+                      </div>
+                    ) : (
+                      <div className="planning-chat-placeholder">
+                        <span>Initializing chat...</span>
+                      </div>
+                    )}
                   </div>
-                )}
 
-                {/* D&D Task Tree */}
-                <DndContext
+                  {/* Right: Task Tree */}
+                  <div className="planning-panel__tree">
+                    {/* Base Branch Selector */}
+                    <div className="task-tree-panel__settings">
+                      <label>Base Branch:</label>
+                      <select
+                        value={wizardBaseBranch}
+                        onChange={(e) => setWizardBaseBranch(e.target.value)}
+                        disabled={isLocked}
+                      >
+                        {snapshot.branches.map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Add Task Form */}
+                    {!isLocked && (
+                      <div className="task-tree-panel__add">
+                        <input
+                          type="text"
+                          placeholder="Task title..."
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddWizardTask()}
+                        />
+                        <button onClick={handleAddWizardTask} disabled={!newTaskTitle.trim()}>
+                          Add
+                        </button>
+                      </div>
+                    )}
+
+                    {/* D&D Task Tree */}
+                    <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   onDragStart={handleDragStart}
@@ -1222,7 +1208,7 @@ export default function TreeDashboard() {
                               onConsult={handleConsultTask}
                               loading={loading}
                               isLocked={isLocked}
-                              showClaudeButton={workspacePhase === "execution"}
+                              showClaudeButton={true}
                             />
                           </DraggableTask>
                         ))}
@@ -1311,7 +1297,9 @@ export default function TreeDashboard() {
                     </button>
                   )}
                 </div>
-              </div>
+                  </div>{/* planning-panel__tree */}
+                </div>{/* planning-panel__layout */}
+              </div>{/* panel--planning */}
             </div>
 
             {/* Right: Details */}
@@ -1435,6 +1423,15 @@ export default function TreeDashboard() {
           </div>
         )}
 
+        {!snapshot && loading && (
+          <div className="loading-state">
+            <div className="loading-state__spinner">
+              <div className="spinner spinner--large" />
+            </div>
+            <p>Loading repository...</p>
+          </div>
+        )}
+
         {!snapshot && !loading && (
           <div className="empty-state">
             <h2>No repository selected</h2>
@@ -1442,24 +1439,6 @@ export default function TreeDashboard() {
           </div>
         )}
       </main>
-
-      {/* Requirements Panel (floating or integrated based on phase) */}
-      {showRequirements && snapshot && (
-        <div className="requirements-panel-container">
-          <RequirementsPanel
-            repoId={snapshot.repoId}
-            plan={plan}
-            onPlanUpdate={setPlan}
-            onTasksExtracted={handleTasksExtracted}
-          />
-          <button
-            className="requirements-panel-close"
-            onClick={() => setShowRequirements(false)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* Terminal Panel (floating) */}
       {showTerminal && terminalWorktreePath && snapshot && (
@@ -1775,6 +1754,26 @@ export default function TreeDashboard() {
           margin: 0;
           font-size: 14px;
         }
+        .loading-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 80px 20px;
+          color: #666;
+        }
+        .loading-state__spinner {
+          margin-bottom: 16px;
+        }
+        .loading-state p {
+          font-size: 14px;
+          margin: 0;
+        }
+        .spinner--large {
+          width: 48px;
+          height: 48px;
+          border-width: 4px;
+        }
 
         /* Tree view layout */
         .tree-view {
@@ -1832,8 +1831,38 @@ export default function TreeDashboard() {
         .panel--warnings {
           border-color: #f90;
         }
-        .panel--task-tree {
-          margin-top: 16px;
+        .panel--planning {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .panel--planning .panel__header {
+          flex-shrink: 0;
+        }
+        .planning-panel__layout {
+          flex: 1;
+          display: flex;
+          gap: 16px;
+          min-height: 0;
+          overflow: hidden;
+        }
+        .planning-panel__chat {
+          flex: 1;
+          min-width: 0;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .planning-panel__tree {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
         .task-tree-panel__settings {
           display: flex;
@@ -1879,26 +1908,32 @@ export default function TreeDashboard() {
           background: #ccc;
           cursor: not-allowed;
         }
+        .task-tree-panel__settings,
+        .task-tree-panel__add {
+          flex-shrink: 0;
+        }
         .task-tree-panel__content {
+          flex: 1;
           display: flex;
           gap: 16px;
-          min-height: 150px;
+          min-height: 0;
+          overflow: hidden;
         }
         .task-tree-panel__tree {
           flex: 2;
-          min-height: 100px;
           padding: 12px;
           background: #f8f9fa;
           border: 2px dashed #ddd;
           border-radius: 8px;
+          overflow-y: auto;
         }
         .task-tree-panel__backlog {
           flex: 1;
-          min-height: 100px;
           padding: 12px;
           background: #fff3e0;
           border: 2px dashed #ffcc80;
           border-radius: 8px;
+          overflow-y: auto;
         }
         .tree-label, .backlog-label {
           font-size: 12px;
@@ -1915,6 +1950,7 @@ export default function TreeDashboard() {
           padding: 20px;
         }
         .task-tree-panel__actions {
+          flex-shrink: 0;
           display: flex;
           gap: 8px;
           margin-top: 12px;
@@ -2381,38 +2417,17 @@ export default function TreeDashboard() {
           display: flex;
           gap: 4px;
         }
-        /* Requirements Panel Container */
-        .requirements-panel-container {
-          position: fixed;
-          right: 20px;
-          top: 80px;
-          width: 400px;
-          height: calc(100vh - 100px);
-          z-index: 1000;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-          border-radius: 8px;
-          overflow: hidden;
-        }
-        .requirements-panel-close {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          width: 28px;
-          height: 28px;
-          background: #f44336;
-          color: white;
-          border: none;
-          border-radius: 50%;
-          font-size: 14px;
-          cursor: pointer;
+        /* Planning Chat Loading */
+        .planning-chat-loading,
+        .planning-chat-placeholder {
+          flex: 1;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          z-index: 10;
-          transition: background 0.2s;
-        }
-        .requirements-panel-close:hover {
-          background: #d32f2f;
+          gap: 12px;
+          color: #666;
+          font-size: 14px;
         }
         /* Terminal Panel */
         .terminal-panel {
@@ -3214,98 +3229,17 @@ export default function TreeDashboard() {
         .btn-terminal:hover {
           background: #24283b;
         }
-        /* Phase Bar */
-        .phase-bar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 12px 20px;
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-          margin-bottom: 16px;
-        }
-        .phase-bar__steps {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .phase-step {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 16px;
-          background: #f5f5f5;
-          border: 2px solid transparent;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .phase-step:hover {
-          background: #eeeeee;
-        }
-        .phase-step--active {
-          background: #e3f2fd;
-          border-color: #2196f3;
-        }
-        .phase-step--active .phase-step__number {
-          background: #2196f3;
-          color: white;
-        }
-        .phase-step--done {
-          background: #e8f5e9;
-        }
-        .phase-step--done .phase-step__number {
-          background: #4caf50;
-          color: white;
-        }
-        .phase-step__number {
-          display: flex;
-          align-items: center;
-          justify-content: center;
+
+        .spinner {
           width: 24px;
           height: 24px;
-          background: #e0e0e0;
-          color: #757575;
+          border: 3px solid #e0e0e0;
+          border-top-color: #2196f3;
           border-radius: 50%;
-          font-size: 12px;
-          font-weight: 600;
+          animation: spin 1s linear infinite;
         }
-        .phase-step__label {
-          font-size: 13px;
-          font-weight: 500;
-          color: #333;
-        }
-        .phase-arrow {
-          color: #bdbdbd;
-          font-size: 16px;
-        }
-        .phase-bar__actions {
-          display: flex;
-          gap: 8px;
-        }
-        .phase-btn {
-          padding: 8px 16px;
-          border: none;
-          border-radius: 6px;
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .phase-btn--primary {
-          background: #2196f3;
-          color: white;
-        }
-        .phase-btn--primary:hover {
-          background: #1976d2;
-        }
-        .phase-btn--success {
-          background: #4caf50;
-          color: white;
-        }
-        .phase-btn--success:hover {
-          background: #388e3c;
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

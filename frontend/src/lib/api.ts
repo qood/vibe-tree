@@ -475,6 +475,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ repoId, worktreePath, planId }),
     }),
+  createPlanningSession: (repoId: string, localPath: string) =>
+    fetchJson<ChatSession>(`${API_BASE}/chat/sessions/planning`, {
+      method: "POST",
+      body: JSON.stringify({ repoId, localPath }),
+    }),
   archiveChatSession: (sessionId: string) =>
     fetchJson<{ success: boolean }>(`${API_BASE}/chat/sessions/archive`, {
       method: "POST",
