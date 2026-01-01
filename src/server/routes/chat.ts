@@ -609,7 +609,34 @@ ${gitStatus || "Clean working directory"}
 `);
   }
 
-  // 3. Plan if available
+  // 3. External links context
+  const links = await db
+    .select()
+    .from(schema.externalLinks)
+    .where(eq(schema.externalLinks.repoId, session.repoId));
+
+  if (links.length > 0) {
+    const linksContext = links
+      .filter((link) => link.contentCache)
+      .map((link) => {
+        const typeLabel = {
+          notion: "Notion",
+          figma: "Figma",
+          github_issue: "GitHub Issue",
+          github_pr: "GitHub PR",
+          url: "URL",
+        }[link.linkType] || link.linkType;
+        return `### ${link.title || typeLabel}\nSource: ${link.url}\n\n${link.contentCache}`;
+      });
+
+    if (linksContext.length > 0) {
+      parts.push(`## External References
+${linksContext.join("\n\n---\n\n")}
+`);
+    }
+  }
+
+  // 4. Plan if available
   if (session.planId) {
     const plans = await db
       .select()
@@ -623,7 +650,7 @@ ${plans[0].contentMd}
     }
   }
 
-  // 4. Memory: Latest summary + recent messages
+  // 5. Memory: Latest summary + recent messages
   const summaries = await db
     .select()
     .from(schema.chatSummaries)
@@ -652,7 +679,7 @@ ${recentMsgs.map((m) => `**${m.role}**: ${m.content.slice(0, 500)}${m.content.le
 `);
   }
 
-  // 5. User message
+  // 6. User message
   parts.push(`## User Request
 ${userMessage}`);
 

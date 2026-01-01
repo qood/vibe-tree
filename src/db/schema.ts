@@ -157,6 +157,31 @@ export const requirementsNotes = sqliteTable("requirements_notes", {
   updatedAt: text("updated_at").notNull(),
 });
 
+// External links (Notion, Figma, GitHub Issue, etc.)
+export const externalLinks = sqliteTable("external_links", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: text("repo_id").notNull(),
+  linkType: text("link_type").notNull(), // 'notion' | 'figma' | 'github_issue' | 'github_pr' | 'url'
+  url: text("url").notNull(),
+  title: text("title"), // extracted or user-provided title
+  contentCache: text("content_cache"), // cached content (markdown)
+  lastFetchedAt: text("last_fetched_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// Task instructions (per-branch memos)
+export const taskInstructions = sqliteTable("task_instructions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: text("repo_id").notNull(),
+  taskId: text("task_id").notNull(), // TreeSpecNode.id
+  branchName: text("branch_name"),
+  instructionMd: text("instruction_md").notNull(), // initial plan/instruction
+  abstractedRules: text("abstracted_rules"), // JSON: extracted patterns/rules
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // Agent runs (Claude Code実行ログ)
 export const agentRuns = sqliteTable("agent_runs", {
   id: integer("id").primaryKey({ autoIncrement: true }),

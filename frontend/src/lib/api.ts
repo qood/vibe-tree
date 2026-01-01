@@ -261,6 +261,21 @@ export interface RequirementsNote {
   updatedAt: string;
 }
 
+// External Links types
+export type ExternalLinkType = "notion" | "figma" | "github_issue" | "github_pr" | "url";
+
+export interface ExternalLink {
+  id: number;
+  repoId: string;
+  linkType: ExternalLinkType;
+  url: string;
+  title: string | null;
+  contentCache: string | null;
+  lastFetchedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -561,4 +576,26 @@ export const api = {
         body: JSON.stringify({ content }),
       }
     ),
+
+  // External Links
+  getExternalLinks: (repoId: string) =>
+    fetchJson<ExternalLink[]>(`${API_BASE}/external-links?repoId=${encodeURIComponent(repoId)}`),
+  addExternalLink: (repoId: string, url: string, title?: string) =>
+    fetchJson<ExternalLink>(`${API_BASE}/external-links`, {
+      method: "POST",
+      body: JSON.stringify({ repoId, url, title }),
+    }),
+  refreshExternalLink: (id: number) =>
+    fetchJson<ExternalLink>(`${API_BASE}/external-links/${id}/refresh`, {
+      method: "POST",
+    }),
+  updateExternalLink: (id: number, title: string) =>
+    fetchJson<ExternalLink>(`${API_BASE}/external-links/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  deleteExternalLink: (id: number) =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/external-links/${id}`, {
+      method: "DELETE",
+    }),
 };

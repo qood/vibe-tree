@@ -13,6 +13,7 @@ import { chatRouter } from "./routes/chat";
 import { branchRouter } from "./routes/branch";
 import { termRouter } from "./routes/term";
 import { requirementsRouter } from "./routes/requirements";
+import { externalLinksRouter } from "./routes/external-links";
 import { errorHandler } from "./middleware/error-handler";
 import { ptyManager } from "./pty-manager";
 import { handleWsMessage, addClient, removeClient, type WSClient } from "./ws";
@@ -56,6 +57,7 @@ app.route("/api/chat", chatRouter);
 app.route("/api/branch", branchRouter);
 app.route("/api/term", termRouter);
 app.route("/api/requirements", requirementsRouter);
+app.route("/api/external-links", externalLinksRouter);
 
 // 404 handler for API routes
 app.notFound((c) => {

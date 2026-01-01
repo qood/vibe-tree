@@ -20,6 +20,7 @@ import {
   type TaskStatus,
   type TreeSpecStatus,
   type BranchNamingRule,
+  type ExternalLink,
 } from "../lib/api";
 import { wsClient } from "../lib/ws";
 import BranchGraph from "../components/BranchGraph";
@@ -49,6 +50,11 @@ export default function TreeDashboard() {
   // Planning Chat state
   const [planningSessionId, setPlanningSessionId] = useState<string | null>(null);
   const [planningSessionLoading, setPlanningSessionLoading] = useState(false);
+
+  // External Links state
+  const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [addingLink, setAddingLink] = useState(false);
 
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false);
@@ -142,6 +148,50 @@ export default function TreeDashboard() {
         setPlanningSessionLoading(false);
       });
   }, [snapshot?.repoId, selectedPin?.localPath, planningSessionId, planningSessionLoading]);
+
+  // Load external links when snapshot is loaded
+  useEffect(() => {
+    if (!snapshot?.repoId) {
+      setExternalLinks([]);
+      return;
+    }
+    api.getExternalLinks(snapshot.repoId)
+      .then(setExternalLinks)
+      .catch(console.error);
+  }, [snapshot?.repoId]);
+
+  // External link handlers
+  const handleAddLink = async () => {
+    if (!newLinkUrl.trim() || !snapshot?.repoId || addingLink) return;
+    setAddingLink(true);
+    try {
+      const link = await api.addExternalLink(snapshot.repoId, newLinkUrl.trim());
+      setExternalLinks((prev) => [...prev, link]);
+      setNewLinkUrl("");
+    } catch (err) {
+      console.error("Failed to add link:", err);
+    } finally {
+      setAddingLink(false);
+    }
+  };
+
+  const handleRemoveLink = async (id: number) => {
+    try {
+      await api.deleteExternalLink(id);
+      setExternalLinks((prev) => prev.filter((l) => l.id !== id));
+    } catch (err) {
+      console.error("Failed to remove link:", err);
+    }
+  };
+
+  const handleRefreshLink = async (id: number) => {
+    try {
+      const updated = await api.refreshExternalLink(id);
+      setExternalLinks((prev) => prev.map((l) => (l.id === id ? updated : l)));
+    } catch (err) {
+      console.error("Failed to refresh link:", err);
+    }
+  };
 
   const handleScan = useCallback(async (localPath: string) => {
     if (!localPath) return;
@@ -1142,6 +1192,65 @@ export default function TreeDashboard() {
 
                   {/* Right: Task Tree */}
                   <div className="planning-panel__tree">
+                    {/* External Links */}
+                    <div className="external-links">
+                      <div className="external-links__header">
+                        <span className="external-links__title">External Links</span>
+                        <span className="external-links__count">{externalLinks.length}</span>
+                      </div>
+                      <div className="external-links__add">
+                        <input
+                          type="text"
+                          placeholder="Paste URL (Notion, Figma, GitHub Issue...)"
+                          value={newLinkUrl}
+                          onChange={(e) => setNewLinkUrl(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleAddLink()}
+                          disabled={addingLink}
+                        />
+                        <button onClick={handleAddLink} disabled={!newLinkUrl.trim() || addingLink}>
+                          {addingLink ? "..." : "+"}
+                        </button>
+                      </div>
+                      {externalLinks.length > 0 && (
+                        <div className="external-links__list">
+                          {externalLinks.map((link) => (
+                            <div key={link.id} className="external-link-item">
+                              <span className={`external-link-item__type external-link-item__type--${link.linkType}`}>
+                                {link.linkType === "notion" && "N"}
+                                {link.linkType === "figma" && "F"}
+                                {link.linkType === "github_issue" && "#"}
+                                {link.linkType === "github_pr" && "PR"}
+                                {link.linkType === "url" && "🔗"}
+                              </span>
+                              <a
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="external-link-item__title"
+                                title={link.url}
+                              >
+                                {link.title || link.url.slice(0, 40)}
+                              </a>
+                              <button
+                                className="external-link-item__refresh"
+                                onClick={() => handleRefreshLink(link.id)}
+                                title="Refresh content"
+                              >
+                                ↻
+                              </button>
+                              <button
+                                className="external-link-item__remove"
+                                onClick={() => handleRemoveLink(link.id)}
+                                title="Remove"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Base Branch Selector */}
                     <div className="task-tree-panel__settings">
                       <label>Base Branch:</label>
@@ -1863,6 +1972,120 @@ export default function TreeDashboard() {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+        }
+        /* External Links */
+        .external-links {
+          flex-shrink: 0;
+          margin-bottom: 12px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #eee;
+        }
+        .external-links__header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .external-links__title {
+          font-size: 12px;
+          font-weight: 600;
+          color: #666;
+        }
+        .external-links__count {
+          font-size: 11px;
+          background: #e0e0e0;
+          padding: 1px 6px;
+          border-radius: 10px;
+          color: #666;
+        }
+        .external-links__add {
+          display: flex;
+          gap: 6px;
+          margin-bottom: 8px;
+        }
+        .external-links__add input {
+          flex: 1;
+          padding: 6px 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 12px;
+        }
+        .external-links__add button {
+          padding: 6px 12px;
+          background: #2196f3;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 14px;
+          cursor: pointer;
+        }
+        .external-links__add button:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        .external-links__list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .external-link-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 8px;
+          background: #f5f5f5;
+          border-radius: 4px;
+          font-size: 12px;
+        }
+        .external-link-item__type {
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 600;
+          color: white;
+          flex-shrink: 0;
+        }
+        .external-link-item__type--notion { background: #000; }
+        .external-link-item__type--figma { background: #f24e1e; }
+        .external-link-item__type--github_issue { background: #238636; }
+        .external-link-item__type--github_pr { background: #8957e5; }
+        .external-link-item__type--url { background: #666; }
+        .external-link-item__title {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: #333;
+          text-decoration: none;
+        }
+        .external-link-item__title:hover {
+          text-decoration: underline;
+        }
+        .external-link-item__refresh,
+        .external-link-item__remove {
+          width: 20px;
+          height: 20px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          font-size: 12px;
+          color: #999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 3px;
+        }
+        .external-link-item__refresh:hover {
+          background: #e0e0e0;
+          color: #2196f3;
+        }
+        .external-link-item__remove:hover {
+          background: #ffebee;
+          color: #f44336;
         }
         .task-tree-panel__settings {
           display: flex;
