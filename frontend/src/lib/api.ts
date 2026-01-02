@@ -304,6 +304,18 @@ export interface PlanningSession {
   updatedAt: string;
 }
 
+// Task Instruction types
+export interface TaskInstruction {
+  id: number | null;
+  repoId: string;
+  taskId: string | null;
+  branchName: string | null;
+  instructionMd: string;
+  abstractedRules?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -530,10 +542,10 @@ export const api = {
     }),
   getChatMessages: (sessionId: string) =>
     fetchJson<ChatMessage[]>(`${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`),
-  sendChatMessage: (sessionId: string, userMessage: string) =>
+  sendChatMessage: (sessionId: string, userMessage: string, context?: string) =>
     fetchJson<{ assistantMessage: ChatMessage }>(`${API_BASE}/chat/send`, {
       method: "POST",
-      body: JSON.stringify({ sessionId, userMessage }),
+      body: JSON.stringify({ sessionId, userMessage, context }),
     }),
   summarizeChat: (sessionId: string) =>
     fetchJson<ChatSummary | { message: string }>(`${API_BASE}/chat/summarize`, {
@@ -659,4 +671,35 @@ export const api = {
     fetchJson<{ success: boolean }>(`${API_BASE}/planning-sessions/${id}`, {
       method: "DELETE",
     }),
+
+  // Task Instructions
+  getTaskInstruction: (repoId: string, branchName: string) =>
+    fetchJson<TaskInstruction>(
+      `${API_BASE}/instructions/task?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`
+    ),
+  updateTaskInstruction: (repoId: string, branchName: string, instructionMd: string) =>
+    fetchJson<TaskInstruction>(`${API_BASE}/instructions/task`, {
+      method: "PATCH",
+      body: JSON.stringify({ repoId, branchName, instructionMd }),
+    }),
+
+  // Worktree
+  createWorktree: (localPath: string, branchName: string) =>
+    fetchJson<{ worktreePath: string; branchName: string }>(
+      `${API_BASE}/branch/create-worktree`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, branchName }),
+      }
+    ),
+
+  // Checkout
+  checkout: (localPath: string, branchName: string) =>
+    fetchJson<{ success: boolean; branchName: string }>(
+      `${API_BASE}/branch/checkout`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, branchName }),
+      }
+    ),
 };
