@@ -69,43 +69,34 @@ chatRouter.get("/sessions", async (c) => {
   return c.json(sessions.map(toSession));
 });
 
-// POST /api/chat/sessions - Create or get existing session for worktree
+// POST /api/chat/sessions - Create or get existing session for branch
 chatRouter.post("/sessions", async (c) => {
   const body = await c.req.json();
   const input = validateOrThrow(createChatSessionSchema, body);
   const worktreePath = expandTilde(input.worktreePath);
+  const branchName = input.branchName;
 
-  // Check if session already exists for this worktree
+  // Check if session already exists for this branch (primary key is branchName, not worktreePath)
   const existing = await db
     .select()
     .from(schema.chatSessions)
     .where(
       and(
         eq(schema.chatSessions.repoId, input.repoId),
-        eq(schema.chatSessions.worktreePath, worktreePath),
+        eq(schema.chatSessions.branchName, branchName),
         eq(schema.chatSessions.status, "active")
       )
     );
 
   if (existing[0]) {
-    // Update lastUsedAt
+    // Update lastUsedAt and worktreePath (may have changed)
     const now = new Date().toISOString();
     await db
       .update(schema.chatSessions)
-      .set({ lastUsedAt: now, updatedAt: now })
+      .set({ lastUsedAt: now, updatedAt: now, worktreePath })
       .where(eq(schema.chatSessions.id, existing[0].id));
 
-    return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now }));
-  }
-
-  // Get current branch from git
-  let branchName: string | null = null;
-  try {
-    branchName = execSync(`cd "${worktreePath}" && git branch --show-current`, {
-      encoding: "utf-8",
-    }).trim() || null;
-  } catch {
-    // Ignore
+    return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now, worktreePath }));
   }
 
   // Create new session

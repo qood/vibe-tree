@@ -81,17 +81,15 @@ export function TaskDetailPanel({
     loadInstruction();
   }, [repoId, branchName]);
 
-  // Load existing chat session for this branch (always, even without workingPath)
+  // Load existing chat session for this branch
   useEffect(() => {
     const initChat = async () => {
       try {
         // Get existing sessions for this repo
         const sessions = await api.getChatSessions(repoId);
-        // Find session by branchName (primary) or effectivePath (fallback)
+        // Find session by branchName only (branch is the key)
         const existing = sessions.find(
           (s) => s.branchName === branchName && s.status === "active"
-        ) || sessions.find(
-          (s) => s.worktreePath === effectivePath && s.status === "active"
         );
 
         if (existing) {
@@ -107,8 +105,8 @@ export function TaskDetailPanel({
           }
           setEditStatuses(statuses);
         } else {
-          // Create new session using effectivePath (always available)
-          const newSession = await api.createChatSession(repoId, effectivePath);
+          // Create new session for this branch
+          const newSession = await api.createChatSession(repoId, effectivePath, branchName);
           setChatSessionId(newSession.id);
           setMessages([]);
           setEditStatuses(new Map());

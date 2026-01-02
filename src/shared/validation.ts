@@ -166,6 +166,7 @@ export type AiStopInput = z.infer<typeof aiStopSchema>;
 export const createChatSessionSchema = z.object({
   repoId: repoIdSchema,
   worktreePath: z.string().min(1, "Worktree path is required"),
+  branchName: z.string().min(1, "Branch name is required"),
   planId: z.number().int().positive().optional(),
 });
 

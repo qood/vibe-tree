@@ -527,10 +527,10 @@ export const api = {
   // Chat
   getChatSessions: (repoId: string) =>
     fetchJson<ChatSession[]>(`${API_BASE}/chat/sessions?repoId=${encodeURIComponent(repoId)}`),
-  createChatSession: (repoId: string, worktreePath: string, planId?: number) =>
+  createChatSession: (repoId: string, worktreePath: string, branchName: string, planId?: number) =>
     fetchJson<ChatSession>(`${API_BASE}/chat/sessions`, {
       method: "POST",
-      body: JSON.stringify({ repoId, worktreePath, planId }),
+      body: JSON.stringify({ repoId, worktreePath, branchName, planId }),
     }),
   createChatPlanningSession: (repoId: string, localPath: string) =>
     fetchJson<ChatSession>(`${API_BASE}/chat/sessions/planning`, {
