@@ -13,8 +13,6 @@ export interface Repo {
 
 export interface BranchNamingRule {
   pattern: string;
-  description: string;
-  examples: string[];
 }
 
 export interface ProjectRule {

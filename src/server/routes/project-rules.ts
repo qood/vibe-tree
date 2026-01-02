@@ -7,7 +7,6 @@ import {
   updateBranchNamingSchema,
   validateOrThrow,
 } from "../../shared/validation";
-import { NotFoundError } from "../middleware/error-handler";
 import type { BranchNamingRule } from "../../shared/types";
 
 export const projectRulesRouter = new Hono();
@@ -36,8 +35,6 @@ projectRulesRouter.get("/branch-naming", async (c) => {
       id: null,
       repoId: query.repoId,
       pattern: "feat_{issueId}_{taskSlug}",
-      description: "",
-      examples: [],
     });
   }
 
@@ -45,7 +42,7 @@ projectRulesRouter.get("/branch-naming", async (c) => {
   return c.json({
     id: rule.id,
     repoId: rule.repoId,
-    ...ruleData,
+    pattern: ruleData.pattern,
   });
 });
 
@@ -57,37 +54,52 @@ projectRulesRouter.post("/branch-naming", async (c) => {
   const now = new Date().toISOString();
   const ruleJson = JSON.stringify({
     pattern: input.pattern,
-    description: input.description,
-    examples: input.examples,
   });
 
-  // Update existing branch_naming rule
-  const result = await db
-    .update(schema.projectRules)
-    .set({
-      ruleJson,
-      updatedAt: now,
-    })
+  // Check if rule exists
+  const existing = await db
+    .select()
+    .from(schema.projectRules)
     .where(
       and(
         eq(schema.projectRules.repoId, input.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
         eq(schema.projectRules.isActive, true)
       )
-    )
-    .returning();
+    );
 
-  const updated = result[0];
-  if (!updated) {
-    throw new NotFoundError("Branch naming rule");
+  let ruleId: number;
+
+  if (existing[0]) {
+    // Update existing rule
+    await db
+      .update(schema.projectRules)
+      .set({
+        ruleJson,
+        updatedAt: now,
+      })
+      .where(eq(schema.projectRules.id, existing[0].id));
+    ruleId = existing[0].id;
+  } else {
+    // Create new rule
+    const result = await db
+      .insert(schema.projectRules)
+      .values({
+        repoId: input.repoId,
+        ruleType: "branch_naming",
+        ruleJson,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    ruleId = result[0]!.id;
   }
 
   const response = {
-    id: updated.id,
+    id: ruleId,
     repoId: input.repoId,
     pattern: input.pattern,
-    description: input.description,
-    examples: input.examples,
   };
 
   // Broadcast update

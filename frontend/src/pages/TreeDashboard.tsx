@@ -769,30 +769,7 @@ export default function TreeDashboard() {
           </div>
         )}
 
-        {/* Worktrees */}
-        {snapshot && snapshot.worktrees.length > 0 && (
-          <div className="sidebar__section">
-            <h3>Worktrees</h3>
-            <div className="sidebar__worktrees">
-              {snapshot.worktrees.map((wt) => (
-                <div
-                  key={wt.path}
-                  className={`sidebar__worktree ${wt.isActive ? "sidebar__worktree--active" : ""}`}
-                >
-                  <span className="sidebar__worktree-branch">{wt.branch}</span>
-                  <button
-                    className="sidebar__worktree-terminal"
-                    onClick={() => handleOpenTerminal(wt.path)}
-                    title="Open terminal"
-                  >
-                    ⌨
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </aside>
+              </aside>
 
       {/* Main Content */}
       <main className="main-content">

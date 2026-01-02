@@ -52,7 +52,7 @@ export default function SettingsPage() {
       })
       .catch((err) => {
         console.error(err);
-        setRule({ pattern: "feat_{issueId}_{taskSlug}", description: "", examples: [] });
+        setRule({ pattern: "feat_{issueId}_{taskSlug}" });
         setPattern("feat_{issueId}_{taskSlug}");
       });
   }, [selectedPinId, repoPins]);
@@ -67,8 +67,6 @@ export default function SettingsPage() {
       await api.updateBranchNaming({
         repoId: selectedPin.repoId,
         pattern,
-        description: "",
-        examples: [],
       });
 
       // Save default branch

@@ -13,8 +13,6 @@ export interface Repo {
 
 export interface BranchNamingRule {
   pattern: string;
-  description: string;
-  examples: string[];
 }
 
 export interface Plan {
@@ -345,12 +343,7 @@ export const api = {
     fetchJson<BranchNamingRule & { id: number; repoId: string }>(
       `${API_BASE}/project-rules/branch-naming?repoId=${encodeURIComponent(repoId)}`
     ),
-  updateBranchNaming: (data: {
-    repoId: string;
-    pattern: string;
-    description: string;
-    examples: string[];
-  }) =>
+  updateBranchNaming: (data: { repoId: string; pattern: string }) =>
     fetchJson<BranchNamingRule>(`${API_BASE}/project-rules/branch-naming`, {
       method: "POST",
       body: JSON.stringify(data),
