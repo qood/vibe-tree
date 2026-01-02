@@ -1016,3 +1016,125 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+/* Refresh button */
+.task-detail-panel__refresh-btn {
+  padding: 2px 6px;
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.task-detail-panel__refresh-btn:hover {
+  background: #374151;
+  color: #e5e7eb;
+}
+
+.task-detail-panel__refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* CI checks button (clickable) */
+button.task-detail-panel__link-checks {
+  cursor: pointer;
+  border: none;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+button.task-detail-panel__link-checks:hover {
+  opacity: 0.8;
+}
+
+/* CI Modal */
+.task-detail-panel__modal--ci {
+  min-width: 350px;
+  max-width: 500px;
+}
+
+.task-detail-panel__modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.task-detail-panel__modal-header h4 {
+  margin: 0;
+}
+
+.task-detail-panel__modal-close {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.task-detail-panel__modal-close:hover {
+  color: #e5e7eb;
+}
+
+.task-detail-panel__ci-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.task-detail-panel__ci-empty {
+  color: #6b7280;
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+}
+
+.task-detail-panel__ci-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #111827;
+  border-radius: 4px;
+}
+
+.task-detail-panel__ci-status {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__ci-status--success {
+  background: #065f46;
+  color: #34d399;
+}
+
+.task-detail-panel__ci-status--failure,
+.task-detail-panel__ci-status--error {
+  background: #7f1d1d;
+  color: #f87171;
+}
+
+.task-detail-panel__ci-status--pending,
+.task-detail-panel__ci-status--null {
+  background: #78350f;
+  color: #fbbf24;
+}
+
+.task-detail-panel__ci-name {
+  color: #e5e7eb;
+  font-size: 13px;
+  word-break: break-word;
+}

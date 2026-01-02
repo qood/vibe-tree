@@ -921,10 +921,17 @@ function extractGitHubPrUrls(text: string): Array<{ url: string; number: number 
 }
 
 // Helper: Fetch PR info from GitHub
+interface GitHubCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
 function fetchGitHubPRInfo(repoId: string, prNumber: number): {
   title: string;
   status: string;
   checksStatus: string;
+  checks: GitHubCheck[];
   labels: string[];
   reviewers: string[];
   projectStatus?: string;
@@ -936,15 +943,21 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
     ).trim();
     const data = JSON.parse(result);
 
-    // Determine checks status
+    // Extract individual checks
+    const checks: GitHubCheck[] = [];
     let checksStatus = "pending";
     if (data.statusCheckRollup && data.statusCheckRollup.length > 0) {
-      const hasFailure = data.statusCheckRollup.some((c: { conclusion: string }) =>
+      for (const c of data.statusCheckRollup) {
+        checks.push({
+          name: c.name || c.context || "Unknown",
+          status: c.status || "COMPLETED",
+          conclusion: c.conclusion || null,
+        });
+      }
+      const hasFailure = checks.some((c) =>
         c.conclusion === "FAILURE" || c.conclusion === "ERROR"
       );
-      const allSuccess = data.statusCheckRollup.every((c: { conclusion: string }) =>
-        c.conclusion === "SUCCESS"
-      );
+      const allSuccess = checks.every((c) => c.conclusion === "SUCCESS");
       if (hasFailure) checksStatus = "failure";
       else if (allSuccess) checksStatus = "success";
     }
@@ -977,6 +990,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
       title: data.title,
       status: data.state?.toLowerCase() || "open",
       checksStatus,
+      checks,
       labels: (data.labels || []).map((l: { name: string }) => l.name),
       reviewers,
       projectStatus,
@@ -1022,6 +1036,7 @@ async function savePrLink(
       title: prInfo?.title ?? null,
       status: prInfo?.status ?? "open",
       checksStatus: prInfo?.checksStatus ?? null,
+      checks: prInfo?.checks ? JSON.stringify(prInfo.checks) : null,
       labels: prInfo?.labels ? JSON.stringify(prInfo.labels) : null,
       reviewers: prInfo?.reviewers ? JSON.stringify(prInfo.reviewers) : null,
       projectStatus: prInfo?.projectStatus ?? null,

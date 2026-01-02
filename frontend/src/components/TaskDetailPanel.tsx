@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api, type TaskInstruction, type ChatMessage, type TreeNode, type InstructionEditStatus, type BranchLink } from "../lib/api";
+import { api, type TaskInstruction, type ChatMessage, type TreeNode, type InstructionEditStatus, type BranchLink, type GitHubCheck } from "../lib/api";
 import { wsClient } from "../lib/ws";
 import {
   extractInstructionEdit,
@@ -68,6 +68,8 @@ export function TaskDetailPanel({
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [deletingLinkId, setDeletingLinkId] = useState<number | null>(null);
   const [addingLink, setAddingLink] = useState(false);
+  const [showCIModal, setShowCIModal] = useState(false);
+  const [refreshingLink, setRefreshingLink] = useState<number | null>(null);
 
   // The working path is either the worktree path or localPath if checked out
   const workingPath = worktreePath || (checkedOut ? localPath : null);
@@ -93,18 +95,51 @@ export function TaskDetailPanel({
     loadInstruction();
   }, [repoId, branchName]);
 
-  // Load branch links
+  // Load branch links and refresh from GitHub
   useEffect(() => {
     const loadBranchLinks = async () => {
       try {
         const links = await api.getBranchLinks(repoId, branchName);
         setBranchLinks(links);
+        // Auto-refresh all links from GitHub when panel opens
+        for (const link of links) {
+          if (link.number) {
+            try {
+              const refreshed = await api.refreshBranchLink(link.id);
+              setBranchLinks((prev) =>
+                prev.map((l) => (l.id === refreshed.id ? refreshed : l))
+              );
+            } catch (err) {
+              console.error(`Failed to refresh link ${link.id}:`, err);
+            }
+          }
+        }
       } catch (err) {
         console.error("Failed to load branch links:", err);
       }
     };
     loadBranchLinks();
   }, [repoId, branchName]);
+
+  // Poll CI status for PRs every 30 seconds
+  useEffect(() => {
+    const pr = branchLinks.find((l) => l.linkType === "pr");
+    if (!pr?.number) return;
+
+    const pollCI = async () => {
+      try {
+        const refreshed = await api.refreshBranchLink(pr.id);
+        setBranchLinks((prev) =>
+          prev.map((l) => (l.id === refreshed.id ? refreshed : l))
+        );
+      } catch (err) {
+        console.error("Failed to poll CI:", err);
+      }
+    };
+
+    const interval = setInterval(pollCI, 30000);
+    return () => clearInterval(interval);
+  }, [branchLinks]);
 
   // Subscribe to branch link updates (for auto-linked PRs from chat)
   useEffect(() => {
@@ -119,8 +154,18 @@ export function TaskDetailPanel({
       }
     });
 
+    const unsubUpdated = wsClient.on("branchLink.updated", (msg) => {
+      const data = msg.data as BranchLink;
+      if (data.repoId === repoId && data.branchName === branchName) {
+        setBranchLinks((prev) =>
+          prev.map((l) => (l.id === data.id ? data : l))
+        );
+      }
+    });
+
     return () => {
       unsubCreated();
+      unsubUpdated();
     };
   }, [repoId, branchName]);
 
@@ -337,6 +382,20 @@ export function TaskDetailPanel({
       setDeletingLinkId(null);
     } catch (err) {
       setError((err as Error).message);
+    }
+  };
+
+  const handleRefreshLink = async (id: number) => {
+    setRefreshingLink(id);
+    try {
+      const refreshed = await api.refreshBranchLink(id);
+      setBranchLinks((prev) =>
+        prev.map((l) => (l.id === refreshed.id ? refreshed : l))
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRefreshingLink(null);
     }
   };
 
@@ -557,6 +616,9 @@ export function TaskDetailPanel({
           }
           const labels = pr.labels ? JSON.parse(pr.labels) as string[] : [];
           const reviewers = pr.reviewers ? JSON.parse(pr.reviewers) as string[] : [];
+          const checks: GitHubCheck[] = pr.checks ? JSON.parse(pr.checks) : [];
+          const passedChecks = checks.filter((c) => c.conclusion === "SUCCESS").length;
+          const totalChecks = checks.length;
           return (
             <div className="task-detail-panel__link-item task-detail-panel__link-item--detailed">
               <div className="task-detail-panel__link-main">
@@ -569,12 +631,25 @@ export function TaskDetailPanel({
                   {pr.number && <span className="task-detail-panel__link-number">#{pr.number}</span>}
                   {pr.title || (!pr.number && pr.url)}
                 </a>
+                <button
+                  className="task-detail-panel__refresh-btn"
+                  onClick={() => handleRefreshLink(pr.id)}
+                  disabled={refreshingLink === pr.id}
+                  title="Refresh from GitHub"
+                >
+                  {refreshingLink === pr.id ? "..." : "↻"}
+                </button>
               </div>
               <div className="task-detail-panel__link-meta">
-                {pr.checksStatus && (
-                  <span className={`task-detail-panel__link-checks task-detail-panel__link-checks--${pr.checksStatus}`}>
+                {totalChecks > 0 && (
+                  <button
+                    className={`task-detail-panel__link-checks task-detail-panel__link-checks--${pr.checksStatus}`}
+                    onClick={() => setShowCIModal(true)}
+                    title="View CI details"
+                  >
                     {pr.checksStatus === "success" ? "✓" : pr.checksStatus === "failure" ? "✗" : "●"}
-                  </span>
+                    {" "}{passedChecks}/{totalChecks}
+                  </button>
                 )}
                 {pr.status && pr.status !== "open" && (
                   <span className={`task-detail-panel__link-status task-detail-panel__link-status--${pr.status}`}>
@@ -806,6 +881,36 @@ export function TaskDetailPanel({
           </div>
         </div>
       )}
+
+      {/* CI Details Modal */}
+      {showCIModal && (() => {
+        const pr = branchLinks.find((l) => l.linkType === "pr");
+        const checks: GitHubCheck[] = pr?.checks ? JSON.parse(pr.checks) : [];
+        return (
+          <div className="task-detail-panel__modal-overlay" onClick={() => setShowCIModal(false)}>
+            <div className="task-detail-panel__modal task-detail-panel__modal--ci" onClick={(e) => e.stopPropagation()}>
+              <div className="task-detail-panel__modal-header">
+                <h4>CI Status</h4>
+                <button className="task-detail-panel__modal-close" onClick={() => setShowCIModal(false)}>×</button>
+              </div>
+              <div className="task-detail-panel__ci-list">
+                {checks.length === 0 ? (
+                  <p className="task-detail-panel__ci-empty">No checks found</p>
+                ) : (
+                  checks.map((check, i) => (
+                    <div key={i} className="task-detail-panel__ci-item">
+                      <span className={`task-detail-panel__ci-status task-detail-panel__ci-status--${check.conclusion?.toLowerCase() || "pending"}`}>
+                        {check.conclusion === "SUCCESS" ? "✓" : check.conclusion === "FAILURE" || check.conclusion === "ERROR" ? "✗" : "●"}
+                      </span>
+                      <span className="task-detail-panel__ci-name">{check.name}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

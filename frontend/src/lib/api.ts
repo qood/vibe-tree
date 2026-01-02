@@ -321,6 +321,12 @@ export interface TaskInstruction {
 // Branch Link types
 export type BranchLinkType = "issue" | "pr";
 
+export interface GitHubCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
 export interface BranchLink {
   id: number;
   repoId: string;
@@ -331,6 +337,7 @@ export interface BranchLink {
   title: string | null;
   status: string | null;
   checksStatus: string | null;
+  checks: string | null; // JSON array of GitHubCheck
   labels: string | null; // JSON array
   reviewers: string | null; // JSON array
   projectStatus: string | null;
@@ -759,5 +766,9 @@ export const api = {
   deleteBranchLink: (id: number) =>
     fetchJson<{ success: boolean }>(`${API_BASE}/branch-links/${id}`, {
       method: "DELETE",
+    }),
+  refreshBranchLink: (id: number) =>
+    fetchJson<BranchLink>(`${API_BASE}/branch-links/${id}/refresh`, {
+      method: "POST",
     }),
 };

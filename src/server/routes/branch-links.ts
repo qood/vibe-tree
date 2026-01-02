@@ -50,11 +50,18 @@ function fetchGitHubIssueInfo(repoId: string, issueNumber: number): GitHubIssueI
 }
 
 // Helper: Fetch PR info from GitHub
+interface GitHubCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
 interface GitHubPRInfo {
   number: number;
   title: string;
   status: string;
   checksStatus: string;
+  checks: GitHubCheck[];
   labels: string[];
   reviewers: string[];
   projectStatus?: string;
@@ -68,15 +75,21 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): GitHubPRInfo | nul
     ).trim();
     const data = JSON.parse(result);
 
-    // Determine checks status
+    // Extract individual checks
+    const checks: GitHubCheck[] = [];
     let checksStatus = "pending";
     if (data.statusCheckRollup && data.statusCheckRollup.length > 0) {
-      const hasFailure = data.statusCheckRollup.some((c: { conclusion: string }) =>
+      for (const c of data.statusCheckRollup) {
+        checks.push({
+          name: c.name || c.context || "Unknown",
+          status: c.status || "COMPLETED",
+          conclusion: c.conclusion || null,
+        });
+      }
+      const hasFailure = checks.some((c) =>
         c.conclusion === "FAILURE" || c.conclusion === "ERROR"
       );
-      const allSuccess = data.statusCheckRollup.every((c: { conclusion: string }) =>
-        c.conclusion === "SUCCESS"
-      );
+      const allSuccess = checks.every((c) => c.conclusion === "SUCCESS");
       if (hasFailure) checksStatus = "failure";
       else if (allSuccess) checksStatus = "success";
     }
@@ -110,6 +123,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): GitHubPRInfo | nul
       title: data.title,
       status: data.state?.toLowerCase() || "open",
       checksStatus,
+      checks,
       labels: (data.labels || []).map((l: { name: string }) => l.name),
       reviewers,
       projectStatus,
@@ -210,6 +224,7 @@ branchLinksRouter.post("/", async (c) => {
   let title = input.title ?? null;
   let status = input.status ?? null;
   let checksStatus: string | null = null;
+  let checks: string | null = null;
   let labels: string | null = null;
   let reviewers: string | null = null;
   let projectStatus: string | null = null;
@@ -229,6 +244,7 @@ branchLinksRouter.post("/", async (c) => {
         title = prInfo.title;
         status = prInfo.status;
         checksStatus = prInfo.checksStatus;
+        checks = JSON.stringify(prInfo.checks);
         labels = JSON.stringify(prInfo.labels);
         reviewers = JSON.stringify(prInfo.reviewers);
         projectStatus = prInfo.projectStatus ?? null;
@@ -247,6 +263,7 @@ branchLinksRouter.post("/", async (c) => {
       title,
       status,
       checksStatus,
+      checks,
       labels,
       reviewers,
       projectStatus,
@@ -339,4 +356,83 @@ branchLinksRouter.delete("/:id", async (c) => {
   });
 
   return c.json({ success: true });
+});
+
+// POST /api/branch-links/:id/refresh - Re-fetch data from GitHub
+branchLinksRouter.post("/:id/refresh", async (c) => {
+  const id = parseInt(c.req.param("id"), 10);
+  if (isNaN(id)) {
+    throw new BadRequestError("Invalid id");
+  }
+
+  const [existing] = await db
+    .select()
+    .from(schema.branchLinks)
+    .where(eq(schema.branchLinks.id, id))
+    .limit(1);
+
+  if (!existing) {
+    throw new NotFoundError("Branch link not found");
+  }
+
+  if (!existing.number) {
+    throw new BadRequestError("Cannot refresh link without number");
+  }
+
+  const now = new Date().toISOString();
+  let title = existing.title;
+  let status = existing.status;
+  let checksStatus = existing.checksStatus;
+  let checks = existing.checks;
+  let labels = existing.labels;
+  let reviewers = existing.reviewers;
+  let projectStatus = existing.projectStatus;
+
+  if (existing.linkType === "issue") {
+    const issueInfo = fetchGitHubIssueInfo(existing.repoId, existing.number);
+    if (issueInfo) {
+      title = issueInfo.title;
+      status = issueInfo.status;
+      labels = JSON.stringify(issueInfo.labels);
+      projectStatus = issueInfo.projectStatus ?? null;
+    }
+  } else if (existing.linkType === "pr") {
+    const prInfo = fetchGitHubPRInfo(existing.repoId, existing.number);
+    if (prInfo) {
+      title = prInfo.title;
+      status = prInfo.status;
+      checksStatus = prInfo.checksStatus;
+      checks = JSON.stringify(prInfo.checks);
+      labels = JSON.stringify(prInfo.labels);
+      reviewers = JSON.stringify(prInfo.reviewers);
+      projectStatus = prInfo.projectStatus ?? null;
+    }
+  }
+
+  await db
+    .update(schema.branchLinks)
+    .set({
+      title,
+      status,
+      checksStatus,
+      checks,
+      labels,
+      reviewers,
+      projectStatus,
+      updatedAt: now,
+    })
+    .where(eq(schema.branchLinks.id, id));
+
+  const [updated] = await db
+    .select()
+    .from(schema.branchLinks)
+    .where(eq(schema.branchLinks.id, id));
+
+  broadcast({
+    type: "branchLink.updated",
+    repoId: existing.repoId,
+    data: updated,
+  });
+
+  return c.json(updated);
 });

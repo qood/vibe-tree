@@ -224,6 +224,7 @@ export const branchLinks = sqliteTable("branch_links", {
   title: text("title"), // Issue or PR title
   status: text("status"), // 'open' | 'merged' | 'closed'
   checksStatus: text("checks_status"), // PR: 'pending' | 'success' | 'failure'
+  checks: text("checks"), // JSON array of individual checks [{name, status, conclusion}]
   labels: text("labels"), // JSON array of label names
   reviewers: text("reviewers"), // JSON array of reviewer logins
   projectStatus: text("project_status"), // GitHub Projects status
