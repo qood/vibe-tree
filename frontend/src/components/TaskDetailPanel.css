@@ -141,6 +141,200 @@
   cursor: not-allowed;
 }
 
+/* Branch Links Section */
+.task-detail-panel__links-section {
+  padding: 8px 16px;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__links-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.task-detail-panel__links-header h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.task-detail-panel__add-link-btn {
+  padding: 2px 8px;
+  background: transparent;
+  color: #60a5fa;
+  border: 1px solid #60a5fa;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.task-detail-panel__add-link-btn:hover {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.task-detail-panel__add-link-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.task-detail-panel__link-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: #0f172a;
+  color: #e5e7eb;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+}
+
+.task-detail-panel__link-input:focus {
+  border-color: #3b82f6;
+}
+
+.task-detail-panel__add-link-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-detail-panel__link-save-btn {
+  padding: 4px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.task-detail-panel__link-save-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.task-detail-panel__link-save-btn:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__link-cancel-btn {
+  padding: 4px 12px;
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.task-detail-panel__link-cancel-btn:hover {
+  background: #374151;
+}
+
+.task-detail-panel__links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-detail-panel__link-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #1f2937;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.task-detail-panel__link-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__link-badge--commit {
+  background: #1e3a5f;
+  color: #60a5fa;
+}
+
+.task-detail-panel__link-badge--pr {
+  background: #14532d;
+  color: #4ade80;
+}
+
+.task-detail-panel__link-url {
+  flex: 1;
+  color: #e5e7eb;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-panel__link-url:hover {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+.task-detail-panel__link-number {
+  color: #9ca3af;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__link-status {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__link-status--open {
+  background: #422006;
+  color: #fbbf24;
+}
+
+.task-detail-panel__link-status--merged {
+  background: #581c87;
+  color: #c084fc;
+}
+
+.task-detail-panel__link-status--closed {
+  background: #7f1d1d;
+  color: #f87171;
+}
+
+.task-detail-panel__link-delete-btn {
+  padding: 0 4px;
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__link-delete-btn:hover {
+  color: #f87171;
+}
+
+.task-detail-panel__no-links {
+  color: #6b7280;
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* Instruction Section - Fixed at top */
 .task-detail-panel__instruction-section {
   padding: 12px 16px;
@@ -421,6 +615,16 @@
   font-family: inherit;
 }
 
+.task-detail-panel__message-content a.message-link {
+  color: #60a5fa;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.task-detail-panel__message-content a.message-link:hover {
+  color: #93c5fd;
+}
+
 .task-detail-panel__chat-input {
   display: flex;
   gap: 8px;
@@ -630,4 +834,185 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* Detailed Link Item Styles (Issue/PR) */
+.task-detail-panel__link-item--detailed {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.task-detail-panel__link-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-detail-panel__link-main .task-detail-panel__link-url {
+  flex: 1;
+}
+
+.task-detail-panel__link-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+/* CI Checks Status - GitHub style */
+.task-detail-panel__link-checks {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__link-checks--success {
+  background: #238636;
+  color: #fff;
+}
+
+.task-detail-panel__link-checks--failure {
+  background: #da3633;
+  color: #fff;
+}
+
+.task-detail-panel__link-checks--pending {
+  background: #9e6a03;
+  color: #fff;
+}
+
+/* Project Status */
+.task-detail-panel__link-project {
+  padding: 2px 6px;
+  background: #1e3a5f;
+  color: #60a5fa;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* Labels */
+.task-detail-panel__link-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.task-detail-panel__link-label {
+  padding: 2px 6px;
+  background: #374151;
+  color: #d1d5db;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+/* Reviewers */
+.task-detail-panel__link-reviewers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.task-detail-panel__link-reviewer {
+  padding: 2px 6px;
+  background: #581c87;
+  color: #c084fc;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.task-detail-panel__link-reviewer--none {
+  background: #374151;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Delete Confirmation Modal */
+.task-detail-panel__modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.task-detail-panel__modal {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 300px;
+  max-width: 400px;
+}
+
+.task-detail-panel__modal h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #f3f4f6;
+}
+
+.task-detail-panel__modal p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.task-detail-panel__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.task-detail-panel__modal-cancel {
+  padding: 8px 16px;
+  background: #374151;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.task-detail-panel__modal-cancel:hover {
+  background: #4b5563;
+}
+
+.task-detail-panel__modal-confirm {
+  padding: 8px 16px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.task-detail-panel__modal-confirm:hover {
+  background: #b91c1c;
+}
+
+/* Streaming indicator */
+.task-detail-panel__streaming-indicator {
+  color: #3b82f6;
+  font-size: 11px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

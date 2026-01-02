@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api, type TaskInstruction, type ChatMessage, type TreeNode, type InstructionEditStatus } from "../lib/api";
+import { api, type TaskInstruction, type ChatMessage, type TreeNode, type InstructionEditStatus, type BranchLink } from "../lib/api";
+import { wsClient } from "../lib/ws";
 import {
   extractInstructionEdit,
   removeInstructionEditTags,
   computeSimpleDiff,
 } from "../lib/instruction-parser";
+import { linkifyPreContent } from "../lib/linkify";
 import "./TaskDetailPanel.css";
 
 interface TaskDetailPanelProps {
@@ -42,6 +44,9 @@ export function TaskDetailPanel({
   // Track instruction edit statuses (loaded from DB + local updates)
   const [editStatuses, setEditStatuses] = useState<Map<number, InstructionEditStatus>>(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Streaming state
+  const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [streamingMode, setStreamingMode] = useState<"planning" | "execution" | null>(null);
 
   // Worktree state
   const [creatingWorktree, setCreatingWorktree] = useState(false);
@@ -56,6 +61,13 @@ export function TaskDetailPanel({
 
   // Checkout state - track if we checked out to this branch
   const [checkedOut, setCheckedOut] = useState(false);
+
+  // Branch links state
+  const [branchLinks, setBranchLinks] = useState<BranchLink[]>([]);
+  const [addingLinkType, setAddingLinkType] = useState<"issue" | "pr" | null>(null);
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [deletingLinkId, setDeletingLinkId] = useState<number | null>(null);
+  const [addingLink, setAddingLink] = useState(false);
 
   // The working path is either the worktree path or localPath if checked out
   const workingPath = worktreePath || (checkedOut ? localPath : null);
@@ -79,6 +91,37 @@ export function TaskDetailPanel({
       }
     };
     loadInstruction();
+  }, [repoId, branchName]);
+
+  // Load branch links
+  useEffect(() => {
+    const loadBranchLinks = async () => {
+      try {
+        const links = await api.getBranchLinks(repoId, branchName);
+        setBranchLinks(links);
+      } catch (err) {
+        console.error("Failed to load branch links:", err);
+      }
+    };
+    loadBranchLinks();
+  }, [repoId, branchName]);
+
+  // Subscribe to branch link updates (for auto-linked PRs from chat)
+  useEffect(() => {
+    const unsubCreated = wsClient.on("branchLink.created", (msg) => {
+      const data = msg.data as BranchLink;
+      if (data.repoId === repoId && data.branchName === branchName) {
+        setBranchLinks((prev) => {
+          // Avoid duplicates
+          if (prev.some((l) => l.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+      }
+    });
+
+    return () => {
+      unsubCreated();
+    };
   }, [repoId, branchName]);
 
   // Load existing chat session for this branch
@@ -118,15 +161,47 @@ export function TaskDetailPanel({
     initChat();
   }, [repoId, effectivePath, branchName]);
 
-  // Track if we should use smooth scroll (only for new messages)
-  const useSmoothScroll = useRef(false);
-
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or streaming content updates
   useEffect(() => {
-    if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: useSmoothScroll.current ? "smooth" : "instant" });
+    if (messages.length > 0 || streamingContent) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
     }
-  }, [messages]);
+  }, [messages, streamingContent]);
+
+  // Subscribe to streaming events
+  useEffect(() => {
+    if (!chatSessionId) return;
+
+    const unsubStart = wsClient.on("chat.streaming.start", (msg) => {
+      const data = msg.data as { sessionId: string; chatMode?: string };
+      if (data.sessionId === chatSessionId) {
+        setStreamingContent("");
+        setStreamingMode((data.chatMode as "planning" | "execution") || "planning");
+      }
+    });
+
+    const unsubChunk = wsClient.on("chat.streaming.chunk", (msg) => {
+      const data = msg.data as { sessionId: string; accumulated: string };
+      if (data.sessionId === chatSessionId) {
+        setStreamingContent(data.accumulated);
+      }
+    });
+
+    const unsubEnd = wsClient.on("chat.streaming.end", (msg) => {
+      const data = msg.data as { sessionId: string; message: ChatMessage };
+      if (data.sessionId === chatSessionId) {
+        setStreamingContent(null);
+        setStreamingMode(null);
+        // The message will be added when the API response returns
+      }
+    });
+
+    return () => {
+      unsubStart();
+      unsubChunk();
+      unsubEnd();
+    };
+  }, [chatSessionId]);
 
   // Handle resize drag
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -222,12 +297,54 @@ export function TaskDetailPanel({
     }
   };
 
+  const handleAddBranchLink = async (linkType: "issue" | "pr") => {
+    if (!newLinkUrl.trim() || addingLink) return;
+    setAddingLink(true);
+    try {
+      const url = newLinkUrl.trim();
+
+      // Extract number from URL
+      let number: number | undefined;
+      if (linkType === "pr") {
+        const match = url.match(/\/pull\/(\d+)/);
+        if (match) number = parseInt(match[1], 10);
+      } else {
+        const match = url.match(/\/issues\/(\d+)/);
+        if (match) number = parseInt(match[1], 10);
+      }
+
+      await api.createBranchLink({
+        repoId,
+        branchName,
+        linkType,
+        url,
+        number,
+      });
+      // State will be updated via WebSocket branchLink.created event
+      setNewLinkUrl("");
+      setAddingLinkType(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAddingLink(false);
+    }
+  };
+
+  const handleDeleteBranchLink = async (id: number) => {
+    try {
+      await api.deleteBranchLink(id);
+      setBranchLinks((prev) => prev.filter((l) => l.id !== id));
+      setDeletingLinkId(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const handleSendMessage = useCallback(async () => {
     if (!chatSessionId || !chatInput.trim() || chatLoading) return;
     const userMessage = chatInput.trim();
     setChatInput("");
     setChatLoading(true);
-    useSmoothScroll.current = true; // Enable smooth scroll for new messages
 
     // Optimistically add user message
     const tempUserMsg: ChatMessage = {
@@ -245,8 +362,13 @@ export function TaskDetailPanel({
       const context = instruction?.instructionMd
         ? `[Task Instruction]\n${instruction.instructionMd}\n\n[Mode: ${chatMode}]`
         : `[Mode: ${chatMode}]`;
-      const { assistantMessage } = await api.sendChatMessage(chatSessionId, userMessage, context, chatMode);
-      setMessages((prev) => [...prev, assistantMessage]);
+      const result = await api.sendChatMessage(chatSessionId, userMessage, context, chatMode);
+      // Replace temp user message with saved one, add assistant message
+      setMessages((prev) => [
+        ...prev.slice(0, -1), // Remove temp user message
+        result.userMessage,
+        result.assistantMessage,
+      ]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -319,6 +441,169 @@ export function TaskDetailPanel({
             </button>
           </div>
         )}
+      </div>
+
+      {/* Issue Section */}
+      <div className="task-detail-panel__links-section">
+        <div className="task-detail-panel__links-header">
+          <h4>Issue</h4>
+          {addingLinkType !== "issue" && (
+            <button
+              className="task-detail-panel__add-link-btn"
+              onClick={() => setAddingLinkType("issue")}
+            >
+              + Add
+            </button>
+          )}
+        </div>
+        {addingLinkType === "issue" && (
+          <div className="task-detail-panel__add-link-form">
+            <input
+              type="text"
+              className="task-detail-panel__link-input"
+              value={newLinkUrl}
+              onChange={(e) => setNewLinkUrl(e.target.value)}
+              placeholder="Paste GitHub Issue URL..."
+              disabled={addingLink}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && !addingLink) {
+                  e.preventDefault();
+                  handleAddBranchLink("issue");
+                } else if (e.key === "Escape" && !addingLink) {
+                  setAddingLinkType(null);
+                  setNewLinkUrl("");
+                }
+              }}
+              autoFocus
+            />
+            <div className="task-detail-panel__add-link-actions">
+              <button
+                className="task-detail-panel__link-save-btn"
+                onClick={() => handleAddBranchLink("issue")}
+                disabled={!newLinkUrl.trim() || addingLink}
+              >
+                {addingLink ? "Adding..." : "Add"}
+              </button>
+              <button
+                className="task-detail-panel__link-cancel-btn"
+                onClick={() => {
+                  setAddingLinkType(null);
+                  setNewLinkUrl("");
+                }}
+                disabled={addingLink}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {(() => {
+          const issues = branchLinks.filter((l) => l.linkType === "issue");
+          return issues.length > 0 ? (
+            <div className="task-detail-panel__links-list">
+              {issues.map((link) => {
+                const labels = link.labels ? JSON.parse(link.labels) as string[] : [];
+                return (
+                  <div key={link.id} className="task-detail-panel__link-item task-detail-panel__link-item--detailed">
+                    <div className="task-detail-panel__link-main">
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="task-detail-panel__link-url"
+                      >
+                        {link.number && <span className="task-detail-panel__link-number">#{link.number}</span>}
+                        {link.title || (!link.number && link.url)}
+                      </a>
+                      <button
+                        className="task-detail-panel__link-delete-btn"
+                        onClick={() => setDeletingLinkId(link.id)}
+                        title="Remove link"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="task-detail-panel__link-meta">
+                      {link.projectStatus && (
+                        <span className="task-detail-panel__link-project">{link.projectStatus}</span>
+                      )}
+                      {labels.length > 0 && (
+                        <span className="task-detail-panel__link-labels">
+                          {labels.map((l, i) => (
+                            <span key={i} className="task-detail-panel__link-label">{l}</span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : addingLinkType !== "issue" ? (
+            <div className="task-detail-panel__no-links">No issue linked</div>
+          ) : null;
+        })()}
+      </div>
+
+      {/* PR Section - Auto-linked only, no manual add/delete */}
+      <div className="task-detail-panel__links-section">
+        <div className="task-detail-panel__links-header">
+          <h4>PR</h4>
+        </div>
+        {(() => {
+          const pr = branchLinks.find((l) => l.linkType === "pr");
+          if (!pr) {
+            return <div className="task-detail-panel__no-links">No PR linked</div>;
+          }
+          const labels = pr.labels ? JSON.parse(pr.labels) as string[] : [];
+          const reviewers = pr.reviewers ? JSON.parse(pr.reviewers) as string[] : [];
+          return (
+            <div className="task-detail-panel__link-item task-detail-panel__link-item--detailed">
+              <div className="task-detail-panel__link-main">
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="task-detail-panel__link-url"
+                >
+                  {pr.number && <span className="task-detail-panel__link-number">#{pr.number}</span>}
+                  {pr.title || (!pr.number && pr.url)}
+                </a>
+              </div>
+              <div className="task-detail-panel__link-meta">
+                {pr.checksStatus && (
+                  <span className={`task-detail-panel__link-checks task-detail-panel__link-checks--${pr.checksStatus}`}>
+                    {pr.checksStatus === "success" ? "✓" : pr.checksStatus === "failure" ? "✗" : "●"}
+                  </span>
+                )}
+                {pr.status && pr.status !== "open" && (
+                  <span className={`task-detail-panel__link-status task-detail-panel__link-status--${pr.status}`}>
+                    {pr.status}
+                  </span>
+                )}
+                {pr.projectStatus && (
+                  <span className="task-detail-panel__link-project">{pr.projectStatus}</span>
+                )}
+                {labels.length > 0 && (
+                  <span className="task-detail-panel__link-labels">
+                    {labels.map((l, i) => (
+                      <span key={i} className="task-detail-panel__link-label">{l}</span>
+                    ))}
+                  </span>
+                )}
+                <span className="task-detail-panel__link-reviewers">
+                  {reviewers.length > 0 ? (
+                    reviewers.map((r, i) => (
+                      <span key={i} className="task-detail-panel__link-reviewer">@{r}</span>
+                    ))
+                  ) : (
+                    <span className="task-detail-panel__link-reviewer task-detail-panel__link-reviewer--none">No Reviewers</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Instruction Section */}
@@ -399,7 +684,7 @@ export function TaskDetailPanel({
               const instructionEdit = msg.role === "assistant" ? extractInstructionEdit(msg.content) : null;
               const displayContent = instructionEdit ? removeInstructionEditTags(msg.content) : msg.content;
               const editStatus = editStatuses.get(msg.id);
-              const msgMode = msg.chatMode || chatMode; // Fallback to current mode if not saved
+              const msgMode = msg.chatMode || "planning"; // Fallback to planning for old messages
 
               return (
                 <div
@@ -410,7 +695,7 @@ export function TaskDetailPanel({
                     {msg.role === "user" ? "USER" : "ASSISTANT"} - {msgMode === "planning" ? "Planning" : "Execution"}
                   </div>
                   <div className="task-detail-panel__message-content">
-                    {displayContent && <pre>{displayContent}</pre>}
+                    {displayContent && <pre>{linkifyPreContent(displayContent)}</pre>}
                     {instructionEdit && (
                       <div className={`task-detail-panel__instruction-edit-proposal ${editStatus === "rejected" ? "task-detail-panel__instruction-edit-proposal--rejected" : ""}`}>
                         <div className="task-detail-panel__diff-header">
@@ -460,12 +745,19 @@ export function TaskDetailPanel({
                 </div>
               );
             })}
-            {chatLoading && (
+            {(chatLoading || streamingContent !== null) && (
               <div className="task-detail-panel__message task-detail-panel__message--loading">
                 <div className="task-detail-panel__message-role">
-                  ASSISTANT - {chatMode === "planning" ? "Planning" : "Execution"}
+                  ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}
+                  {streamingContent !== null && <span className="task-detail-panel__streaming-indicator"> (Streaming...)</span>}
                 </div>
-                <div className="task-detail-panel__message-content">Thinking...</div>
+                <div className="task-detail-panel__message-content">
+                  {streamingContent !== null && streamingContent.length > 0 ? (
+                    <pre>{linkifyPreContent(streamingContent)}</pre>
+                  ) : (
+                    "Thinking..."
+                  )}
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -490,6 +782,30 @@ export function TaskDetailPanel({
             </button>
           </div>
         </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingLinkId !== null && (
+        <div className="task-detail-panel__modal-overlay" onClick={() => setDeletingLinkId(null)}>
+          <div className="task-detail-panel__modal" onClick={(e) => e.stopPropagation()}>
+            <h4>Issue を削除しますか？</h4>
+            <p>この操作は取り消せません。</p>
+            <div className="task-detail-panel__modal-actions">
+              <button
+                className="task-detail-panel__modal-cancel"
+                onClick={() => setDeletingLinkId(null)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="task-detail-panel__modal-confirm"
+                onClick={() => handleDeleteBranchLink(deletingLinkId)}
+              >
+                削除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

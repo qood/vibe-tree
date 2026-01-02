@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import type { TreeNode, TreeEdge, TaskNode, TaskEdge } from "../lib/api";
 
 interface BranchGraphProps {
@@ -11,6 +11,17 @@ interface BranchGraphProps {
   tentativeNodes?: TaskNode[];
   tentativeEdges?: TaskEdge[];
   tentativeBaseBranch?: string;
+  // Edge creation - only works when editMode is true
+  editMode?: boolean;
+  onEdgeCreate?: (parentBranch: string, childBranch: string) => void;
+}
+
+interface DragState {
+  fromBranch: string;
+  fromX: number;
+  fromY: number;
+  currentX: number;
+  currentY: number;
 }
 
 interface LayoutNode {
@@ -61,7 +72,58 @@ export default function BranchGraph({
   tentativeNodes = [],
   tentativeEdges = [],
   tentativeBaseBranch,
+  editMode = false,
+  onEdgeCreate,
 }: BranchGraphProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  // Get SVG coordinates from mouse event
+  const getSVGCoords = useCallback((e: React.MouseEvent | MouseEvent) => {
+    if (!svgRef.current) return { x: 0, y: 0 };
+    const svg = svgRef.current;
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }, []);
+
+  // Handle drag start from node handle
+  const handleDragStart = useCallback((branchName: string, handleX: number, handleY: number) => {
+    setDragState({
+      fromBranch: branchName,
+      fromX: handleX,
+      fromY: handleY,
+      currentX: handleX,
+      currentY: handleY,
+    });
+  }, []);
+
+  // Handle drag move
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragState) return;
+    const coords = getSVGCoords(e);
+    setDragState((prev) => prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null);
+  }, [dragState, getSVGCoords]);
+
+  // Handle drag end
+  const handleMouseUp = useCallback(() => {
+    if (dragState && dropTarget && dropTarget !== dragState.fromBranch) {
+      // Create edge: dragState.fromBranch becomes parent of dropTarget
+      onEdgeCreate?.(dragState.fromBranch, dropTarget);
+    }
+    setDragState(null);
+    setDropTarget(null);
+  }, [dragState, dropTarget, onEdgeCreate]);
+
+  // Handle mouse leave SVG
+  const handleMouseLeave = useCallback(() => {
+    setDragState(null);
+    setDropTarget(null);
+  }, []);
+
   const { layoutNodes, layoutEdges, width, height } = useMemo(() => {
     if (nodes.length === 0 && tentativeNodes.length === 0) {
       return { layoutNodes: [], layoutEdges: [], width: 400, height: 200 };
@@ -317,6 +379,8 @@ export default function BranchGraph({
     const isDefault = id === defaultBranch;
     const hasWorktree = !!node.worktree;
     const hasPR = !!node.pr;
+    const isDragging = dragState?.fromBranch === id;
+    const isDropTarget = dropTarget === id && dragState && dragState.fromBranch !== id;
 
     // Determine node color (dark mode)
     let fillColor = "#1f2937";
@@ -348,18 +412,36 @@ export default function BranchGraph({
       strokeColor = "#3b82f6";
     }
 
+    // Highlight drop target
+    if (isDropTarget) {
+      strokeColor = "#22c55e";
+    }
+
     // For tentative nodes, show task title; for real nodes, show branch name
     const displayText = isTentative && tentativeTitle ? tentativeTitle : id;
     // For tentative nodes, also show branch name
     const branchNameDisplay = isTentative ? id : null;
     const nodeHeight = isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT;
 
+    // Drag handle position (left side of node)
+    const handleX = x;
+    const handleY = y + nodeHeight / 2;
+
     return (
       <g
         key={id}
-        onClick={() => !isTentative && onSelectBranch(id)}
         style={{ cursor: isTentative ? "default" : "pointer" }}
-        opacity={isTentative ? 0.8 : 1}
+        opacity={isTentative ? 0.8 : isDragging ? 0.5 : 1}
+        onMouseEnter={() => {
+          if (dragState && dragState.fromBranch !== id && !isTentative) {
+            setDropTarget(id);
+          }
+        }}
+        onMouseLeave={() => {
+          if (dropTarget === id) {
+            setDropTarget(null);
+          }
+        }}
       >
         {/* Node rectangle */}
         <rect
@@ -371,8 +453,9 @@ export default function BranchGraph({
           ry={6}
           fill={fillColor}
           stroke={strokeColor}
-          strokeWidth={isSelected ? 2 : 1.5}
+          strokeWidth={isSelected || isDropTarget ? 2 : 1.5}
           strokeDasharray={strokeDash}
+          onClick={() => !isTentative && !dragState && onSelectBranch(id)}
         />
 
         {/* Branch name or task title using foreignObject for proper wrapping */}
@@ -381,6 +464,7 @@ export default function BranchGraph({
           y={y + 2}
           width={NODE_WIDTH - 16}
           height={nodeHeight - 4}
+          style={{ pointerEvents: "none" }}
         >
           <div
             style={{
@@ -562,6 +646,32 @@ export default function BranchGraph({
             )}
           </g>
         )}
+
+        {/* Drag handle (left side) - only in edit mode for non-default, non-tentative nodes */}
+        {editMode && !isTentative && !isDefault && onEdgeCreate && (
+          <g
+            style={{ cursor: "grab" }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              handleDragStart(id, handleX, handleY);
+            }}
+          >
+            <circle
+              cx={handleX}
+              cy={handleY}
+              r={6}
+              fill="#4b5563"
+              stroke="#6b7280"
+              strokeWidth={1}
+            />
+            <circle
+              cx={handleX}
+              cy={handleY}
+              r={2}
+              fill="#9ca3af"
+            />
+          </g>
+        )}
       </g>
     );
   };
@@ -576,11 +686,37 @@ export default function BranchGraph({
 
   return (
     <div className="branch-graph">
-      <svg width={width} height={height} className="branch-graph__svg">
+      <svg
+        ref={svgRef}
+        width={width}
+        height={height}
+        className="branch-graph__svg"
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          cursor: dragState ? "grabbing" : undefined,
+          userSelect: dragState ? "none" : undefined,
+        }}
+      >
         {/* Render edges first (behind nodes) */}
         <g className="branch-graph__edges">
           {layoutEdges.map((edge, i) => renderEdge(edge, i))}
         </g>
+
+        {/* Render drag line while dragging */}
+        {dragState && (
+          <line
+            x1={dragState.fromX}
+            y1={dragState.fromY}
+            x2={dragState.currentX}
+            y2={dragState.currentY}
+            stroke={dropTarget ? "#22c55e" : "#3b82f6"}
+            strokeWidth={2}
+            strokeDasharray="4,4"
+            pointerEvents="none"
+          />
+        )}
 
         {/* Render nodes */}
         <g className="branch-graph__nodes">

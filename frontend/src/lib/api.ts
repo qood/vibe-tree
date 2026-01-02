@@ -318,6 +318,26 @@ export interface TaskInstruction {
   updatedAt?: string;
 }
 
+// Branch Link types
+export type BranchLinkType = "issue" | "pr";
+
+export interface BranchLink {
+  id: number;
+  repoId: string;
+  branchName: string;
+  linkType: BranchLinkType;
+  url: string;
+  number: number | null;
+  title: string | null;
+  status: string | null;
+  checksStatus: string | null;
+  labels: string | null; // JSON array
+  reviewers: string | null; // JSON array
+  projectStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -453,7 +473,7 @@ export const api = {
     fetchJson<{ success: boolean }>(`${API_BASE}/repo-pins/${id}`, {
       method: "DELETE",
     }),
-  updateRepoPin: (id: number, updates: { label?: string; baseBranch?: string }) =>
+  updateRepoPin: (id: number, updates: { label?: string; baseBranch?: string | null }) =>
     fetchJson<RepoPin>(`${API_BASE}/repo-pins/${id}`, {
       method: "PATCH",
       body: JSON.stringify(updates),
@@ -545,7 +565,7 @@ export const api = {
   getChatMessages: (sessionId: string) =>
     fetchJson<ChatMessage[]>(`${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`),
   sendChatMessage: (sessionId: string, userMessage: string, context?: string, chatMode?: ChatMode) =>
-    fetchJson<{ assistantMessage: ChatMessage }>(`${API_BASE}/chat/send`, {
+    fetchJson<{ userMessage: ChatMessage; assistantMessage: ChatMessage }>(`${API_BASE}/chat/send`, {
       method: "POST",
       body: JSON.stringify({ sessionId, userMessage, context, chatMode }),
     }),
@@ -712,4 +732,32 @@ export const api = {
         body: JSON.stringify({ localPath, branchName }),
       }
     ),
+
+  // Branch Links
+  getBranchLinks: (repoId: string, branchName: string) =>
+    fetchJson<BranchLink[]>(
+      `${API_BASE}/branch-links?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`
+    ),
+  createBranchLink: (data: {
+    repoId: string;
+    branchName: string;
+    linkType: BranchLinkType;
+    url: string;
+    number?: number;
+    title?: string;
+    status?: string;
+  }) =>
+    fetchJson<BranchLink>(`${API_BASE}/branch-links`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateBranchLink: (id: number, data: { title?: string; status?: string }) =>
+    fetchJson<BranchLink>(`${API_BASE}/branch-links/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteBranchLink: (id: number) =>
+    fetchJson<{ success: boolean }>(`${API_BASE}/branch-links/${id}`, {
+      method: "DELETE",
+    }),
 };

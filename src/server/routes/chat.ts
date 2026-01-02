@@ -368,8 +368,10 @@ chatRouter.post("/send", async (c) => {
   let status: "success" | "failed" = "success";
 
   try {
-    // Run claude -p synchronously for simplicity
-    assistantContent = execSync(`claude -p "${escapeShell(prompt)}"`, {
+    // Run claude -p synchronously
+    // In execution mode, bypass permissions for autonomous operation
+    const bypassFlag = input.chatMode === "execution" ? " --dangerously-skip-permissions" : "";
+    assistantContent = execSync(`claude -p "${escapeShell(prompt)}"${bypassFlag}`, {
       cwd: worktreePath,
       encoding: "utf-8",
       maxBuffer: 10 * 1024 * 1024, // 10MB
@@ -431,7 +433,20 @@ chatRouter.post("/send", async (c) => {
     data: toMessage(assistantMsg),
   });
 
+  // Auto-link PRs found in assistant response (for execution mode)
+  if (input.chatMode === "execution" && session.branchName) {
+    const prUrls = extractGitHubPrUrls(assistantContent);
+    for (const pr of prUrls) {
+      try {
+        await savePrLink(session.repoId, session.branchName, pr.url, pr.number);
+      } catch (err) {
+        console.error(`[Chat] Failed to auto-link PR:`, err);
+      }
+    }
+  }
+
   return c.json({
+    userMessage: toMessage(userMsg),
     assistantMessage: toMessage(assistantMsg),
   });
 });
@@ -803,20 +818,67 @@ Task Instructionの変更を提案する場合は、以下のフォーマット�
 - 具体的で実行可能な指示にする
 `);
     } else {
+      // Get parent branch for PR base
+      let parentBranch = "main"; // default
+      try {
+        // Try to get the tree spec to find parent branch
+        const treeSpecs = await db
+          .select()
+          .from(schema.treeSpecs)
+          .where(eq(schema.treeSpecs.repoId, session.repoId))
+          .limit(1);
+
+        if (treeSpecs[0]) {
+          const specJson = JSON.parse(treeSpecs[0].specJson) as { nodes: unknown[]; edges: { parent: string; child: string }[] };
+          // Find edge where child is the current branch
+          const edge = specJson.edges.find((e) => e.child === session.branchName);
+          if (edge) {
+            parentBranch = edge.parent;
+          } else {
+            // Use base branch from tree spec
+            parentBranch = treeSpecs[0].baseBranch || "main";
+          }
+        }
+      } catch {
+        // Ignore errors, use default
+      }
+
       parts.push(`## Mode: Execution
 
-あなたはタスクを実装するアシスタントです。
+あなたはタスクを実装して完了させるアシスタントです。
 
 ### 役割
-- Task Instructionに従ってコードを実装する
-- 必要なファイルを作成・編集する
-- テストを書く
-- 問題があれば報告する
+1. **コードを書く**: Task Instructionに従って実装する
+2. **コミットする**: 意味のある単位でコミットを作成する
+3. **プッシュする**: リモートにプッシュする
+4. **PRを作成する**: 適切なベースブランチを指定してPRを作成する
+
+### 重要：PRのベースブランチ
+- 現在のブランチ: \`${session.branchName}\`
+- **PRのベースブランチ**: \`${parentBranch}\`
+- PRを作成する際は必ず \`--base ${parentBranch}\` を指定してください
+
+### 実装完了までの流れ
+\`\`\`bash
+# 1. コード実装後、変更をステージング
+git add .
+
+# 2. コミット（意味のあるメッセージで）
+git commit -m "feat: 実装内容の説明"
+
+# 3. プッシュ
+git push -u origin ${session.branchName}
+
+# 4. PR作成（ベースブランチを必ず指定）
+gh pr create --base ${parentBranch} --title "PR タイトル" --body "PR の説明"
+\`\`\`
 
 ### 注意点
 - Task Instructionの内容に忠実に実装する
 - 不明点があれば質問する
-- 段階的に実装を進める
+- **PRは必ず \`${parentBranch}\` をベースブランチとして作成する**
+- コミットメッセージは具体的に書く
+- PRのタイトルと説明は実装内容を明確に記載する
 `);
     }
 
@@ -838,4 +900,153 @@ ${userMessage}`);
 // Helper: Escape shell string
 function escapeShell(str: string): string {
   return str.replace(/'/g, "'\"'\"'").replace(/"/g, '\\"');
+}
+
+// Helper: Extract GitHub PR URLs from text
+function extractGitHubPrUrls(text: string): Array<{ url: string; number: number }> {
+  const prUrlRegex = /https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/g;
+  const results: Array<{ url: string; number: number }> = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = prUrlRegex.exec(text)) !== null) {
+    results.push({
+      url: match[0],
+      number: parseInt(match[1], 10),
+    });
+  }
+
+  return results;
+}
+
+// Helper: Fetch PR info from GitHub
+function fetchGitHubPRInfo(repoId: string, prNumber: number): {
+  title: string;
+  status: string;
+  checksStatus: string;
+  labels: string[];
+  reviewers: string[];
+  projectStatus?: string;
+} | null {
+  try {
+    const result = execSync(
+      `gh pr view ${prNumber} --repo "${repoId}" --json number,title,state,statusCheckRollup,labels,reviewRequests,reviews,projectItems`,
+      { encoding: "utf-8", timeout: 10000 }
+    ).trim();
+    const data = JSON.parse(result);
+
+    // Determine checks status
+    let checksStatus = "pending";
+    if (data.statusCheckRollup && data.statusCheckRollup.length > 0) {
+      const hasFailure = data.statusCheckRollup.some((c: { conclusion: string }) =>
+        c.conclusion === "FAILURE" || c.conclusion === "ERROR"
+      );
+      const allSuccess = data.statusCheckRollup.every((c: { conclusion: string }) =>
+        c.conclusion === "SUCCESS"
+      );
+      if (hasFailure) checksStatus = "failure";
+      else if (allSuccess) checksStatus = "success";
+    }
+
+    // Extract reviewers
+    const reviewers: string[] = [];
+    if (data.reviewRequests) {
+      for (const r of data.reviewRequests) {
+        if (r.login) reviewers.push(r.login);
+      }
+    }
+    if (data.reviews) {
+      for (const r of data.reviews) {
+        if (r.author?.login && !reviewers.includes(r.author.login)) {
+          reviewers.push(r.author.login);
+        }
+      }
+    }
+
+    // Extract project status
+    let projectStatus: string | undefined;
+    if (data.projectItems && data.projectItems.length > 0) {
+      const item = data.projectItems[0];
+      if (item.status) {
+        projectStatus = item.status.name || item.status;
+      }
+    }
+
+    return {
+      title: data.title,
+      status: data.state?.toLowerCase() || "open",
+      checksStatus,
+      labels: (data.labels || []).map((l: { name: string }) => l.name),
+      reviewers,
+      projectStatus,
+    };
+  } catch (err) {
+    console.error(`[Chat] Failed to fetch PR #${prNumber}:`, err);
+    return null;
+  }
+}
+
+// Helper: Save PR link to branchLinks (if not already exists)
+async function savePrLink(
+  repoId: string,
+  branchName: string,
+  prUrl: string,
+  prNumber: number
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  // Check if already exists
+  const existing = await db
+    .select()
+    .from(schema.branchLinks)
+    .where(
+      and(
+        eq(schema.branchLinks.repoId, repoId),
+        eq(schema.branchLinks.branchName, branchName),
+        eq(schema.branchLinks.url, prUrl)
+      )
+    )
+    .limit(1);
+
+  if (existing.length === 0) {
+    // Fetch full PR info from GitHub
+    const prInfo = fetchGitHubPRInfo(repoId, prNumber);
+
+    await db.insert(schema.branchLinks).values({
+      repoId,
+      branchName,
+      linkType: "pr",
+      url: prUrl,
+      number: prNumber,
+      title: prInfo?.title ?? null,
+      status: prInfo?.status ?? "open",
+      checksStatus: prInfo?.checksStatus ?? null,
+      labels: prInfo?.labels ? JSON.stringify(prInfo.labels) : null,
+      reviewers: prInfo?.reviewers ? JSON.stringify(prInfo.reviewers) : null,
+      projectStatus: prInfo?.projectStatus ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    console.log(`[Chat] Auto-linked PR #${prNumber} to branch ${branchName}`);
+
+    // Broadcast the new link
+    const [newLink] = await db
+      .select()
+      .from(schema.branchLinks)
+      .where(
+        and(
+          eq(schema.branchLinks.repoId, repoId),
+          eq(schema.branchLinks.branchName, branchName),
+          eq(schema.branchLinks.url, prUrl)
+        )
+      )
+      .limit(1);
+
+    if (newLink) {
+      broadcast({
+        type: "branchLink.created",
+        repoId,
+        data: newLink,
+      });
+    }
+  }
 }

@@ -100,3 +100,41 @@ code {
 pre {
   margin: 0;
 }
+
+/* Icon button - smaller toggle style */
+.btn-icon {
+  padding: 4px 8px;
+  font-size: 12px;
+  background-color: transparent;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  background-color: #374151;
+  color: #e5e7eb;
+}
+
+.btn-icon--active {
+  background-color: #14532d;
+  border-color: #22c55e;
+  color: #4ade80;
+}
+
+.btn-icon--active:hover {
+  background-color: #166534;
+}
+
+.btn-icon--danger {
+  background-color: transparent;
+  border-color: #dc2626;
+  color: #f87171;
+}
+
+.btn-icon--danger:hover {
+  background-color: #450a0a;
+  color: #fca5a5;
+}

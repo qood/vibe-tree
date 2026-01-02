@@ -65,6 +65,10 @@ export default function TreeDashboard() {
   const [wizardEdges, setWizardEdges] = useState<TreeSpecEdge[]>([]);
   const [wizardStatus, setWizardStatus] = useState<TreeSpecStatus>("draft");
 
+  // Branch graph edit mode
+  const [branchGraphEditMode, setBranchGraphEditMode] = useState(false);
+  const [originalTreeSpecEdges, setOriginalTreeSpecEdges] = useState<TreeSpecEdge[] | null>(null);
+
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
   const [settingsRule, setSettingsRule] = useState<BranchNamingRule | null>(null);
@@ -72,6 +76,10 @@ export default function TreeDashboard() {
   const [settingsDefaultBranch, setSettingsDefaultBranch] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+
+  // Warnings modal state
+  const [showWarnings, setShowWarnings] = useState(false);
+  const [warningFilter, setWarningFilter] = useState<string | null>(null);
 
   // D&D sensors (reserved for future drag-and-drop)
   void useSensors(
@@ -428,13 +436,11 @@ export default function TreeDashboard() {
       });
       setSettingsRule(updated);
 
-      // Save default branch
-      if (settingsDefaultBranch) {
-        await api.updateRepoPin(selectedPin.id, { baseBranch: settingsDefaultBranch });
-        // Refresh pins to update baseBranch
-        const pins = await api.getRepoPins();
-        setRepoPins(pins);
-      }
+      // Save default branch (empty string clears it)
+      await api.updateRepoPin(selectedPin.id, { baseBranch: settingsDefaultBranch || null });
+      // Refresh pins to update baseBranch
+      const pins = await api.getRepoPins();
+      setRepoPins(pins);
 
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
@@ -761,7 +767,21 @@ export default function TreeDashboard() {
           </div>
         )}
 
-              </aside>
+        {/* Warnings */}
+        {snapshot && snapshot.warnings.length > 0 && (
+          <div className="sidebar__section">
+            <button
+              className="sidebar__warnings-btn"
+              onClick={() => setShowWarnings(true)}
+            >
+              <span className="sidebar__warnings-icon">⚠</span>
+              <span>Warnings</span>
+              <span className="sidebar__warnings-count">{snapshot.warnings.length}</span>
+            </button>
+          </div>
+        )}
+
+      </aside>
 
       {/* Main Content */}
       <main className="main-content">
@@ -776,6 +796,57 @@ export default function TreeDashboard() {
                 <div className="panel__header">
                   <h3>Branch Graph</h3>
                   <div className="panel__header-actions">
+                    {branchGraphEditMode ? (
+                      <>
+                        <button
+                          className="btn-icon btn-icon--danger"
+                          onClick={async () => {
+                            // Discard: restore original edges
+                            if (selectedPin && snapshot?.repoId && originalTreeSpecEdges !== null) {
+                              try {
+                                await api.updateTreeSpec({
+                                  repoId: snapshot.repoId,
+                                  baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                                  nodes: snapshot.treeSpec?.specJson.nodes ?? [],
+                                  edges: originalTreeSpecEdges,
+                                });
+                                const newSnapshot = await api.scan(selectedPin.localPath);
+                                setSnapshot(newSnapshot);
+                              } catch (err) {
+                                console.error("Failed to discard:", err);
+                              }
+                            }
+                            setOriginalTreeSpecEdges(null);
+                            setBranchGraphEditMode(false);
+                          }}
+                          title="変更を破棄"
+                        >
+                          Discard
+                        </button>
+                        <button
+                          className="btn-icon btn-icon--active"
+                          onClick={() => {
+                            setOriginalTreeSpecEdges(null);
+                            setBranchGraphEditMode(false);
+                          }}
+                          title="編集モード終了"
+                        >
+                          Done
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="btn-icon"
+                        onClick={() => {
+                          // Save current edges before entering edit mode
+                          setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
+                          setBranchGraphEditMode(true);
+                        }}
+                        title="ブランチ構造を編集"
+                      >
+                        Edit
+                      </button>
+                    )}
                     <span className="panel__count">{snapshot.nodes.length} branches</span>
                   </div>
                 </div>
@@ -791,24 +862,61 @@ export default function TreeDashboard() {
                     }}
                     tentativeNodes={tentativeNodes}
                     tentativeEdges={tentativeEdges}
+                    editMode={branchGraphEditMode}
+                    onEdgeCreate={async (parentBranch, childBranch) => {
+                      // Create a new edge from parent to child
+                      // This will be saved in tree_specs as a designed edge
+                      if (!snapshot?.repoId || !selectedPin) return;
+
+                      try {
+                        // Get current tree spec edges (using branch names directly)
+                        const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
+
+                        // Check if edge already exists
+                        const edgeExists = currentEdges.some(
+                          (e) => e.parent === parentBranch && e.child === childBranch
+                        ) || snapshot.edges.some(
+                          (e) => e.parent === parentBranch && e.child === childBranch
+                        );
+
+                        if (edgeExists) {
+                          console.log("Edge already exists");
+                          return;
+                        }
+
+                        // Add the edge using branch names directly
+                        const newEdges = [
+                          ...currentEdges,
+                          { parent: parentBranch, child: childBranch },
+                        ];
+
+                        // Keep existing nodes (don't add phantom nodes for branches)
+                        const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
+
+                        // Save tree spec
+                        const updatedSpec = await api.updateTreeSpec({
+                          repoId: snapshot.repoId,
+                          baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                          nodes: currentNodes,
+                          edges: newEdges,
+                        });
+
+                        setSnapshot((prev) =>
+                          prev ? { ...prev, treeSpec: updatedSpec } : prev
+                        );
+
+                        // Rescan to update edges display
+                        const newSnapshot = await api.scan(selectedPin.localPath);
+                        setSnapshot(newSnapshot);
+                      } catch (err) {
+                        console.error("Failed to create edge:", err);
+                        setError((err as Error).message);
+                      }
+                    }}
                     tentativeBaseBranch={selectedPlanningSession?.baseBranch}
                   />
                 </div>
               </div>
-
-              {/* Warnings */}
-              {snapshot.warnings.length > 0 && (
-                <div className="panel panel--warnings">
-                  <div className="panel__header">
-                    <h3>Warnings ({snapshot.warnings.length})</h3>
-                  </div>
-                  {snapshot.warnings.map((w, i) => (
-                    <div key={i} className={`warning warning--${w.severity}`}>
-                      <strong>[{w.code}]</strong> {w.message}
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* Planning Panel - Multi-session */}
               <div className="panel panel--planning">
@@ -934,6 +1042,61 @@ export default function TreeDashboard() {
           </div>
         </div>
       )}
+
+      {/* Warnings Modal */}
+      {showWarnings && snapshot && (() => {
+        const WARNING_CODE_LABELS: Record<string, string> = {
+          BRANCH_NAMING_VIOLATION: "Branch Naming",
+        };
+        const getWarningLabel = (code: string) => WARNING_CODE_LABELS[code] || code;
+        return (
+        <div className="modal-overlay" onClick={() => setShowWarnings(false)}>
+          <div className="modal modal--warnings" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__header">
+              <h2>Warnings ({snapshot.warnings.length})</h2>
+              <button onClick={() => setShowWarnings(false)}>×</button>
+            </div>
+            <div className="modal__filters">
+              <button
+                className={`filter-btn ${warningFilter === null ? "filter-btn--active" : ""}`}
+                onClick={() => setWarningFilter(null)}
+              >
+                All
+              </button>
+              <button
+                className={`filter-btn ${warningFilter === "BRANCH_NAMING_VIOLATION" ? "filter-btn--active" : ""}`}
+                onClick={() => setWarningFilter("BRANCH_NAMING_VIOLATION")}
+              >
+                Branch Naming
+              </button>
+            </div>
+            <div className="modal__content modal__content--scrollable">
+              {snapshot.warnings
+                .filter((w) => warningFilter === null || w.code === warningFilter)
+                .map((w, i) => (
+                  <div key={i} className={`warning-item warning-item--${w.severity}`}>
+                    <div className="warning-item__header">
+                      <span className="warning-item__code">{getWarningLabel(w.code)}</span>
+                      <span className={`warning-item__severity warning-item__severity--${w.severity}`}>
+                        {w.severity}
+                      </span>
+                    </div>
+                    <div className="warning-item__message">{w.message}</div>
+                  </div>
+                ))}
+              {snapshot.warnings.filter((w) => warningFilter === null || w.code === warningFilter).length === 0 && (
+                <div className="modal__empty">No warnings match the filter</div>
+              )}
+            </div>
+            <div className="modal__footer">
+              <button className="btn-secondary" onClick={() => setShowWarnings(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {deletingPinId && (
@@ -1067,6 +1230,35 @@ export default function TreeDashboard() {
         .sidebar__plan a {
           color: #0066cc;
           font-size: 12px;
+        }
+        .sidebar__warnings-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 8px 12px;
+          background: #422006;
+          border: 1px solid #f59e0b;
+          border-radius: 6px;
+          color: #fbbf24;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.2s;
+        }
+        .sidebar__warnings-btn:hover {
+          background: #713f12;
+        }
+        .sidebar__warnings-icon {
+          font-size: 14px;
+        }
+        .sidebar__warnings-count {
+          background: #f59e0b;
+          color: #422006;
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 600;
         }
         .sidebar__worktrees {
           display: flex;
@@ -2679,6 +2871,81 @@ export default function TreeDashboard() {
         }
         .modal--small {
           width: 360px;
+        }
+        .modal--warnings {
+          width: 600px;
+          max-height: 80vh;
+        }
+        .modal__filters {
+          display: flex;
+          gap: 8px;
+          padding: 16px 20px;
+          border-bottom: 1px solid #374151;
+        }
+        .filter-btn {
+          padding: 6px 12px;
+          background: #1f2937;
+          border: 1px solid #374151;
+          border-radius: 4px;
+          color: #9ca3af;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .filter-btn:hover {
+          background: #374151;
+          color: #e5e7eb;
+        }
+        .filter-btn--active {
+          background: #3b82f6;
+          border-color: #3b82f6;
+          color: white;
+        }
+        .modal__content--scrollable {
+          max-height: 400px;
+          overflow-y: auto;
+        }
+        .modal__empty {
+          padding: 40px 20px;
+          text-align: center;
+          color: #6b7280;
+        }
+        .warning-item {
+          padding: 12px 20px;
+          border-bottom: 1px solid #374151;
+        }
+        .warning-item:last-child {
+          border-bottom: none;
+        }
+        .warning-item__header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+        .warning-item__code {
+          font-family: monospace;
+          font-size: 11px;
+          color: #9ca3af;
+        }
+        .warning-item__severity {
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          padding: 2px 6px;
+          border-radius: 3px;
+        }
+        .warning-item__severity--warn {
+          background: #422006;
+          color: #fbbf24;
+        }
+        .warning-item__severity--error {
+          background: #450a0a;
+          color: #f87171;
+        }
+        .warning-item__message {
+          font-size: 13px;
+          color: #e5e7eb;
         }
         .modal__body {
           padding: 20px;

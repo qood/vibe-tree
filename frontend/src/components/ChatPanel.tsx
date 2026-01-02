@@ -32,13 +32,10 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     loadMessages();
   }, [loadMessages]);
 
-  // Track if we should use smooth scroll (only for new messages)
-  const useSmoothScroll = useRef(false);
-
   // Auto scroll to bottom
   useEffect(() => {
     if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: useSmoothScroll.current ? "smooth" : "instant" });
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
     }
   }, [messages]);
 
@@ -50,7 +47,6 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     setInput("");
     setLoading(true);
     setError(null);
-    useSmoothScroll.current = true; // Enable smooth scroll for new messages
 
     // Optimistic update
     const tempUserMsg: ChatMessage = {
@@ -66,7 +62,7 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
       const result = await api.sendChatMessage(sessionId, userMessage);
       setMessages((prev) => [
         ...prev.slice(0, -1),
-        { ...tempUserMsg, id: result.assistantMessage.id - 1 },
+        result.userMessage,
         result.assistantMessage,
       ]);
     } catch (err) {

@@ -229,6 +229,19 @@ branchRouter.post("/create-tree", async (c) => {
             result.prUrl = pr.url;
             result.prNumber = pr.number;
             console.log(`Created PR for ${task.branchName}: ${pr.url}`);
+
+            // Save PR link to branchLinks
+            await db.insert(schema.branchLinks).values({
+              repoId: input.repoId,
+              branchName: task.branchName,
+              linkType: "pr",
+              url: pr.url,
+              number: pr.number,
+              title: prTitle,
+              status: "open",
+              createdAt: now,
+              updatedAt: now,
+            });
           }
         } catch (prErr) {
           // PR creation failed but branch/worktree succeeded
