@@ -925,6 +925,7 @@ interface GitHubCheck {
   name: string;
   status: string;
   conclusion: string | null;
+  detailsUrl: string | null;
 }
 
 function fetchGitHubPRInfo(repoId: string, prNumber: number): {
@@ -952,6 +953,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
           name: c.name || c.context || "Unknown",
           status: c.status || "COMPLETED",
           conclusion: c.conclusion || null,
+          detailsUrl: c.detailsUrl || c.targetUrl || null,
         });
       }
       const hasFailure = checks.some((c) =>

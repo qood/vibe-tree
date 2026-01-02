@@ -1167,4 +1167,24 @@
   color: #e5e7eb;
   font-size: 13px;
   word-break: break-word;
+  flex: 1;
+}
+
+.task-detail-panel__ci-item--link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.task-detail-panel__ci-item--link:hover {
+  background: #1f2937;
+}
+
+.task-detail-panel__ci-link-icon {
+  color: #6b7280;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.task-detail-panel__ci-item--link:hover .task-detail-panel__ci-link-icon {
+  color: #9ca3af;
 }

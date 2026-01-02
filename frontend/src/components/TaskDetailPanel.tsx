@@ -900,12 +900,28 @@ export function TaskDetailPanel({
                   <p className="task-detail-panel__ci-empty">No checks found</p>
                 ) : (
                   checks.map((check, i) => (
-                    <div key={i} className="task-detail-panel__ci-item">
-                      <span className={`task-detail-panel__ci-status task-detail-panel__ci-status--${check.conclusion?.toLowerCase() || "pending"}`}>
-                        {check.conclusion === "SUCCESS" ? "✓" : check.conclusion === "FAILURE" || check.conclusion === "ERROR" ? "✗" : "●"}
-                      </span>
-                      <span className="task-detail-panel__ci-name">{check.name}</span>
-                    </div>
+                    check.detailsUrl ? (
+                      <a
+                        key={i}
+                        href={check.detailsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="task-detail-panel__ci-item task-detail-panel__ci-item--link"
+                      >
+                        <span className={`task-detail-panel__ci-status task-detail-panel__ci-status--${check.conclusion?.toLowerCase() || "pending"}`}>
+                          {check.conclusion === "SUCCESS" ? "✓" : check.conclusion === "FAILURE" || check.conclusion === "ERROR" ? "✗" : "●"}
+                        </span>
+                        <span className="task-detail-panel__ci-name">{check.name}</span>
+                        <span className="task-detail-panel__ci-link-icon">↗</span>
+                      </a>
+                    ) : (
+                      <div key={i} className="task-detail-panel__ci-item">
+                        <span className={`task-detail-panel__ci-status task-detail-panel__ci-status--${check.conclusion?.toLowerCase() || "pending"}`}>
+                          {check.conclusion === "SUCCESS" ? "✓" : check.conclusion === "FAILURE" || check.conclusion === "ERROR" ? "✗" : "●"}
+                        </span>
+                        <span className="task-detail-panel__ci-name">{check.name}</span>
+                      </div>
+                    )
                   ))
                 )}
               </div>

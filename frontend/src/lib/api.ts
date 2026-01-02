@@ -325,6 +325,7 @@ export interface GitHubCheck {
   name: string;
   status: string;
   conclusion: string | null;
+  detailsUrl: string | null;
 }
 
 export interface BranchLink {
