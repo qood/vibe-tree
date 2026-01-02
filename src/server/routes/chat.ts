@@ -645,12 +645,7 @@ async function buildPrompt(
     ? session.worktreePath.replace("planning:", "")
     : session.worktreePath;
 
-  if (isPlanningSession) {
-    parts.push(PLANNING_SYSTEM_PROMPT);
-    parts.push(`## Repository: ${session.repoId}\n`);
-  }
-
-  // 1. System: Project rules
+  // 1. System: Project rules (fetch early for use in both modes)
   const rules = await db
     .select()
     .from(schema.projectRules)
@@ -665,6 +660,21 @@ async function buildPrompt(
   const branchNaming = rules[0]
     ? (JSON.parse(rules[0].ruleJson) as BranchNamingRule)
     : null;
+
+  if (isPlanningSession) {
+    parts.push(PLANNING_SYSTEM_PROMPT);
+    parts.push(`## Repository: ${session.repoId}\n`);
+
+    // Add branch naming rules for planning sessions
+    if (branchNaming) {
+      parts.push(`## ブランチ命名規則
+以下のルールに従ってブランチ名を提案してください：
+- Pattern: \`${branchNaming.pattern}\`
+${branchNaming.examples?.length ? `- Examples: ${branchNaming.examples.map((e) => `\`${e}\``).join(", ")}` : ""}
+${branchNaming.description ? `- Description: ${branchNaming.description}` : ""}
+`);
+    }
+  }
 
   if (!isPlanningSession) {
     parts.push(`# System Context
