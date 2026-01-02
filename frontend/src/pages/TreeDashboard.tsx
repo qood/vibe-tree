@@ -23,6 +23,7 @@ import { TerminalPanel } from "../components/TerminalPanel";
 import { TaskCard } from "../components/TaskCard";
 import { DraggableTask, DroppableTreeNode } from "../components/DndComponents";
 import { PlanningPanel } from "../components/PlanningPanel";
+import { TaskDetailPanel } from "../components/TaskDetailPanel";
 import type { PlanningSession, TaskNode, TaskEdge } from "../lib/api";
 
 export default function TreeDashboard() {
@@ -33,6 +34,7 @@ export default function TreeDashboard() {
   const [repoPins, setRepoPins] = useState<RepoPin[]>([]);
   const [newLocalPath, setNewLocalPath] = useState("");
   const [showAddNew, setShowAddNew] = useState(false);
+  const [deletingPinId, setDeletingPinId] = useState<number | null>(null);
 
   // Selected pin derived from URL
   const selectedPinId = urlPinId ? parseInt(urlPinId, 10) : null;
@@ -41,10 +43,8 @@ export default function TreeDashboard() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [snapshot, setSnapshot] = useState<ScanSnapshot | null>(null);
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
-  const [instruction, setInstruction] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
 
 
   // Multi-session planning state
@@ -57,6 +57,7 @@ export default function TreeDashboard() {
   const [terminalWorktreePath, setTerminalWorktreePath] = useState<string | null>(null);
   const [terminalTaskContext, setTerminalTaskContext] = useState<{ title: string; description?: string } | undefined>(undefined);
   const [terminalAutoRunClaude, setTerminalAutoRunClaude] = useState(false);
+
 
   // Tree Spec state (Task-based)
   const [wizardBaseBranch, setWizardBaseBranch] = useState<string>("main");
@@ -92,12 +93,27 @@ export default function TreeDashboard() {
   // Get selected pin
   const selectedPin = repoPins.find((p) => p.id === selectedPinId) ?? null;
 
+  // Define handleScan before useEffects that use it
+  const handleScan = useCallback(async (localPath: string) => {
+    if (!localPath) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.scan(localPath);
+      setSnapshot(result);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Auto-scan when pin is selected
   useEffect(() => {
     if (selectedPin && !snapshot) {
       handleScan(selectedPin.localPath);
     }
-  }, [selectedPin?.id]);
+  }, [selectedPin?.id, handleScan]);
 
   // Load plan and connect WS when snapshot is available
   useEffect(() => {
@@ -113,10 +129,18 @@ export default function TreeDashboard() {
       }
     });
 
+    // Refetch branches when planning is confirmed
+    const unsubBranches = wsClient.on("branches.changed", () => {
+      if (selectedPin) {
+        handleScan(selectedPin.localPath);
+      }
+    });
+
     return () => {
       unsubScan();
+      unsubBranches();
     };
-  }, [snapshot?.repoId]);
+  }, [snapshot?.repoId, selectedPin, handleScan]);
 
   // Planning session handlers
   const handlePlanningSessionSelect = useCallback((session: PlanningSession | null) => {
@@ -135,26 +159,12 @@ export default function TreeDashboard() {
     setTentativeEdges(edges);
   }, []);
 
-  const handleScan = useCallback(async (localPath: string) => {
-    if (!localPath) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.scan(localPath);
-      setSnapshot(result);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const handleAddRepoPin = async () => {
     if (!newLocalPath.trim()) return;
     try {
       const pin = await api.createRepoPin(newLocalPath.trim());
       setRepoPins((prev) => [pin, ...prev]);
-      navigate(`/project/${pin.id}`);
+      navigate(`/projects/${pin.id}`);
       setNewLocalPath("");
       setShowAddNew(false);
       setSnapshot(null); // Will trigger auto-scan via useEffect
@@ -164,7 +174,7 @@ export default function TreeDashboard() {
   };
 
   const handleSelectPin = async (id: number) => {
-    navigate(`/project/${id}`);
+    navigate(`/projects/${id}`);
     setSnapshot(null); // Reset to trigger new scan
     try {
       await api.useRepoPin(id);
@@ -173,17 +183,21 @@ export default function TreeDashboard() {
     }
   };
 
-  const handleDeletePin = async (id: number) => {
+  const handleConfirmDeletePin = async () => {
+    if (!deletingPinId) return;
+    const id = deletingPinId;
     try {
       await api.deleteRepoPin(id);
       setRepoPins((prev) => prev.filter((p) => p.id !== id));
       if (selectedPinId === id) {
         const remaining = repoPins.filter((p) => p.id !== id);
-        navigate(remaining.length > 0 ? `/project/${remaining[0].id}` : "/");
+        navigate(remaining.length > 0 ? `/projects/${remaining[0].id}` : "/");
         setSnapshot(null);
       }
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setDeletingPinId(null);
     }
   };
 
@@ -201,6 +215,7 @@ export default function TreeDashboard() {
     setTerminalTaskContext(undefined);
     setTerminalAutoRunClaude(false);
   };
+
 
   // Initialize tree spec state when snapshot changes
   useEffect(() => {
@@ -384,28 +399,6 @@ export default function TreeDashboard() {
   void (wizardBaseBranch && wizardNodes.length > 0 && rootNodes.length > 0); // canConfirm reserved for future use
   const isLocked = wizardStatus === "confirmed" || wizardStatus === "generated";
 
-  const handleLogInstruction = async () => {
-    if (!snapshot?.repoId || !instruction.trim()) return;
-    try {
-      await api.logInstruction({
-        repoId: snapshot.repoId,
-        planId: plan?.id,
-        branchName: selectedNode?.branchName,
-        kind: "user_instruction",
-        contentMd: instruction,
-      });
-      setInstruction("");
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
   // Settings functions
   const handleOpenSettings = async () => {
     if (!snapshot?.repoId) return;
@@ -481,7 +474,7 @@ export default function TreeDashboard() {
                 className="project-card__delete"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeletePin(pin.id);
+                  setDeletingPinId(pin.id);
                 }}
               >
                 ×
@@ -643,7 +636,88 @@ export default function TreeDashboard() {
             border-radius: 8px;
             text-align: center;
           }
+          .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+          }
+          .modal {
+            background: #111827;
+            border-radius: 12px;
+            width: 360px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+          }
+          .modal__header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #374151;
+          }
+          .modal__header h2 {
+            margin: 0;
+            font-size: 18px;
+          }
+          .modal__body {
+            padding: 20px;
+          }
+          .modal__footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 20px;
+            border-top: 1px solid #374151;
+          }
+          .btn-secondary {
+            background: #374151;
+            color: #e5e7eb;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+          }
+          .btn-danger {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+          }
+          .btn-danger:hover {
+            background: #b91c1c;
+          }
         `}</style>
+
+        {/* Delete Confirmation Modal */}
+        {deletingPinId && (
+          <div className="modal-overlay" onClick={() => setDeletingPinId(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal__header">
+                <h2>プロジェクトを削除</h2>
+              </div>
+              <div className="modal__body">
+                <p style={{ margin: 0, color: "#9ca3af" }}>
+                  「{repoPins.find(p => p.id === deletingPinId)?.label || repoPins.find(p => p.id === deletingPinId)?.repoId}」を削除しますか？
+                </p>
+                <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>
+                  ※ローカルのファイルは削除されません
+                </p>
+              </div>
+              <div className="modal__footer">
+                <button className="btn-secondary" onClick={() => setDeletingPinId(null)}>
+                  キャンセル
+                </button>
+                <button className="btn-danger" onClick={handleConfirmDeletePin}>
+                  削除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -781,67 +855,15 @@ export default function TreeDashboard() {
 
             {/* Right: Details */}
             <div className="tree-view__details">
-              {selectedNode ? (
-                <div className="panel">
-                  <div className="panel__header">
-                    <h3>{selectedNode.branchName}</h3>
-                  </div>
-
-                  {/* PR Info */}
-                  {selectedNode.pr && (
-                    <div className="detail-section">
-                      <h4>Pull Request</h4>
-                      <a href={selectedNode.pr.url} target="_blank" rel="noopener noreferrer">
-                        #{selectedNode.pr.number}: {selectedNode.pr.title}
-                      </a>
-                      <div className="detail-row">
-                        <span>State: {selectedNode.pr.state}</span>
-                        {selectedNode.pr.isDraft && <span>(Draft)</span>}
-                      </div>
-                      {selectedNode.pr.reviewDecision && (
-                        <div className="detail-row">Review: {selectedNode.pr.reviewDecision}</div>
-                      )}
-                      {selectedNode.pr.checks && (
-                        <div className="detail-row">CI: {selectedNode.pr.checks}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Worktree Info */}
-                  {selectedNode.worktree && (
-                    <div className="detail-section">
-                      <h4>Worktree</h4>
-                      <div className="detail-row">
-                        <span>Path: {selectedNode.worktree.path}</span>
-                      </div>
-                      <div className="detail-row">
-                        <span>Dirty: {selectedNode.worktree.dirty ? "Yes" : "No"}</span>
-                      </div>
-                      {selectedNode.worktree.isActive && (
-                        <div className="detail-row">
-                          <span>Active: {selectedNode.worktree.activeAgent || "Yes"}</span>
-                        </div>
-                      )}
-                      <button
-                        className="btn-terminal"
-                        onClick={() => handleOpenTerminal(selectedNode.worktree!.path)}
-                      >
-                        Open Terminal
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Ahead/Behind */}
-                  {selectedNode.aheadBehind && (
-                    <div className="detail-section">
-                      <h4>Sync Status</h4>
-                      <div className="detail-row" style={{ gap: "16px" }}>
-                        <span style={{ color: "#4caf50" }}>+{selectedNode.aheadBehind.ahead} ahead</span>
-                        <span style={{ color: "#f44336" }}>-{selectedNode.aheadBehind.behind} behind</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {selectedNode && selectedPin ? (
+                <TaskDetailPanel
+                  repoId={snapshot.repoId}
+                  localPath={selectedPin.localPath}
+                  branchName={selectedNode.branchName}
+                  node={selectedNode}
+                  onClose={() => setSelectedNode(null)}
+                  onWorktreeCreated={() => handleScan(selectedPin.localPath)}
+                />
               ) : (
                 <div className="panel">
                   <div className="panel__header">
@@ -852,50 +874,6 @@ export default function TreeDashboard() {
                   </p>
                 </div>
               )}
-
-              {/* Restart Info */}
-              {snapshot.restart && (
-                <div className="panel panel--restart">
-                  <div className="panel__header">
-                    <h3>Restart Session</h3>
-                  </div>
-                  <div className="detail-section">
-                    <label>CD Command:</label>
-                    <div className="copy-row">
-                      <code>{snapshot.restart.cdCommand}</code>
-                      <button onClick={() => copyToClipboard(snapshot.restart!.cdCommand, "cd")}>
-                        {copied === "cd" ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="detail-section">
-                    <label>Restart Prompt:</label>
-                    <pre className="restart-prompt">{snapshot.restart.restartPromptMd}</pre>
-                    <button onClick={() => copyToClipboard(snapshot.restart!.restartPromptMd, "prompt")}>
-                      {copied === "prompt" ? "Copied!" : "Copy Prompt"}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Instruction Logger */}
-              <div className="panel">
-                <div className="panel__header">
-                  <h3>Log Instruction</h3>
-                </div>
-                <textarea
-                  value={instruction}
-                  onChange={(e) => setInstruction(e.target.value)}
-                  placeholder="Enter instruction for Claude..."
-                />
-                <button
-                  onClick={handleLogInstruction}
-                  disabled={!instruction.trim() || !snapshot?.repoId}
-                  className="btn-primary"
-                >
-                  Log Instruction
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -1000,6 +978,33 @@ export default function TreeDashboard() {
                 disabled={settingsLoading}
               >
                 {settingsLoading ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingPinId && (
+        <div className="modal-overlay" onClick={() => setDeletingPinId(null)}>
+          <div className="modal modal--small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__header">
+              <h2>プロジェクトを削除</h2>
+            </div>
+            <div className="modal__body">
+              <p style={{ margin: 0, color: "#9ca3af" }}>
+                「{repoPins.find(p => p.id === deletingPinId)?.label || repoPins.find(p => p.id === deletingPinId)?.repoId}」を削除しますか？
+              </p>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>
+                ※ローカルのファイルは削除されません
+              </p>
+            </div>
+            <div className="modal__footer">
+              <button className="btn-secondary" onClick={() => setDeletingPinId(null)}>
+                キャンセル
+              </button>
+              <button className="btn-danger" onClick={handleConfirmDeletePin}>
+                削除
               </button>
             </div>
           </div>
@@ -2720,6 +2725,24 @@ export default function TreeDashboard() {
           gap: 12px;
           padding: 16px 20px;
           border-top: 1px solid #374151;
+        }
+        .modal--small {
+          width: 360px;
+        }
+        .modal__body {
+          padding: 20px;
+        }
+        .btn-danger {
+          background: #dc2626;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+        .btn-danger:hover {
+          background: #b91c1c;
         }
 
         /* Settings styles */

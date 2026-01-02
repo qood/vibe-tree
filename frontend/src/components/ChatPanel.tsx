@@ -73,7 +73,7 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
       e.preventDefault();
       sendMessage();
     }
@@ -257,7 +257,7 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
             color: "#f3f4f6",
             minHeight: 80,
           }}
-          disabled={loading || disabled}
+          disabled={disabled}
         />
         <button
           onClick={sendMessage}

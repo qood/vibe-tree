@@ -606,6 +606,10 @@
 .planning-panel__status-banner--confirmed {
   background: #14532d;
   color: #4ade80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
 
 .planning-panel__status-banner--discarded {

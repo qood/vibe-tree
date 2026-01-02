@@ -270,11 +270,24 @@ export function PlanningPanel({
       }
     });
 
+    const unsubConfirmed = wsClient.on("planning.confirmed", (msg) => {
+      if (msg.data && typeof msg.data === "object" && "id" in msg.data) {
+        const confirmed = msg.data as PlanningSession;
+        setSessions((prev) => prev.map((s) => (s.id === confirmed.id ? confirmed : s)));
+        if (selectedSession?.id === confirmed.id) {
+          setSelectedSession(confirmed);
+          onSessionSelect?.(confirmed);
+          onTasksChange?.(confirmed.nodes, confirmed.edges);
+        }
+      }
+    });
+
     return () => {
       unsubCreated();
       unsubUpdated();
       unsubDeleted();
       unsubDiscarded();
+      unsubConfirmed();
     };
   }, [repoId, selectedSession?.id]);
 
@@ -698,7 +711,7 @@ export function PlanningPanel({
                   <span className="planning-panel__session-tasks">
                     {session.nodes.length} tasks
                   </span>
-                  {session.status === "discarded" && (
+                  {(session.status === "discarded" || session.status === "confirmed") && (
                     <button
                       className="planning-panel__session-delete"
                       onClick={(e) => {
@@ -732,14 +745,6 @@ export function PlanningPanel({
         >
           &larr; Back
         </button>
-        <input
-          type="text"
-          value={selectedSession.title}
-          onChange={(e) => handleUpdateTitle(e.target.value)}
-          className="planning-panel__title-input"
-          placeholder="Untitled Planning"
-          disabled={selectedSession.status !== "draft"}
-        />
         <select
           value={selectedSession.baseBranch}
           onChange={(e) => handleUpdateBaseBranch(e.target.value)}
@@ -750,6 +755,14 @@ export function PlanningPanel({
             <option key={b} value={b}>{b}</option>
           ))}
         </select>
+        <input
+          type="text"
+          value={selectedSession.title}
+          onChange={(e) => handleUpdateTitle(e.target.value)}
+          className="planning-panel__title-input"
+          placeholder="Untitled Planning"
+          disabled={selectedSession.status !== "draft"}
+        />
       </div>
 
       {error && <div className="planning-panel__error">{error}</div>}
@@ -895,6 +908,9 @@ export function PlanningPanel({
           {selectedSession.status === "confirmed" && (
             <div className="planning-panel__status-banner planning-panel__status-banner--confirmed">
               Confirmed
+              <button onClick={handleDelete} className="planning-panel__delete-btn">
+                Delete
+              </button>
             </div>
           )}
 
