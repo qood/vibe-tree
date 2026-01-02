@@ -35,7 +35,7 @@ projectRulesRouter.get("/branch-naming", async (c) => {
     return c.json({
       id: null,
       repoId: query.repoId,
-      pattern: "vt/{issueId}/{taskSlug}",
+      pattern: "feat_{issueId}_{taskSlug}",
       description: "",
       examples: [],
     });

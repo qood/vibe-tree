@@ -1,77 +1,82 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { api, type BranchNamingRule, type Repo, type RepoPin } from "../lib/api";
+import { api, type BranchNamingRule, type RepoPin } from "../lib/api";
 
 export default function SettingsPage() {
   const [searchParams] = useSearchParams();
   const repoIdParam = searchParams.get("repoId");
 
-  const [repos, setRepos] = useState<Repo[]>([]);
   const [repoPins, setRepoPins] = useState<RepoPin[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(repoIdParam);
+  const [selectedPinId, setSelectedPinId] = useState<number | null>(null);
   const [selectedPin, setSelectedPin] = useState<RepoPin | null>(null);
   const [rule, setRule] = useState<BranchNamingRule | null>(null);
   const [pattern, setPattern] = useState("");
-  const [examples, setExamples] = useState<string[]>([]);
-  const [newExample, setNewExample] = useState("");
-  const [previewIssueId, setPreviewIssueId] = useState("123");
-  const [previewSlug, setPreviewSlug] = useState("add-feature");
   const [defaultBranch, setDefaultBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load repos and pins
+  // Load pins
   useEffect(() => {
-    api.getRepos().then(setRepos).catch(console.error);
-    api.getRepoPins().then(setRepoPins).catch(console.error);
-  }, []);
+    api.getRepoPins().then((pins) => {
+      setRepoPins(pins);
+      // Auto-select if repoId is provided
+      if (repoIdParam) {
+        const pin = pins.find((p) => p.repoId === repoIdParam);
+        if (pin) {
+          setSelectedPinId(pin.id);
+        }
+      }
+    }).catch(console.error);
+  }, [repoIdParam]);
 
-  // Load rule and pin when repo is selected
+  // Load settings when pin is selected
   useEffect(() => {
-    if (!selectedRepoId) return;
+    if (!selectedPinId) {
+      setSelectedPin(null);
+      setRule(null);
+      return;
+    }
 
-    // Find the pin for this repo
-    const pin = repoPins.find((p) => p.repoId === selectedRepoId);
-    setSelectedPin(pin || null);
-    setDefaultBranch(pin?.baseBranch || "");
+    const pin = repoPins.find((p) => p.id === selectedPinId);
+    if (!pin) return;
+
+    setSelectedPin(pin);
+    setDefaultBranch(pin.baseBranch || "");
 
     api
-      .getBranchNaming(selectedRepoId)
+      .getBranchNaming(pin.repoId)
       .then((r) => {
         setRule(r);
         setPattern(r.pattern);
-        setExamples(r.examples);
       })
       .catch((err) => {
         console.error(err);
-        // Create default rule if not exists
-        setRule({ pattern: "vt/{issueId}/{taskSlug}", description: "", examples: [] });
-        setPattern("vt/{issueId}/{taskSlug}");
-        setExamples([]);
+        setRule({ pattern: "feat_{issueId}_{taskSlug}", description: "", examples: [] });
+        setPattern("feat_{issueId}_{taskSlug}");
       });
-  }, [selectedRepoId, repoPins]);
+  }, [selectedPinId, repoPins]);
 
   const handleSave = async () => {
-    if (!selectedRepoId) return;
+    if (!selectedPin) return;
     setLoading(true);
     setSaved(false);
+    setError(null);
     try {
-      const updated = await api.updateBranchNaming({
-        repoId: selectedRepoId,
+      // Save branch naming rule
+      await api.updateBranchNaming({
+        repoId: selectedPin.repoId,
         pattern,
         description: "",
-        examples,
+        examples: [],
       });
-      setRule(updated);
 
-      // Save default branch if pin exists
-      if (selectedPin && defaultBranch) {
+      // Save default branch
+      if (defaultBranch) {
         await api.updateRepoPin(selectedPin.id, { baseBranch: defaultBranch });
       }
 
       setSaved(true);
-      setError(null);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError((err as Error).message);
@@ -80,266 +85,94 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddExample = () => {
-    if (newExample && !examples.includes(newExample)) {
-      setExamples([...examples, newExample]);
-      setNewExample("");
-    }
-  };
-
-  const handleRemoveExample = (ex: string) => {
-    setExamples(examples.filter((e) => e !== ex));
-  };
-
-  const generatePreview = () => {
-    return pattern
-      .replace("{issueId}", previewIssueId)
-      .replace("{taskSlug}", previewSlug);
-  };
-
   return (
-    <div style={{ padding: "20px", maxWidth: "800px", margin: "0 auto", minHeight: "100vh", background: "#0f172a" }}>
-      <h1 style={{ color: "#e5e7eb" }}>Project Settings</h1>
+    <div style={{ padding: "20px", maxWidth: "600px", margin: "0 auto", minHeight: "100vh", background: "#0f172a" }}>
+      <h1 style={{ color: "#e5e7eb", marginBottom: "20px" }}>Settings</h1>
 
       <div style={{ marginBottom: "20px" }}>
-        <Link to="/" style={{ color: "#60a5fa" }}>← Back to Dashboard</Link>
+        <Link to="/" style={{ color: "#60a5fa" }}>← Back</Link>
       </div>
 
       {error && (
-        <div
-          style={{
-            background: "#7f1d1d",
-            color: "#f87171",
-            padding: "10px",
-            marginBottom: "20px",
-            borderRadius: "4px",
-          }}
-        >
+        <div style={{ background: "#7f1d1d", color: "#f87171", padding: "10px", marginBottom: "20px", borderRadius: "4px" }}>
           {error}
         </div>
       )}
 
       {saved && (
-        <div
-          style={{
-            background: "#14532d",
-            color: "#4ade80",
-            padding: "10px",
-            marginBottom: "20px",
-            borderRadius: "4px",
-          }}
-        >
-          Settings saved successfully!
+        <div style={{ background: "#14532d", color: "#4ade80", padding: "10px", marginBottom: "20px", borderRadius: "4px" }}>
+          Saved!
         </div>
       )}
 
-      {/* Repo Selection */}
-      <div
-        style={{
-          marginBottom: "20px",
-          padding: "15px",
-          background: "#1f2937",
-          borderRadius: "8px",
-          border: "1px solid #374151",
-        }}
-      >
-        <h3 style={{ color: "#e5e7eb" }}>Select Repository</h3>
+      {/* Project Selection */}
+      <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
+        <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>PROJECT</label>
         <select
-          value={selectedRepoId || ""}
-          onChange={(e) => setSelectedRepoId(e.target.value || null)}
-          style={{ padding: "8px", minWidth: "300px", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
+          value={selectedPinId || ""}
+          onChange={(e) => setSelectedPinId(e.target.value ? parseInt(e.target.value) : null)}
+          style={{ width: "100%", padding: "8px", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
         >
-          <option value="">-- Select a repo --</option>
-          {repos.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.fullName}
+          <option value="">-- Select --</option>
+          {repoPins.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.repoId}
             </option>
           ))}
         </select>
       </div>
 
-      {/* Default Branch Setting */}
-      {selectedRepoId && selectedPin && (
-        <div
-          style={{
-            marginBottom: "20px",
-            padding: "20px",
-            background: "#1f2937",
-            border: "1px solid #374151",
-            borderRadius: "8px",
-          }}
-        >
-          <h3 style={{ color: "#e5e7eb" }}>Default Branch</h3>
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ color: "#e5e7eb" }}>
-              <strong>Base Branch:</strong>
-            </label>
+      {selectedPin && (
+        <>
+          {/* Default Branch */}
+          <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
+            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>DEFAULT BRANCH</label>
             <input
               type="text"
               value={defaultBranch}
               onChange={(e) => setDefaultBranch(e.target.value)}
-              placeholder="develop, main, master..."
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "8px",
-                marginTop: "5px",
-                fontFamily: "monospace",
-                background: "#111827",
-                color: "#e5e7eb",
-                border: "1px solid #374151",
-                borderRadius: "4px",
-              }}
+              placeholder="develop"
+              style={{ width: "100%", padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
             />
-            <small style={{ color: "#9ca3af" }}>
-              The default branch will not show Task Instruction or Chat
+            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}>
+              Task Instruction と Chat は表示されません
             </small>
           </div>
-        </div>
-      )}
 
-      {selectedRepoId && rule && (
-        <div
-          style={{
-            padding: "20px",
-            background: "#1f2937",
-            border: "1px solid #374151",
-            borderRadius: "8px",
-          }}
-        >
-          <h3 style={{ color: "#e5e7eb" }}>Branch Naming Rule</h3>
-
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ color: "#e5e7eb" }}>
-              <strong>Pattern:</strong>
-            </label>
+          {/* Branch Naming Pattern */}
+          <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
+            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>BRANCH NAMING PATTERN</label>
             <input
               type="text"
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "8px",
-                marginTop: "5px",
-                fontFamily: "monospace",
-                background: "#111827",
-                color: "#e5e7eb",
-                border: "1px solid #374151",
-                borderRadius: "4px",
-              }}
+              placeholder="feat_{issueId}_{taskSlug}"
+              style={{ width: "100%", padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
             />
-            <small style={{ color: "#9ca3af" }}>
-              Use {"{issueId}"} and {"{taskSlug}"} as placeholders
+            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}>
+              {"{issueId}"} と {"{taskSlug}"} が使えます
             </small>
           </div>
 
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ color: "#e5e7eb" }}>
-              <strong>Examples:</strong>
-            </label>
-            <div style={{ marginTop: "5px" }}>
-              {examples.map((ex, i) => (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-block",
-                    background: "#374151",
-                    padding: "4px 8px",
-                    marginRight: "8px",
-                    marginBottom: "8px",
-                    borderRadius: "4px",
-                    color: "#e5e7eb",
-                  }}
-                >
-                  <code>{ex}</code>
-                  <button
-                    onClick={() => handleRemoveExample(ex)}
-                    style={{
-                      marginLeft: "8px",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "#9ca3af",
-                    }}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div style={{ marginTop: "8px" }}>
-              <input
-                type="text"
-                value={newExample}
-                onChange={(e) => setNewExample(e.target.value)}
-                placeholder="Add example..."
-                style={{ padding: "6px", marginRight: "8px", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
-                onKeyDown={(e) => e.key === "Enter" && handleAddExample()}
-              />
-              <button onClick={handleAddExample} style={{ background: "#3b82f6", color: "white", border: "none", borderRadius: "4px", padding: "6px 12px", cursor: "pointer" }}>Add</button>
-            </div>
-          </div>
-
-          {/* Preview */}
-          <div
-            style={{
-              marginBottom: "20px",
-              padding: "15px",
-              background: "#111827",
-              borderRadius: "4px",
-              border: "1px solid #374151",
-            }}
-          >
-            <label style={{ color: "#e5e7eb" }}>
-              <strong>Preview:</strong>
-            </label>
-            <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
-              <input
-                type="text"
-                value={previewIssueId}
-                onChange={(e) => setPreviewIssueId(e.target.value)}
-                placeholder="issueId"
-                style={{ width: "80px", padding: "6px", background: "#1f2937", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
-              />
-              <input
-                type="text"
-                value={previewSlug}
-                onChange={(e) => setPreviewSlug(e.target.value)}
-                placeholder="taskSlug"
-                style={{ width: "150px", padding: "6px", background: "#1f2937", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
-              />
-              <code
-                style={{
-                  flex: 1,
-                  padding: "6px 10px",
-                  background: "#1f2937",
-                  border: "1px solid #374151",
-                  borderRadius: "4px",
-                  color: "#e5e7eb",
-                }}
-              >
-                {generatePreview()}
-              </code>
-            </div>
-          </div>
-
+          {/* Save Button */}
           <button
             onClick={handleSave}
             disabled={loading}
             style={{
-              padding: "10px 20px",
-              background: "#22c55e",
+              width: "100%",
+              padding: "12px",
+              background: loading ? "#4b5563" : "#22c55e",
               color: "white",
               border: "none",
               borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "16px",
+              cursor: loading ? "not-allowed" : "pointer",
+              fontSize: "14px",
+              fontWeight: "600",
             }}
           >
-            {loading ? "Saving..." : "Save Settings"}
+            {loading ? "Saving..." : "Save"}
           </button>
-        </div>
+        </>
       )}
     </div>
   );
