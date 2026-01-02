@@ -309,7 +309,7 @@ chatRouter.post("/send", async (c) => {
   });
 
   // 2. Build prompt with context
-  const prompt = await buildPrompt(session, input.userMessage);
+  const prompt = await buildPrompt(session, input.userMessage, input.context);
 
   // 3. Execute Claude
   const promptDigest = createHash("md5").update(prompt).digest("hex");
@@ -590,7 +590,8 @@ const PLANNING_SYSTEM_PROMPT = `あなたはプロジェクト計画のアシス
 // Helper: Build prompt with full context
 async function buildPrompt(
   session: typeof schema.chatSessions.$inferSelect,
-  userMessage: string
+  userMessage: string,
+  context?: string
 ): Promise<string> {
   const parts: string[] = [];
 
@@ -741,7 +742,64 @@ ${recentMsgs.map((m) => `**${m.role}**: ${m.content.slice(0, 500)}${m.content.le
 `);
   }
 
-  // 6. User message
+  // 6. Context and Mode-specific prompts
+  if (context) {
+    // Parse mode from context
+    const modeMatch = context.match(/\[Mode: (planning|execution)\]/);
+    const mode = modeMatch?.[1] || "execution";
+
+    // Add mode-specific system prompt
+    if (mode === "planning") {
+      parts.push(`## Mode: Planning
+
+あなたはタスクの計画を支援するアシスタントです。
+
+### 役割
+- Task Instructionの内容を改善・具体化する
+- 要件を明確にするための質問をする
+- 実装方針を提案する
+
+### Task Instruction の編集提案
+Task Instructionの変更を提案する場合は、以下のフォーマットを使用してください：
+
+<<INSTRUCTION_EDIT>>
+（新しいTask Instructionの全文をここに記載）
+<</INSTRUCTION_EDIT>>
+
+ユーザーが「Commit」ボタンを押すと、この内容がTask Instructionに反映されます。
+
+### 注意点
+- 編集提案は1つのメッセージに1つまで
+- 既存の内容を踏まえて改善する
+- 具体的で実行可能な指示にする
+`);
+    } else {
+      parts.push(`## Mode: Execution
+
+あなたはタスクを実装するアシスタントです。
+
+### 役割
+- Task Instructionに従ってコードを実装する
+- 必要なファイルを作成・編集する
+- テストを書く
+- 問題があれば報告する
+
+### 注意点
+- Task Instructionの内容に忠実に実装する
+- 不明点があれば質問する
+- 段階的に実装を進める
+`);
+    }
+
+    // Add the context (Task Instruction)
+    const contextWithoutMode = context.replace(/\[Mode: (planning|execution)\]/, "").trim();
+    if (contextWithoutMode) {
+      parts.push(`${contextWithoutMode}
+`);
+    }
+  }
+
+  // 7. User message
   parts.push(`## User Request
 ${userMessage}`);
 

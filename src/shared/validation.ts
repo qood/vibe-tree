@@ -192,6 +192,7 @@ export type ArchiveChatSessionInput = z.infer<typeof archiveChatSessionSchema>;
 export const chatSendSchema = z.object({
   sessionId: z.string().uuid("Valid session ID is required"),
   userMessage: z.string().min(1, "Message is required"),
+  context: z.string().optional(),
 });
 
 export type ChatSendInput = z.infer<typeof chatSendSchema>;
