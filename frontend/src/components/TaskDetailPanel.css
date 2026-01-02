@@ -503,21 +503,6 @@
   font-weight: 600;
 }
 
-.task-detail-panel__commit-btn {
-  padding: 4px 12px;
-  background: #4ade80;
-  color: #14532d;
-  border: none;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.task-detail-panel__commit-btn:hover {
-  background: #86efac;
-}
-
 .task-detail-panel__committed-badge {
   padding: 4px 8px;
   background: #14532d;
@@ -538,22 +523,41 @@
 
 .task-detail-panel__diff-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid #374151;
+}
+
+.task-detail-panel__accept-btn {
+  padding: 6px 16px;
+  background: #4ade80;
+  color: #14532d;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-detail-panel__accept-btn:hover {
+  background: #86efac;
 }
 
 .task-detail-panel__reject-btn {
-  padding: 4px 12px;
-  background: #f87171;
-  color: #7f1d1d;
-  border: none;
+  padding: 6px 16px;
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid #4b5563;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .task-detail-panel__reject-btn:hover {
-  background: #fca5a5;
+  background: #374151;
+  color: #f87171;
+  border-color: #f87171;
 }
 
 .task-detail-panel__instruction-edit-proposal--rejected {

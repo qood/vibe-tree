@@ -417,25 +417,11 @@ export function TaskDetailPanel({
                       <div className={`task-detail-panel__instruction-edit-proposal ${editStatus === "rejected" ? "task-detail-panel__instruction-edit-proposal--rejected" : ""}`}>
                         <div className="task-detail-panel__diff-header">
                           <span>Task Instruction の変更提案</span>
-                          {editStatus === "committed" ? (
-                            <span className="task-detail-panel__committed-badge">Committed</span>
-                          ) : editStatus === "rejected" ? (
+                          {editStatus === "committed" && (
+                            <span className="task-detail-panel__committed-badge">Accepted</span>
+                          )}
+                          {editStatus === "rejected" && (
                             <span className="task-detail-panel__rejected-badge">Rejected</span>
-                          ) : (
-                            <div className="task-detail-panel__diff-actions">
-                              <button
-                                className="task-detail-panel__commit-btn"
-                                onClick={() => handleCommitInstructionEdit(msg.id, instructionEdit.newContent)}
-                              >
-                                Commit
-                              </button>
-                              <button
-                                className="task-detail-panel__reject-btn"
-                                onClick={() => handleRejectInstructionEdit(msg.id)}
-                              >
-                                Reject
-                              </button>
-                            </div>
                           )}
                         </div>
                         <div className="task-detail-panel__diff-content">
@@ -454,6 +440,22 @@ export function TaskDetailPanel({
                             </div>
                           ))}
                         </div>
+                        {!editStatus && (
+                          <div className="task-detail-panel__diff-actions">
+                            <button
+                              className="task-detail-panel__accept-btn"
+                              onClick={() => handleCommitInstructionEdit(msg.id, instructionEdit.newContent)}
+                            >
+                              Accept
+                            </button>
+                            <button
+                              className="task-detail-panel__reject-btn"
+                              onClick={() => handleRejectInstructionEdit(msg.id)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
