@@ -31,7 +31,14 @@ projectRulesRouter.get("/branch-naming", async (c) => {
 
   const rule = rules[0];
   if (!rule) {
-    throw new NotFoundError("Branch naming rule");
+    // Return default rule if none exists
+    return c.json({
+      id: null,
+      repoId: query.repoId,
+      pattern: "vt/{issueId}/{taskSlug}",
+      description: "",
+      examples: [],
+    });
   }
 
   const ruleData = JSON.parse(rule.ruleJson) as BranchNamingRule;
