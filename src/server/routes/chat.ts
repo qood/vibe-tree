@@ -653,6 +653,7 @@ async function buildPrompt(
 ${branchNaming.pattern}
 
 {} で囲まれた部分をタスクに応じて置換してください。
+※ {issueId} がパターンに含まれていても、Issue番号がない場合は省略してください。
 ${branchNaming.examples?.length ? `\n例: ${branchNaming.examples.join(", ")}` : ""}
 `);
     }
