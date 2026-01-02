@@ -1039,16 +1039,46 @@
   cursor: not-allowed;
 }
 
-/* CI checks button (clickable) */
-button.task-detail-panel__link-checks {
-  cursor: pointer;
-  border: none;
-  font-size: 11px;
+/* CI badge button */
+.task-detail-panel__ci-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 8px;
+  border-radius: 12px;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  background: #1f2937;
 }
 
-button.task-detail-panel__link-checks:hover {
-  opacity: 0.8;
+.task-detail-panel__ci-badge:hover {
+  opacity: 0.85;
+}
+
+.task-detail-panel__ci-badge--success {
+  background: #065f46;
+  color: #34d399;
+}
+
+.task-detail-panel__ci-badge--failure {
+  background: #7f1d1d;
+  color: #f87171;
+}
+
+.task-detail-panel__ci-badge--pending {
+  background: #78350f;
+  color: #fbbf24;
+}
+
+.task-detail-panel__ci-badge-icon {
+  font-size: 10px;
+}
+
+.task-detail-panel__ci-badge-count {
+  font-family: monospace;
+  font-size: 11px;
 }
 
 /* CI Modal */

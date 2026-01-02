@@ -643,12 +643,14 @@ export function TaskDetailPanel({
               <div className="task-detail-panel__link-meta">
                 {totalChecks > 0 && (
                   <button
-                    className={`task-detail-panel__link-checks task-detail-panel__link-checks--${pr.checksStatus}`}
+                    className={`task-detail-panel__ci-badge task-detail-panel__ci-badge--${pr.checksStatus}`}
                     onClick={() => setShowCIModal(true)}
                     title="View CI details"
                   >
-                    {pr.checksStatus === "success" ? "✓" : pr.checksStatus === "failure" ? "✗" : "●"}
-                    {" "}{passedChecks}/{totalChecks}
+                    <span className="task-detail-panel__ci-badge-icon">
+                      {pr.checksStatus === "success" ? "✓" : pr.checksStatus === "failure" ? "✗" : "●"}
+                    </span>
+                    <span className="task-detail-panel__ci-badge-count">{passedChecks}/{totalChecks}</span>
                   </button>
                 )}
                 {pr.status && pr.status !== "open" && (
