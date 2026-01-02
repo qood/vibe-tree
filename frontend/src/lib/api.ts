@@ -456,6 +456,11 @@ export const api = {
     fetchJson<{ success: boolean }>(`${API_BASE}/repo-pins/${id}`, {
       method: "DELETE",
     }),
+  updateRepoPin: (id: number, updates: { label?: string; baseBranch?: string }) =>
+    fetchJson<RepoPin>(`${API_BASE}/repo-pins/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    }),
 
   // AI Agent
   aiStart: (localPath: string, planId?: number, branch?: string) =>

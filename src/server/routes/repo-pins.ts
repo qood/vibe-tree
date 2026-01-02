@@ -146,6 +146,50 @@ repoPinsRouter.post("/use", async (c) => {
   return c.json(updated);
 });
 
+// PATCH /api/repo-pins/:id - Update a repo pin (label, baseBranch)
+repoPinsRouter.patch("/:id", async (c) => {
+  const id = parseInt(c.req.param("id"), 10);
+  if (isNaN(id) || id <= 0) {
+    throw new BadRequestError("Invalid id");
+  }
+
+  const body = await c.req.json();
+  const { label, baseBranch } = body as { label?: string; baseBranch?: string };
+
+  const existing = await db
+    .select()
+    .from(schema.repoPins)
+    .where(eq(schema.repoPins.id, id));
+
+  const existingPin = existing[0];
+  if (!existingPin) {
+    throw new NotFoundError(`Repo pin not found: ${id}`);
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (label !== undefined) updateData.label = label;
+  if (baseBranch !== undefined) updateData.baseBranch = baseBranch;
+
+  if (Object.keys(updateData).length > 0) {
+    await db
+      .update(schema.repoPins)
+      .set(updateData)
+      .where(eq(schema.repoPins.id, id));
+  }
+
+  const updated: RepoPin = {
+    id: existingPin.id,
+    repoId: existingPin.repoId,
+    localPath: existingPin.localPath,
+    label: label !== undefined ? label : existingPin.label,
+    baseBranch: baseBranch !== undefined ? baseBranch : existingPin.baseBranch ?? null,
+    lastUsedAt: existingPin.lastUsedAt,
+    createdAt: existingPin.createdAt,
+  };
+
+  return c.json(updated);
+});
+
 // DELETE /api/repo-pins/:id - Delete a repo pin
 repoPinsRouter.delete("/:id", async (c) => {
   const id = parseInt(c.req.param("id"), 10);

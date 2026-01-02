@@ -1,50 +1,56 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { api, type BranchNamingRule, type Repo } from "../lib/api";
+import { api, type BranchNamingRule, type Repo, type RepoPin } from "../lib/api";
 
 export default function SettingsPage() {
   const [searchParams] = useSearchParams();
   const repoIdParam = searchParams.get("repoId");
 
   const [repos, setRepos] = useState<Repo[]>([]);
+  const [repoPins, setRepoPins] = useState<RepoPin[]>([]);
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(repoIdParam);
+  const [selectedPin, setSelectedPin] = useState<RepoPin | null>(null);
   const [rule, setRule] = useState<BranchNamingRule | null>(null);
   const [pattern, setPattern] = useState("");
-  const [description, setDescription] = useState("");
   const [examples, setExamples] = useState<string[]>([]);
   const [newExample, setNewExample] = useState("");
-  const [previewPlanId, setPreviewPlanId] = useState("1");
+  const [previewIssueId, setPreviewIssueId] = useState("123");
   const [previewSlug, setPreviewSlug] = useState("add-feature");
+  const [defaultBranch, setDefaultBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load repos
+  // Load repos and pins
   useEffect(() => {
     api.getRepos().then(setRepos).catch(console.error);
+    api.getRepoPins().then(setRepoPins).catch(console.error);
   }, []);
 
-  // Load rule when repo is selected
+  // Load rule and pin when repo is selected
   useEffect(() => {
     if (!selectedRepoId) return;
+
+    // Find the pin for this repo
+    const pin = repoPins.find((p) => p.repoId === selectedRepoId);
+    setSelectedPin(pin || null);
+    setDefaultBranch(pin?.baseBranch || "");
 
     api
       .getBranchNaming(selectedRepoId)
       .then((r) => {
         setRule(r);
         setPattern(r.pattern);
-        setDescription(r.description);
         setExamples(r.examples);
       })
       .catch((err) => {
         console.error(err);
         // Create default rule if not exists
-        setRule({ pattern: "vt/{planId}/{taskSlug}", description: "", examples: [] });
-        setPattern("vt/{planId}/{taskSlug}");
-        setDescription("");
+        setRule({ pattern: "vt/{issueId}/{taskSlug}", description: "", examples: [] });
+        setPattern("vt/{issueId}/{taskSlug}");
         setExamples([]);
       });
-  }, [selectedRepoId]);
+  }, [selectedRepoId, repoPins]);
 
   const handleSave = async () => {
     if (!selectedRepoId) return;
@@ -54,10 +60,16 @@ export default function SettingsPage() {
       const updated = await api.updateBranchNaming({
         repoId: selectedRepoId,
         pattern,
-        description,
+        description: "",
         examples,
       });
       setRule(updated);
+
+      // Save default branch if pin exists
+      if (selectedPin && defaultBranch) {
+        await api.updateRepoPin(selectedPin.id, { baseBranch: defaultBranch });
+      }
+
       setSaved(true);
       setError(null);
       setTimeout(() => setSaved(false), 3000);
@@ -81,7 +93,7 @@ export default function SettingsPage() {
 
   const generatePreview = () => {
     return pattern
-      .replace("{planId}", previewPlanId)
+      .replace("{issueId}", previewIssueId)
       .replace("{taskSlug}", previewSlug);
   };
 
@@ -146,6 +158,46 @@ export default function SettingsPage() {
         </select>
       </div>
 
+      {/* Default Branch Setting */}
+      {selectedRepoId && selectedPin && (
+        <div
+          style={{
+            marginBottom: "20px",
+            padding: "20px",
+            background: "#1f2937",
+            border: "1px solid #374151",
+            borderRadius: "8px",
+          }}
+        >
+          <h3 style={{ color: "#e5e7eb" }}>Default Branch</h3>
+          <div style={{ marginBottom: "15px" }}>
+            <label style={{ color: "#e5e7eb" }}>
+              <strong>Base Branch:</strong>
+            </label>
+            <input
+              type="text"
+              value={defaultBranch}
+              onChange={(e) => setDefaultBranch(e.target.value)}
+              placeholder="develop, main, master..."
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "8px",
+                marginTop: "5px",
+                fontFamily: "monospace",
+                background: "#111827",
+                color: "#e5e7eb",
+                border: "1px solid #374151",
+                borderRadius: "4px",
+              }}
+            />
+            <small style={{ color: "#9ca3af" }}>
+              The default branch will not show Task Instruction or Chat
+            </small>
+          </div>
+        </div>
+      )}
+
       {selectedRepoId && rule && (
         <div
           style={{
@@ -178,29 +230,8 @@ export default function SettingsPage() {
               }}
             />
             <small style={{ color: "#9ca3af" }}>
-              Use {"{planId}"} and {"{taskSlug}"} as placeholders
+              Use {"{issueId}"} and {"{taskSlug}"} as placeholders
             </small>
-          </div>
-
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ color: "#e5e7eb" }}>
-              <strong>Description:</strong>
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "8px",
-                marginTop: "5px",
-                minHeight: "60px",
-                background: "#111827",
-                color: "#e5e7eb",
-                border: "1px solid #374151",
-                borderRadius: "4px",
-              }}
-            />
           </div>
 
           <div style={{ marginBottom: "15px" }}>
@@ -266,9 +297,9 @@ export default function SettingsPage() {
             <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
               <input
                 type="text"
-                value={previewPlanId}
-                onChange={(e) => setPreviewPlanId(e.target.value)}
-                placeholder="planId"
+                value={previewIssueId}
+                onChange={(e) => setPreviewIssueId(e.target.value)}
+                placeholder="issueId"
                 style={{ width: "80px", padding: "6px", background: "#1f2937", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
               />
               <input
