@@ -9,7 +9,7 @@ export default function SettingsPage() {
   const [repoPins, setRepoPins] = useState<RepoPin[]>([]);
   const [selectedPinId, setSelectedPinId] = useState<number | null>(null);
   const [selectedPin, setSelectedPin] = useState<RepoPin | null>(null);
-  const [rule, setRule] = useState<BranchNamingRule | null>(null);
+  const [, setRule] = useState<BranchNamingRule | null>(null);
   const [pattern, setPattern] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("");
   const [loading, setLoading] = useState(false);

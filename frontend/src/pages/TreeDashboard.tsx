@@ -69,9 +69,7 @@ export default function TreeDashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsRule, setSettingsRule] = useState<BranchNamingRule | null>(null);
   const [settingsPattern, setSettingsPattern] = useState("");
-  const [settingsDescription, setSettingsDescription] = useState("");
-  const [settingsExamples, setSettingsExamples] = useState<string[]>([]);
-  const [settingsNewExample, setSettingsNewExample] = useState("");
+  const [settingsDefaultBranch, setSettingsDefaultBranch] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
@@ -401,38 +399,43 @@ export default function TreeDashboard() {
 
   // Settings functions
   const handleOpenSettings = async () => {
-    if (!snapshot?.repoId) return;
+    if (!snapshot?.repoId || !selectedPin) return;
     setShowSettings(true);
     setSettingsLoading(true);
+    setSettingsDefaultBranch(selectedPin.baseBranch || "");
     try {
       const rule = await api.getBranchNaming(snapshot.repoId);
       setSettingsRule(rule);
       setSettingsPattern(rule.pattern);
-      setSettingsDescription(rule.description);
-      setSettingsExamples(rule.examples);
     } catch {
       // Default rule if not exists
-      setSettingsRule({ pattern: "vt/{planId}/{taskSlug}", description: "", examples: [] });
-      setSettingsPattern("vt/{planId}/{taskSlug}");
-      setSettingsDescription("");
-      setSettingsExamples([]);
+      setSettingsRule({ pattern: "feat_{issueId}_{taskSlug}" });
+      setSettingsPattern("feat_{issueId}_{taskSlug}");
     } finally {
       setSettingsLoading(false);
     }
   };
 
   const handleSaveSettings = async () => {
-    if (!snapshot?.repoId) return;
+    if (!snapshot?.repoId || !selectedPin) return;
     setSettingsLoading(true);
     setSettingsSaved(false);
     try {
+      // Save branch naming rule
       const updated = await api.updateBranchNaming({
         repoId: snapshot.repoId,
         pattern: settingsPattern,
-        description: settingsDescription,
-        examples: settingsExamples,
       });
       setSettingsRule(updated);
+
+      // Save default branch
+      if (settingsDefaultBranch) {
+        await api.updateRepoPin(selectedPin.id, { baseBranch: settingsDefaultBranch });
+        // Refresh pins to update baseBranch
+        const pins = await api.getRepoPins();
+        setRepoPins(pins);
+      }
+
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch (err) {
@@ -440,17 +443,6 @@ export default function TreeDashboard() {
     } finally {
       setSettingsLoading(false);
     }
-  };
-
-  const handleAddSettingsExample = () => {
-    if (settingsNewExample && !settingsExamples.includes(settingsNewExample)) {
-      setSettingsExamples([...settingsExamples, settingsNewExample]);
-      setSettingsNewExample("");
-    }
-  };
-
-  const handleRemoveSettingsExample = (ex: string) => {
-    setSettingsExamples(settingsExamples.filter((e) => e !== ex));
   };
 
   // If no project selected, show project list
@@ -903,43 +895,24 @@ export default function TreeDashboard() {
                     <div className="modal__success">Settings saved!</div>
                   )}
                   <div className="settings-section">
+                    <label>Default Branch</label>
+                    <input
+                      type="text"
+                      value={settingsDefaultBranch}
+                      onChange={(e) => setSettingsDefaultBranch(e.target.value)}
+                      placeholder="develop"
+                    />
+                    <small>Task Instruction と Chat は表示されません</small>
+                  </div>
+                  <div className="settings-section">
                     <label>Branch Naming Pattern</label>
                     <input
                       type="text"
                       value={settingsPattern}
                       onChange={(e) => setSettingsPattern(e.target.value)}
-                      placeholder="vt/{planId}/{taskSlug}"
+                      placeholder="feat_{issueId}_{taskSlug}"
                     />
-                    <small>Use {"{planId}"} and {"{taskSlug}"} as placeholders</small>
-                  </div>
-                  <div className="settings-section">
-                    <label>Description</label>
-                    <textarea
-                      value={settingsDescription}
-                      onChange={(e) => setSettingsDescription(e.target.value)}
-                      placeholder="Description of the naming convention..."
-                    />
-                  </div>
-                  <div className="settings-section">
-                    <label>Examples</label>
-                    <div className="settings-examples">
-                      {settingsExamples.map((ex, i) => (
-                        <span key={i} className="settings-example">
-                          <code>{ex}</code>
-                          <button onClick={() => handleRemoveSettingsExample(ex)}>×</button>
-                        </span>
-                      ))}
-                    </div>
-                    <div className="settings-add-example">
-                      <input
-                        type="text"
-                        value={settingsNewExample}
-                        onChange={(e) => setSettingsNewExample(e.target.value)}
-                        placeholder="Add example..."
-                        onKeyDown={(e) => e.key === "Enter" && handleAddSettingsExample()}
-                      />
-                      <button onClick={handleAddSettingsExample}>Add</button>
-                    </div>
+                    <small>Use {"{issueId}"} and {"{taskSlug}"} as placeholders</small>
                   </div>
                 </>
               ) : (

@@ -4,7 +4,6 @@ import {
   extractInstructionEdit,
   removeInstructionEditTags,
   computeSimpleDiff,
-  type DiffLine,
 } from "../lib/instruction-parser";
 import "./TaskDetailPanel.css";
 
@@ -61,7 +60,6 @@ export function TaskDetailPanel({
   const workingPath = worktreePath || (checkedOut ? localPath : null);
 
   // Planning mode can work without workingPath (uses localPath), Execution requires workingPath
-  const canSendMessage = chatMode === "planning" || !!workingPath;
   const effectivePath = workingPath || localPath; // For Planning mode, use localPath as fallback
 
   // Load task instruction
