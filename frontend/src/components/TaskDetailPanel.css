@@ -1,0 +1,562 @@
+.task-detail-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.task-detail-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+}
+
+.task-detail-panel__header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-family: monospace;
+  color: #e5e7eb;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
+.task-detail-panel__close {
+  padding: 4px 8px;
+  background: transparent;
+  color: #9ca3af;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.task-detail-panel__close:hover {
+  background: #374151;
+  color: #e5e7eb;
+}
+
+.task-detail-panel__loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+}
+
+.task-detail-panel__error {
+  padding: 8px 16px;
+  background: #7f1d1d;
+  color: #f87171;
+  font-size: 13px;
+}
+
+/* Worktree Section */
+.task-detail-panel__worktree-section {
+  padding: 8px 16px;
+  border-bottom: 1px solid #374151;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.task-detail-panel__worktree-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-detail-panel__worktree-badge {
+  padding: 4px 8px;
+  background: #14532d;
+  color: #4ade80;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.task-detail-panel__worktree-badge--checkout {
+  background: #1e3a5f;
+  color: #60a5fa;
+}
+
+.task-detail-panel__worktree-info code {
+  font-size: 11px;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-panel__branch-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-detail-panel__checkout-btn {
+  padding: 4px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.task-detail-panel__checkout-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.task-detail-panel__checkout-btn:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__create-worktree-btn {
+  padding: 4px 12px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.task-detail-panel__create-worktree-btn:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.task-detail-panel__create-worktree-btn:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+}
+
+/* Instruction Section - Fixed at top */
+.task-detail-panel__instruction-section {
+  padding: 12px 16px;
+  background: #111827;
+  flex-shrink: 0;
+}
+
+/* Resize Handle */
+.task-detail-panel__resize-handle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  cursor: ns-resize;
+  background: #1f2937;
+  border-top: 1px solid #374151;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__resize-handle:hover,
+.task-detail-panel__resize-handle--active {
+  background: #374151;
+}
+
+.task-detail-panel__resize-bar {
+  width: 40px;
+  height: 3px;
+  background: #4b5563;
+  border-radius: 2px;
+}
+
+.task-detail-panel__resize-handle:hover .task-detail-panel__resize-bar,
+.task-detail-panel__resize-handle--active .task-detail-panel__resize-bar {
+  background: #6b7280;
+}
+
+.task-detail-panel__instruction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.task-detail-panel__instruction-header h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.task-detail-panel__edit-btn {
+  padding: 4px 10px;
+  background: #374151;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.task-detail-panel__edit-btn:hover {
+  background: #4b5563;
+}
+
+.task-detail-panel__instruction-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-detail-panel__instruction-actions button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.task-detail-panel__instruction-actions button:first-child {
+  background: #3b82f6;
+  color: white;
+}
+
+.task-detail-panel__instruction-actions button:first-child:hover {
+  background: #2563eb;
+}
+
+.task-detail-panel__instruction-actions button:last-child {
+  background: #374151;
+  color: #9ca3af;
+}
+
+.task-detail-panel__instruction-actions button:last-child:hover {
+  background: #4b5563;
+}
+
+.task-detail-panel__instruction-content {
+  border: 1px solid #374151;
+  border-radius: 6px;
+  background: #0f172a;
+  box-sizing: border-box;
+}
+
+.task-detail-panel__instruction-textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  color: #e5e7eb;
+  border: none;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.task-detail-panel__instruction-textarea::placeholder {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.task-detail-panel__instruction-textarea--editing {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.task-detail-panel__instruction-content:focus-within {
+  border-color: #3b82f6;
+}
+
+/* Chat Section */
+.task-detail-panel__chat-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 16px;
+}
+
+.task-detail-panel__chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.task-detail-panel__chat-header h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+.task-detail-panel__chat-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: #1f2937;
+  border-radius: 4px;
+  padding: 2px;
+  height: 28px;
+  align-items: center;
+}
+
+.task-detail-panel__mode-btn {
+  padding: 4px 8px;
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.task-detail-panel__mode-btn:hover {
+  color: #9ca3af;
+}
+
+.task-detail-panel__mode-btn--active {
+  color: #e5e7eb;
+}
+
+.task-detail-panel__mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__mode-btn--locked::after {
+  content: "(locked)";
+  margin-left: 4px;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* Planning mode - purple */
+.task-detail-panel__mode-btn:first-child.task-detail-panel__mode-btn--active {
+  background: #581c87;
+  color: #c084fc;
+}
+
+/* Execution mode - green */
+.task-detail-panel__mode-btn:last-child.task-detail-panel__mode-btn--active {
+  background: #14532d;
+  color: #4ade80;
+}
+
+.task-detail-panel__messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.task-detail-panel__no-messages {
+  color: #6b7280;
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}
+
+.task-detail-panel__message {
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 90%;
+}
+
+.task-detail-panel__message--user {
+  background: #3b82f6;
+  color: white;
+  align-self: flex-end;
+}
+
+.task-detail-panel__message--assistant {
+  background: #1f2937;
+  border: 1px solid #374151;
+  align-self: flex-start;
+}
+
+.task-detail-panel__message--system {
+  background: #422006;
+  border: 1px solid #a16207;
+  align-self: center;
+  font-size: 12px;
+}
+
+.task-detail-panel__message--loading {
+  background: #374151;
+  color: #9ca3af;
+  align-self: flex-start;
+}
+
+.task-detail-panel__message-role {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  opacity: 0.7;
+}
+
+.task-detail-panel__message-content {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.task-detail-panel__message-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.task-detail-panel__chat-input {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #374151;
+}
+
+.task-detail-panel__chat-input textarea {
+  flex: 1;
+  padding: 8px 12px;
+  background: #0f172a;
+  color: #e5e7eb;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  min-height: 40px;
+  max-height: 100px;
+}
+
+.task-detail-panel__chat-input textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.task-detail-panel__chat-input textarea:disabled {
+  background: #1f2937;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__chat-input button {
+  padding: 8px 16px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.task-detail-panel__chat-input button:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.task-detail-panel__chat-input button:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__chat-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #6b7280;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Instruction Edit Proposal */
+.task-detail-panel__instruction-edit-proposal {
+  margin-top: 8px;
+  border: 1px solid #581c87;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1f2937;
+}
+
+.task-detail-panel__diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #581c87;
+  color: #c084fc;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-detail-panel__commit-btn {
+  padding: 4px 12px;
+  background: #4ade80;
+  color: #14532d;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-detail-panel__commit-btn:hover {
+  background: #86efac;
+}
+
+.task-detail-panel__committed-badge {
+  padding: 4px 8px;
+  background: #14532d;
+  color: #4ade80;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.task-detail-panel__diff-content {
+  padding: 8px 0;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.task-detail-panel__diff-line {
+  display: flex;
+  padding: 1px 12px;
+}
+
+.task-detail-panel__diff-line--unchanged {
+  color: #9ca3af;
+}
+
+.task-detail-panel__diff-line--added {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.task-detail-panel__diff-line--removed {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.task-detail-panel__diff-prefix {
+  width: 16px;
+  flex-shrink: 0;
+  user-select: none;
+}
