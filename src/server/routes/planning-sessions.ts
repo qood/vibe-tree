@@ -336,11 +336,6 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
         `# ${task.title}`,
         "",
         task.description || "",
-        "",
-        "---",
-        `- Branch: \`${branchName}\``,
-        `- Parent: \`${parentBranch}\``,
-        `- Planning Session: ${session.title}`,
       ].join("\n");
 
       await db.insert(schema.taskInstructions).values({
