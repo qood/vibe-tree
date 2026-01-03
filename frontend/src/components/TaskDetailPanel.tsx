@@ -62,6 +62,11 @@ export function TaskDetailPanel({
   // Checkout state - track if we checked out to this branch
   const [checkedOut, setCheckedOut] = useState(false);
 
+  // Reset checkout state when branch changes
+  useEffect(() => {
+    setCheckedOut(false);
+  }, [branchName]);
+
   // Branch links state
   const [branchLinks, setBranchLinks] = useState<BranchLink[]>([]);
   const [addingLinkType, setAddingLinkType] = useState<"issue" | "pr" | null>(null);
@@ -561,33 +566,9 @@ export function TaskDetailPanel({
 
       {/* Working Path Section */}
       <div className="task-detail-panel__worktree-section">
-        {worktreePath ? (
+        {(worktreePath || checkedOut) ? (
           <div className="task-detail-panel__worktree-info">
-            <span className="task-detail-panel__status-text">Worktree: {worktreePath.split("/").pop()}</span>
-            <div className="task-detail-panel__branch-actions">
-              {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
-                <button
-                  className="task-detail-panel__pull-btn"
-                  onClick={handlePull}
-                  disabled={pulling}
-                >
-                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
-                </button>
-              )}
-              {isMerged && (
-                <button
-                  className="task-detail-panel__delete-btn"
-                  onClick={() => setShowDeleteBranchModal(true)}
-                  disabled={deleting}
-                >
-                  {deleting ? "Deleting..." : "Delete Branch"}
-                </button>
-              )}
-            </div>
-          </div>
-        ) : checkedOut ? (
-          <div className="task-detail-panel__worktree-info">
-            <span className="task-detail-panel__status-text">Checked out in main repo</span>
+            <span className="task-detail-panel__active-badge">Active</span>
             <div className="task-detail-panel__branch-actions">
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
                 <button

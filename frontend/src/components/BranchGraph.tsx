@@ -46,7 +46,7 @@ const NODE_WIDTH = 180;
 const NODE_HEIGHT = 40;
 const TENTATIVE_NODE_HEIGHT = 52;
 const HORIZONTAL_GAP = 32;
-const VERTICAL_GAP = 28;
+const VERTICAL_GAP = 48; // Extra space for worktree labels above and indicators below
 const PADDING = 30; // Base padding
 const TOP_PADDING = 50; // Extra top padding for worktree labels above nodes
 
