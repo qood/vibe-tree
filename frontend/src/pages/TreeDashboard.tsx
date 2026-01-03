@@ -87,8 +87,11 @@ export default function TreeDashboard() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   // Worktree settings
-  const [worktreePostCommands, setWorktreePostCommands] = useState<string[]>([]);
+  const [worktreeCreateScript, setWorktreeCreateScript] = useState("");
+  const [worktreePostCreateScript, setWorktreePostCreateScript] = useState("");
   const [worktreeCheckoutPref, setWorktreeCheckoutPref] = useState<"main" | "first" | "ask">("main");
+  // Settings modal category
+  const [settingsCategory, setSettingsCategory] = useState<"general" | "worktree" | "cleanup">("general");
 
   // Warnings modal state
   const [showWarnings, setShowWarnings] = useState(false);
@@ -531,6 +534,7 @@ export default function TreeDashboard() {
     setShowSettings(true);
     setSettingsLoading(true);
     setSettingsDefaultBranch(selectedPin.baseBranch || "");
+    setSettingsCategory("general");
     try {
       const [rule, wtSettings] = await Promise.all([
         api.getBranchNaming(snapshot.repoId),
@@ -538,13 +542,15 @@ export default function TreeDashboard() {
       ]);
       setSettingsRule(rule);
       setSettingsPatterns(rule.patterns || []);
-      setWorktreePostCommands(wtSettings.postCreateCommands || []);
+      setWorktreeCreateScript(wtSettings.createScript || "");
+      setWorktreePostCreateScript(wtSettings.postCreateScript || "");
       setWorktreeCheckoutPref(wtSettings.checkoutPreference || "main");
     } catch {
       // No rule exists yet
       setSettingsRule({ patterns: [] });
       setSettingsPatterns([]);
-      setWorktreePostCommands([]);
+      setWorktreeCreateScript("");
+      setWorktreePostCreateScript("");
       setWorktreeCheckoutPref("main");
     } finally {
       setSettingsLoading(false);
@@ -566,10 +572,10 @@ export default function TreeDashboard() {
       setSettingsPatterns(updated.patterns || validPatterns);
 
       // Save worktree settings
-      const validCommands = worktreePostCommands.filter(c => c.trim());
       await api.updateWorktreeSettings({
         repoId: snapshot.repoId,
-        postCreateCommands: validCommands,
+        createScript: worktreeCreateScript,
+        postCreateScript: worktreePostCreateScript,
         checkoutPreference: worktreeCheckoutPref,
       });
 
@@ -1201,164 +1207,190 @@ export default function TreeDashboard() {
         </div>
       )}
 
-      {/* Settings Modal */}
+      {/* Settings Modal - Sidebar Layout */}
       {showSettings && (
         <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal__header">
+          <div className="settings-modal">
+            <div className="settings-modal__header">
               <h2>Settings</h2>
               <button onClick={() => setShowSettings(false)}>×</button>
             </div>
-            <div className="modal__content">
-              {settingsLoading && !settingsRule ? (
-                <div className="modal__loading">Loading...</div>
-              ) : settingsRule ? (
-                <>
-                  {settingsSaved && (
-                    <div className="modal__success">Settings saved!</div>
-                  )}
-                  <div className="settings-section">
-                    <label>Default Branch</label>
-                    <input
-                      type="text"
-                      value={settingsDefaultBranch}
-                      onChange={(e) => setSettingsDefaultBranch(e.target.value)}
-                      placeholder="develop"
-                    />
-                    <small>Task Instruction と Chat は表示されません</small>
-                  </div>
-                  <div className="settings-section">
-                    <label>Branch Naming Patterns</label>
-                    {settingsPatterns.map((pattern, index) => (
-                      <div key={index} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                        <input
-                          type="text"
-                          value={pattern}
-                          onChange={(e) => {
-                            const newPatterns = [...settingsPatterns];
-                            newPatterns[index] = e.target.value;
-                            setSettingsPatterns(newPatterns);
-                          }}
-                          placeholder="feat_{issueId}_{taskSlug}"
-                          style={{ flex: 1 }}
-                        />
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => {
-                            setSettingsPatterns(settingsPatterns.filter((_, i) => i !== index));
-                          }}
-                          style={{ padding: "4px 8px", color: "#ef4444" }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setSettingsPatterns([...settingsPatterns, ""])}
-                      style={{ marginTop: 4 }}
-                    >
-                      + Add Pattern
-                    </button>
-                    <small style={{ display: "block", marginTop: 8 }}>
-                      Use {"{issueId}"} and {"{taskSlug}"} as placeholders
-                    </small>
-                  </div>
+            <div className="settings-modal__body">
+              <div className="settings-modal__sidebar">
+                <button
+                  className={`settings-modal__nav-item ${settingsCategory === "general" ? "settings-modal__nav-item--active" : ""}`}
+                  onClick={() => setSettingsCategory("general")}
+                >
+                  General
+                </button>
+                <button
+                  className={`settings-modal__nav-item ${settingsCategory === "worktree" ? "settings-modal__nav-item--active" : ""}`}
+                  onClick={() => setSettingsCategory("worktree")}
+                >
+                  Worktree
+                </button>
+                <button
+                  className={`settings-modal__nav-item ${settingsCategory === "cleanup" ? "settings-modal__nav-item--active" : ""}`}
+                  onClick={() => setSettingsCategory("cleanup")}
+                >
+                  Cleanup
+                </button>
+              </div>
+              <div className="settings-modal__content">
+                {settingsLoading && !settingsRule ? (
+                  <div className="modal__loading">Loading...</div>
+                ) : settingsRule ? (
+                  <>
+                    {settingsSaved && (
+                      <div className="modal__success">Settings saved!</div>
+                    )}
 
-                  {/* Worktree Settings */}
-                  <div className="settings-section" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #374151" }}>
-                    <label>Worktree Post-Create Commands</label>
-                    <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
-                      Commands to run after creating a worktree (e.g., npm install)
-                    </small>
-                    {worktreePostCommands.map((cmd, index) => (
-                      <div key={index} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                        <input
-                          type="text"
-                          value={cmd}
-                          onChange={(e) => {
-                            const newCmds = [...worktreePostCommands];
-                            newCmds[index] = e.target.value;
-                            setWorktreePostCommands(newCmds);
-                          }}
-                          placeholder="bun install"
-                          style={{ flex: 1, fontFamily: "monospace" }}
-                        />
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => {
-                            setWorktreePostCommands(worktreePostCommands.filter((_, i) => i !== index));
-                          }}
-                          style={{ padding: "4px 8px", color: "#ef4444" }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setWorktreePostCommands([...worktreePostCommands, ""])}
-                      style={{ marginTop: 4 }}
-                    >
-                      + Add Command
-                    </button>
-                  </div>
+                    {/* General Settings */}
+                    {settingsCategory === "general" && (
+                      <>
+                        <h3>General</h3>
+                        <div className="settings-section">
+                          <label>Default Branch</label>
+                          <input
+                            type="text"
+                            value={settingsDefaultBranch}
+                            onChange={(e) => setSettingsDefaultBranch(e.target.value)}
+                            placeholder="develop"
+                          />
+                          <small>Task Instruction と Chat は表示されません</small>
+                        </div>
+                        <div className="settings-section">
+                          <label>Branch Naming Patterns</label>
+                          {settingsPatterns.map((pattern, index) => (
+                            <div key={index} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                              <input
+                                type="text"
+                                value={pattern}
+                                onChange={(e) => {
+                                  const newPatterns = [...settingsPatterns];
+                                  newPatterns[index] = e.target.value;
+                                  setSettingsPatterns(newPatterns);
+                                }}
+                                placeholder="feat_{issueId}_{taskSlug}"
+                                style={{ flex: 1 }}
+                              />
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                onClick={() => {
+                                  setSettingsPatterns(settingsPatterns.filter((_, i) => i !== index));
+                                }}
+                                style={{ padding: "4px 8px", color: "#ef4444" }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setSettingsPatterns([...settingsPatterns, ""])}
+                            style={{ marginTop: 4 }}
+                          >
+                            + Add Pattern
+                          </button>
+                          <small style={{ display: "block", marginTop: 8 }}>
+                            Use {"{issueId}"} and {"{taskSlug}"} as placeholders
+                          </small>
+                        </div>
+                      </>
+                    )}
 
-                  <div className="settings-section" style={{ marginTop: 16 }}>
-                    <label>Checkout Preference</label>
-                    <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
-                      When checking out a branch with multiple worktrees
-                    </small>
-                    <select
-                      value={worktreeCheckoutPref}
-                      onChange={(e) => setWorktreeCheckoutPref(e.target.value as "main" | "first" | "ask")}
-                      style={{ width: "100%", padding: "8px", background: "#1f2937", border: "1px solid #374151", borderRadius: 4, color: "white" }}
-                    >
-                      <option value="main">Always use main repo</option>
-                      <option value="first">Use first worktree found</option>
-                      <option value="ask">Ask each time</option>
-                    </select>
-                  </div>
+                    {/* Worktree Settings */}
+                    {settingsCategory === "worktree" && (
+                      <>
+                        <h3>Worktree</h3>
+                        <div className="settings-section">
+                          <label>Worktree Creation Script</label>
+                          <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                            Custom script to create worktree. Use {"{worktreePath}"}, {"{branchName}"}, {"{localPath}"} as placeholders.
+                            <br />Leave empty for default: <code>git worktree add {"{worktreePath}"} {"{branchName}"}</code>
+                          </small>
+                          <textarea
+                            value={worktreeCreateScript}
+                            onChange={(e) => setWorktreeCreateScript(e.target.value)}
+                            placeholder="git worktree add {worktreePath} {branchName}"
+                            rows={3}
+                            style={{ width: "100%", fontFamily: "monospace", fontSize: 12, background: "#1f2937", border: "1px solid #374151", borderRadius: 4, padding: 8, color: "white", resize: "vertical" }}
+                          />
+                        </div>
+                        <div className="settings-section">
+                          <label>Post-Create Script</label>
+                          <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                            Script to run after creating a worktree (runs in worktree directory)
+                          </small>
+                          <textarea
+                            value={worktreePostCreateScript}
+                            onChange={(e) => setWorktreePostCreateScript(e.target.value)}
+                            placeholder="bun install"
+                            rows={4}
+                            style={{ width: "100%", fontFamily: "monospace", fontSize: 12, background: "#1f2937", border: "1px solid #374151", borderRadius: 4, padding: 8, color: "white", resize: "vertical" }}
+                          />
+                        </div>
+                        <div className="settings-section">
+                          <label>Checkout Preference</label>
+                          <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                            When checking out a branch with multiple worktrees
+                          </small>
+                          <select
+                            value={worktreeCheckoutPref}
+                            onChange={(e) => setWorktreeCheckoutPref(e.target.value as "main" | "first" | "ask")}
+                            style={{ width: "100%", padding: "8px", background: "#1f2937", border: "1px solid #374151", borderRadius: 4, color: "white" }}
+                          >
+                            <option value="main">Always use main repo</option>
+                            <option value="first">Use first worktree found</option>
+                            <option value="ask">Ask each time</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
 
-                  {/* Cleanup Section */}
-                  <div className="form-group" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #374151" }}>
-                    <label>Data Cleanup</label>
-                    <p style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 8px" }}>
-                      Remove chat history and settings for deleted branches
-                    </p>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ background: "#7f1d1d", color: "#fca5a5" }}
-                      onClick={async () => {
-                        if (!selectedPin) return;
-                        if (!confirm("削除されたブランチのチャット履歴・設定をすべて削除します。よろしいですか？")) return;
-                        try {
-                          const result = await api.cleanupOrphanedBranchData(selectedPin.localPath);
-                          const total = result.cleaned.chatSessions + result.cleaned.taskInstructions + result.cleaned.branchLinks;
-                          if (total > 0) {
-                            alert(`クリーンアップ完了:\n- チャットセッション: ${result.cleaned.chatSessions}\n- タスク設定: ${result.cleaned.taskInstructions}\n- ブランチリンク: ${result.cleaned.branchLinks}`);
-                          } else {
-                            alert("削除対象のデータはありませんでした");
-                          }
-                        } catch (err) {
-                          alert("クリーンアップに失敗しました: " + (err as Error).message);
-                        }
-                      }}
-                    >
-                      Clean Up Orphaned Data
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="modal__error">Failed to load settings</div>
-              )}
+                    {/* Cleanup Settings */}
+                    {settingsCategory === "cleanup" && (
+                      <>
+                        <h3>Cleanup</h3>
+                        <div className="settings-section">
+                          <label>Orphaned Data Cleanup</label>
+                          <p style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 12px" }}>
+                            Remove chat history and settings for branches that no longer exist in the repository.
+                          </p>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            style={{ background: "#7f1d1d", color: "#fca5a5" }}
+                            onClick={async () => {
+                              if (!selectedPin) return;
+                              if (!confirm("削除されたブランチのチャット履歴・設定をすべて削除します。よろしいですか？")) return;
+                              try {
+                                const result = await api.cleanupOrphanedBranchData(selectedPin.localPath);
+                                const total = result.cleaned.chatSessions + result.cleaned.taskInstructions + result.cleaned.branchLinks;
+                                if (total > 0) {
+                                  alert(`クリーンアップ完了:\n- チャットセッション: ${result.cleaned.chatSessions}\n- タスク設定: ${result.cleaned.taskInstructions}\n- ブランチリンク: ${result.cleaned.branchLinks}`);
+                                } else {
+                                  alert("削除対象のデータはありませんでした");
+                                }
+                              } catch (err) {
+                                alert("クリーンアップに失敗しました: " + (err as Error).message);
+                              }
+                            }}
+                          >
+                            Clean Up Orphaned Data
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div className="modal__error">Failed to load settings</div>
+                )}
+              </div>
             </div>
-            <div className="modal__footer">
+            <div className="settings-modal__footer">
               <button className="btn-secondary" onClick={() => setShowSettings(false)}>
                 Cancel
               </button>

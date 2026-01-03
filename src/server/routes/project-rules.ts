@@ -145,8 +145,8 @@ projectRulesRouter.get("/worktree", async (c) => {
     return c.json({
       id: null,
       repoId: query.repoId,
-      worktreesDir: undefined,
-      postCreateCommands: [],
+      createScript: "",
+      postCreateScript: "",
       checkoutPreference: "main",
     });
   }
@@ -155,8 +155,8 @@ projectRulesRouter.get("/worktree", async (c) => {
   return c.json({
     id: rule.id,
     repoId: rule.repoId,
-    worktreesDir: ruleData.worktreesDir,
-    postCreateCommands: ruleData.postCreateCommands || [],
+    createScript: ruleData.createScript || "",
+    postCreateScript: ruleData.postCreateScript || "",
     checkoutPreference: ruleData.checkoutPreference || "main",
   });
 });
@@ -168,8 +168,8 @@ projectRulesRouter.post("/worktree", async (c) => {
 
   const now = new Date().toISOString();
   const ruleJson = JSON.stringify({
-    worktreesDir: input.worktreesDir,
-    postCreateCommands: input.postCreateCommands,
+    createScript: input.createScript,
+    postCreateScript: input.postCreateScript,
     checkoutPreference: input.checkoutPreference,
   });
 
@@ -216,8 +216,8 @@ projectRulesRouter.post("/worktree", async (c) => {
   const response = {
     id: ruleId,
     repoId: input.repoId,
-    worktreesDir: input.worktreesDir,
-    postCreateCommands: input.postCreateCommands || [],
+    createScript: input.createScript || "",
+    postCreateScript: input.postCreateScript || "",
     checkoutPreference: input.checkoutPreference || "main",
   };
 

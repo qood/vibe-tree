@@ -24,31 +24,51 @@ async function getWorktreeSettings(repoId: string): Promise<WorktreeSettings> {
     );
 
   if (!rules[0]) {
-    return { postCreateCommands: [], checkoutPreference: "main" };
+    return { createScript: "", postCreateScript: "", checkoutPreference: "main" };
   }
 
   return JSON.parse(rules[0].ruleJson) as WorktreeSettings;
 }
 
-// Helper to run post-creation commands (async, fire-and-forget for UI responsiveness)
-function runPostCreateCommands(worktreePath: string, commands: string[]): void {
-  if (!commands || commands.length === 0) return;
+// Helper to run post-creation script (async, fire-and-forget for UI responsiveness)
+function runPostCreateScript(worktreePath: string, script: string): void {
+  if (!script || !script.trim()) return;
 
-  // Run commands in background
-  const allCommands = commands.map(cmd => cmd.trim()).filter(Boolean).join(" && ");
-  if (!allCommands) return;
+  console.log(`[Worktree] Running post-create script in ${worktreePath}`);
 
-  console.log(`[Worktree] Running post-create commands in ${worktreePath}: ${allCommands}`);
-
-  exec(`cd "${worktreePath}" && ${allCommands}`, (error, stdout, stderr) => {
+  exec(`cd "${worktreePath}" && ${script}`, { shell: "/bin/bash" }, (error, stdout, stderr) => {
     if (error) {
-      console.error(`[Worktree] Post-create command failed:`, error.message);
+      console.error(`[Worktree] Post-create script failed:`, error.message);
       if (stderr) console.error(`[Worktree] stderr:`, stderr);
     } else {
-      console.log(`[Worktree] Post-create commands completed successfully`);
+      console.log(`[Worktree] Post-create script completed successfully`);
       if (stdout) console.log(`[Worktree] stdout:`, stdout);
     }
   });
+}
+
+// Helper to create worktree with optional custom script
+function createWorktreeWithScript(
+  localPath: string,
+  worktreePath: string,
+  branchName: string,
+  createScript?: string
+): void {
+  if (createScript && createScript.trim()) {
+    // Replace placeholders in custom script
+    const script = createScript
+      .replace(/\{worktreePath\}/g, worktreePath)
+      .replace(/\{branchName\}/g, branchName)
+      .replace(/\{localPath\}/g, localPath);
+
+    execSync(`cd "${localPath}" && ${script}`, { encoding: "utf-8", shell: "/bin/bash" });
+  } else {
+    // Default worktree creation
+    execSync(
+      `cd "${localPath}" && git worktree add "${worktreePath}" "${branchName}"`,
+      { encoding: "utf-8" }
+    );
+  }
 }
 
 export const branchRouter = new Hono();
@@ -215,16 +235,13 @@ branchRouter.post("/create-tree", async (c) => {
         // Worktree already exists, just use it
         console.log(`Worktree already exists: ${result.worktreePath}`);
       } else {
-        // Create worktree
-        execSync(
-          `cd "${localPath}" && git worktree add "${result.worktreePath}" "${task.branchName}"`,
-          { encoding: "utf-8" }
-        );
-
-        // Run post-creation commands if configured
+        // Create worktree with optional custom script
         const wtSettings = await getWorktreeSettings(input.repoId);
-        if (wtSettings.postCreateCommands && wtSettings.postCreateCommands.length > 0) {
-          runPostCreateCommands(result.worktreePath, wtSettings.postCreateCommands);
+        createWorktreeWithScript(localPath, result.worktreePath, task.branchName, wtSettings.createScript);
+
+        // Run post-creation script if configured
+        if (wtSettings.postCreateScript) {
+          runPostCreateScript(result.worktreePath, wtSettings.postCreateScript);
         }
       }
 
@@ -383,16 +400,16 @@ branchRouter.post("/create-worktree", async (c) => {
   }
 
   try {
-    execSync(
-      `cd "${localPath}" && git worktree add "${worktreePath}" "${branchName}"`,
-      { encoding: "utf-8" }
-    );
-
-    // Run post-creation commands if configured
+    // Get worktree settings
     const repoId = getRepoId(localPath);
     const wtSettings = await getWorktreeSettings(repoId);
-    if (wtSettings.postCreateCommands && wtSettings.postCreateCommands.length > 0) {
-      runPostCreateCommands(worktreePath, wtSettings.postCreateCommands);
+
+    // Create worktree with optional custom script
+    createWorktreeWithScript(localPath, worktreePath, branchName, wtSettings.createScript);
+
+    // Run post-creation script if configured
+    if (wtSettings.postCreateScript) {
+      runPostCreateScript(worktreePath, wtSettings.postCreateScript);
     }
   } catch (err) {
     throw new BadRequestError(`Failed to create worktree: ${err instanceof Error ? err.message : String(err)}`);

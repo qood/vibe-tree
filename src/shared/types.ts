@@ -16,11 +16,12 @@ export interface BranchNamingRule {
 }
 
 export interface WorktreeSettings {
-  // Worktree directory path template. Placeholders: {repoName}, {parentDir}
-  // Default: "{parentDir}/{repoName}-worktrees"
-  worktreesDir?: string;
-  // Commands to run after worktree creation (in worktree directory)
-  postCreateCommands?: string[];
+  // Custom worktree creation script. Placeholders: {worktreePath}, {branchName}, {localPath}
+  // If empty, uses default: git worktree add "{worktreePath}" "{branchName}"
+  createScript?: string;
+  // Script to run after worktree creation (in worktree directory)
+  // Runs as a shell script (each line executed sequentially)
+  postCreateScript?: string;
   // Which worktree to use for checkout when multiple exist
   // "main" = always use main repo, "first" = use first worktree found, "ask" = show selection
   checkoutPreference?: "main" | "first" | "ask";
