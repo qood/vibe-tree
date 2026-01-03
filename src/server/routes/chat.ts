@@ -485,13 +485,50 @@ chatRouter.post("/send", async (c) => {
 
       for (const line of lines) {
         if (!line.trim()) continue;
-        // Accumulate all output
-        accumulatedText += line + "\n";
-        broadcast({
-          type: "chat.streaming.chunk",
-          repoId: session.repoId,
-          data: { sessionId: input.sessionId, accumulated: accumulatedText },
-        });
+        try {
+          const json = JSON.parse(line);
+          let newContent = "";
+
+          if (json.type === "assistant" && json.message?.content) {
+            for (const block of json.message.content) {
+              if (block.type === "thinking" && block.thinking) {
+                newContent += `[Thinking]\n${block.thinking}\n\n`;
+              } else if (block.type === "text" && block.text) {
+                newContent += block.text;
+              } else if (block.type === "tool_use") {
+                newContent += `[Tool: ${block.name}]\n`;
+                if (block.input) {
+                  newContent += JSON.stringify(block.input, null, 2) + "\n";
+                }
+              }
+            }
+          } else if (json.type === "content_block_delta") {
+            if (json.delta?.thinking) {
+              newContent += json.delta.thinking;
+            } else if (json.delta?.text) {
+              newContent += json.delta.text;
+            }
+          } else if (json.type === "tool_result") {
+            newContent += `[Tool Result]\n${json.content || ""}\n`;
+          }
+
+          if (newContent) {
+            accumulatedText += newContent;
+            broadcast({
+              type: "chat.streaming.chunk",
+              repoId: session.repoId,
+              data: { sessionId: input.sessionId, accumulated: accumulatedText },
+            });
+          }
+        } catch {
+          // Non-JSON line, append as-is
+          accumulatedText += line + "\n";
+          broadcast({
+            type: "chat.streaming.chunk",
+            repoId: session.repoId,
+            data: { sessionId: input.sessionId, accumulated: accumulatedText },
+          });
+        }
       }
     } else {
       // Planning mode: plain text output
