@@ -1601,3 +1601,8 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.task-detail-panel__message--streaming {
+  background: #1e293b;
+  border-left: 2px solid #6b7280;
+}

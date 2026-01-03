@@ -510,7 +510,7 @@ chatRouter.post("/send", async (c) => {
             broadcast({
               type: "chat.streaming.chunk",
               repoId: session.repoId,
-              data: { sessionId: input.sessionId, accumulated: accumulatedText },
+              data: { sessionId: input.sessionId, chunk: newContent, accumulated: accumulatedText },
             });
           }
         } catch {
