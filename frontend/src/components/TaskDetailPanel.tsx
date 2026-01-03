@@ -565,6 +565,9 @@ export function TaskDetailPanel({
       <div className="task-detail-panel__worktree-section">
         {worktreePath ? (
           <div className="task-detail-panel__worktree-info">
+            {node?.worktree?.isActive && (
+              <span className="task-detail-panel__active-badge">Active</span>
+            )}
             <span className="task-detail-panel__status-text">Worktree: {worktreePath.split("/").pop()}</span>
             <div className="task-detail-panel__branch-actions">
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
@@ -590,6 +593,7 @@ export function TaskDetailPanel({
           </div>
         ) : checkedOut ? (
           <div className="task-detail-panel__worktree-info">
+            <span className="task-detail-panel__active-badge">Active</span>
             <span className="task-detail-panel__status-text">Checked out in main repo</span>
             <div className="task-detail-panel__branch-actions">
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
