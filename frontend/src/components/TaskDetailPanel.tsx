@@ -1134,7 +1134,7 @@ export function TaskDetailPanel({
               // Render saved chunks
               if (savedChunks && savedChunks.length > 0) {
                 return (
-                  <div key={msg.id}>
+                  <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {savedChunks.map((chunk, i) => (
                       <div key={`${msg.id}-chunk-${i}`} className={`task-detail-panel__message task-detail-panel__message--assistant task-detail-panel__chunk--${chunk.type}`}>
                         {i === 0 && (
