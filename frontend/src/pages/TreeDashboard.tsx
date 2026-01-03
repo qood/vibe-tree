@@ -67,6 +67,9 @@ export default function TreeDashboard() {
 
   // Branch graph edit mode
   const [branchGraphEditMode, setBranchGraphEditMode] = useState(false);
+
+  // Fetch state
+  const [fetching, setFetching] = useState(false);
   const [originalTreeSpecEdges, setOriginalTreeSpecEdges] = useState<TreeSpecEdge[] | null>(null);
 
   // Settings modal state
@@ -111,6 +114,22 @@ export default function TreeDashboard() {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const handleFetch = useCallback(async (localPath: string) => {
+    if (!localPath) return;
+    setFetching(true);
+    setError(null);
+    try {
+      await api.fetch(localPath);
+      // Rescan after fetch to update the view
+      const result = await api.scan(localPath);
+      setSnapshot(result);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setFetching(false);
     }
   }, []);
 
@@ -847,6 +866,14 @@ export default function TreeDashboard() {
                         Edit
                       </button>
                     )}
+                    <button
+                      className="btn-icon"
+                      onClick={() => selectedPin && handleFetch(selectedPin.localPath)}
+                      disabled={fetching}
+                      title="Fetch from remote"
+                    >
+                      {fetching ? "Fetching..." : "Fetch"}
+                    </button>
                     <span className="panel__count">{snapshot.nodes.length} branches</span>
                   </div>
                 </div>

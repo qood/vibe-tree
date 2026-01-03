@@ -71,10 +71,6 @@ export function TaskDetailPanel({
   const [showCIModal, setShowCIModal] = useState(false);
   const [refreshingLink, setRefreshingLink] = useState<number | null>(null);
 
-  // Fetch/remote state
-  const [fetching, setFetching] = useState(false);
-  const [remoteStatus, setRemoteStatus] = useState<{ ahead: number; behind: number } | null>(null);
-
   // The working path is either the worktree path or localPath if checked out
   const workingPath = worktreePath || (checkedOut ? localPath : null);
 
@@ -326,21 +322,6 @@ export function TaskDetailPanel({
     }
   };
 
-  const handleFetch = async () => {
-    setFetching(true);
-    setError(null);
-    try {
-      const result = await api.fetch(localPath);
-      const status = result.branchStatus[branchName];
-      setRemoteStatus(status || null);
-      onWorktreeCreated?.(); // Rescan to update
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setFetching(false);
-    }
-  };
-
   const handleCommitInstructionEdit = async (messageId: number, newContent: string) => {
     try {
       // Update the task instruction
@@ -489,27 +470,7 @@ export function TaskDetailPanel({
     <div className="task-detail-panel">
       <div className="task-detail-panel__header">
         <h3>{branchName}</h3>
-        <div className="task-detail-panel__header-actions">
-          <button
-            onClick={handleFetch}
-            disabled={fetching}
-            className="task-detail-panel__fetch-btn"
-            title="Fetch from remote"
-          >
-            {fetching ? "Fetching..." : "Fetch"}
-          </button>
-          {remoteStatus && (remoteStatus.ahead > 0 || remoteStatus.behind > 0) && (
-            <div className="task-detail-panel__remote-status">
-              {remoteStatus.ahead > 0 && (
-                <span className="task-detail-panel__remote-ahead">↑{remoteStatus.ahead}</span>
-              )}
-              {remoteStatus.behind > 0 && (
-                <span className="task-detail-panel__remote-behind">↓{remoteStatus.behind}</span>
-              )}
-            </div>
-          )}
-          <button onClick={onClose} className="task-detail-panel__close">x</button>
-        </div>
+        <button onClick={onClose} className="task-detail-panel__close">x</button>
       </div>
 
       {error && <div className="task-detail-panel__error">{error}</div>}
