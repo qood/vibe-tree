@@ -1117,10 +1117,6 @@ export default function TreeDashboard() {
                   key={code}
                   className={`filter-btn ${warningFilter === code ? "filter-btn--active" : ""}`}
                   onClick={() => setWarningFilter(code)}
-                  style={{
-                    borderColor: warningFilter === code ? getWarningConfig(code).color : undefined,
-                    color: warningFilter === code ? getWarningConfig(code).color : undefined,
-                  }}
                 >
                   {getWarningConfig(code).label}
                 </button>
