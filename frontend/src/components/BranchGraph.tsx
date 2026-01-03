@@ -14,6 +14,8 @@ interface BranchGraphProps {
   // Edge creation - only works when editMode is true
   editMode?: boolean;
   onEdgeCreate?: (parentBranch: string, childBranch: string) => void;
+  // Branch creation
+  onBranchCreate?: (baseBranch: string) => void;
 }
 
 interface DragState {
@@ -62,6 +64,7 @@ export default function BranchGraph({
   tentativeBaseBranch,
   editMode = false,
   onEdgeCreate,
+  onBranchCreate,
 }: BranchGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -760,6 +763,39 @@ export default function BranchGraph({
           </g>
           );
         })()}
+
+        {/* Add branch button */}
+        {onBranchCreate && !isTentative && !isMerged && (
+          <g
+            style={{ cursor: "pointer" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onBranchCreate(id);
+            }}
+          >
+            <rect
+              x={x + NODE_WIDTH - 24}
+              y={y + nodeHeight - 24}
+              width={20}
+              height={20}
+              rx={4}
+              fill="#374151"
+              stroke="#6b7280"
+              strokeWidth={1}
+            />
+            <text
+              x={x + NODE_WIDTH - 14}
+              y={y + nodeHeight - 13}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={16}
+              fill="#9ca3af"
+              fontWeight="bold"
+            >
+              +
+            </text>
+          </g>
+        )}
 
               </g>
     );
