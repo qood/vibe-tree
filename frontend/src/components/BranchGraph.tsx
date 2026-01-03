@@ -628,22 +628,22 @@ export default function BranchGraph({
               {/* Worktree folder name label - positioned above node */}
               <rect
                 x={x}
-                y={y - 22}
+                y={y - 20}
                 width={labelWidth}
-                height={20}
-                rx={4}
-                fill={isActive ? "#15803d" : "#0f766e"}
-                stroke={isActive ? "#4ade80" : "#14b8a6"}
-                strokeWidth={2}
+                height={18}
+                rx={3}
+                fill={isActive ? "#1a3a2a" : "#1e293b"}
+                stroke={isActive ? "#22c55e" : "#475569"}
+                strokeWidth={1}
               />
               <text
-                x={x + 8}
-                y={y - 11}
+                x={x + 6}
+                y={y - 10}
                 textAnchor="start"
                 dominantBaseline="middle"
-                fontSize={11}
-                fill={isActive ? "#bbf7d0" : "#99f6e4"}
-                fontWeight="bold"
+                fontSize={10}
+                fill={isActive ? "#4ade80" : "#94a3b8"}
+                fontWeight="600"
               >
                 {worktreeName.length > 22 ? worktreeName.substring(0, 20) + "…" : worktreeName}
               </text>
