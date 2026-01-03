@@ -351,3 +351,64 @@ ${gitStatus || "Clean working directory"}
   });
 });
 
+// POST /api/scan/fetch - Fetch from remote
+scanRouter.post("/fetch", async (c) => {
+  const body = await c.req.json();
+  const localPath = expandTilde(body.localPath);
+
+  if (!existsSync(localPath)) {
+    throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  try {
+    // Fetch all remotes
+    execSync(`cd "${localPath}" && git fetch --all`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+
+    // Get remote tracking status for all branches
+    const branchStatus: Record<string, { ahead: number; behind: number }> = {};
+
+    try {
+      // Get all local branches with their upstream
+      const branchOutput = execSync(
+        `cd "${localPath}" && git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads`,
+        { encoding: "utf-8" }
+      );
+
+      for (const line of branchOutput.trim().split("\n")) {
+        if (!line.trim()) continue;
+        const parts = line.split(" ");
+        const branchName = parts[0];
+        const upstream = parts[1];
+        const track = parts.slice(2).join(" ");
+
+        if (!upstream || !branchName) continue;
+
+        // Parse [ahead N, behind M] or [ahead N] or [behind M]
+        const aheadMatch = track.match(/ahead (\d+)/);
+        const behindMatch = track.match(/behind (\d+)/);
+
+        branchStatus[branchName] = {
+          ahead: aheadMatch ? parseInt(aheadMatch[1], 10) : 0,
+          behind: behindMatch ? parseInt(behindMatch[1], 10) : 0,
+        };
+      }
+    } catch {
+      // Ignore errors in getting branch status
+    }
+
+    const repoId = getRepoId(localPath);
+    broadcast({
+      type: "fetch.completed",
+      repoId,
+      data: { branchStatus },
+    });
+
+    return c.json({ success: true, branchStatus });
+  } catch (err) {
+    throw new BadRequestError(`Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+});
+

@@ -412,6 +412,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ localPath }),
     }),
+  fetch: (localPath: string) =>
+    fetchJson<{ success: boolean; branchStatus: Record<string, { ahead: number; behind: number }> }>(`${API_BASE}/scan/fetch`, {
+      method: "POST",
+      body: JSON.stringify({ localPath }),
+    }),
   getRestartPrompt: (
     repoId: string,
     localPath: string,

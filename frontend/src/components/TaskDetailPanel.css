@@ -41,6 +41,46 @@
   color: #e5e7eb;
 }
 
+.task-detail-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-detail-panel__fetch-btn {
+  padding: 4px 10px;
+  background: #374151;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.task-detail-panel__fetch-btn:hover:not(:disabled) {
+  background: #4b5563;
+}
+
+.task-detail-panel__fetch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__remote-status {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.task-detail-panel__remote-ahead {
+  color: #22c55e;
+}
+
+.task-detail-panel__remote-behind {
+  color: #f59e0b;
+}
+
 .task-detail-panel__loading {
   flex: 1;
   display: flex;
