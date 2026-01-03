@@ -30,19 +30,21 @@ projectRulesRouter.get("/branch-naming", async (c) => {
 
   const rule = rules[0];
   if (!rule) {
-    // Return default rule if none exists
+    // Return empty rule if none exists
     return c.json({
       id: null,
       repoId: query.repoId,
-      pattern: "feat_{issueId}_{taskSlug}",
+      patterns: [],
     });
   }
 
   const ruleData = JSON.parse(rule.ruleJson) as BranchNamingRule;
+  // Support legacy single pattern
+  const patterns = ruleData.patterns ?? (ruleData as unknown as { pattern?: string }).pattern ? [(ruleData as unknown as { pattern: string }).pattern] : [];
   return c.json({
     id: rule.id,
     repoId: rule.repoId,
-    pattern: ruleData.pattern,
+    patterns,
   });
 });
 
@@ -53,7 +55,7 @@ projectRulesRouter.post("/branch-naming", async (c) => {
 
   const now = new Date().toISOString();
   const ruleJson = JSON.stringify({
-    pattern: input.pattern,
+    patterns: input.patterns,
   });
 
   // Check if rule exists
@@ -99,7 +101,7 @@ projectRulesRouter.post("/branch-naming", async (c) => {
   const response = {
     id: ruleId,
     repoId: input.repoId,
-    pattern: input.pattern,
+    patterns: input.patterns,
   };
 
   // Broadcast update

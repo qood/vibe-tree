@@ -65,9 +65,7 @@ describe('api', () => {
       const rule = {
         id: 1,
         repoId: 'owner/repo',
-        pattern: 'vt/{planId}/{taskSlug}',
-        description: 'test',
-        examples: [],
+        patterns: ['feat_{issueId}_{taskSlug}', 'feat_{taskSlug}'],
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -83,9 +81,7 @@ describe('api', () => {
     it('should update branch naming rule', async () => {
       const input = {
         repoId: 'owner/repo',
-        pattern: 'vt/{planId}/{taskSlug}',
-        description: 'test',
-        examples: ['vt/1/feature'],
+        patterns: ['feat_{issueId}_{taskSlug}', 'feat_{taskSlug}'],
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -93,7 +89,7 @@ describe('api', () => {
       });
 
       const result = await api.updateBranchNaming(input);
-      expect(result.pattern).toBe(input.pattern);
+      expect(result.patterns).toEqual(input.patterns);
     });
   });
 

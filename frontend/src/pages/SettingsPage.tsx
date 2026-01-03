@@ -10,7 +10,7 @@ export default function SettingsPage() {
   const [selectedPinId, setSelectedPinId] = useState<number | null>(null);
   const [selectedPin, setSelectedPin] = useState<RepoPin | null>(null);
   const [, setRule] = useState<BranchNamingRule | null>(null);
-  const [pattern, setPattern] = useState("");
+  const [patterns, setPatterns] = useState<string[]>([]);
   const [defaultBranch, setDefaultBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -48,12 +48,12 @@ export default function SettingsPage() {
       .getBranchNaming(pin.repoId)
       .then((r) => {
         setRule(r);
-        setPattern(r.pattern);
+        setPatterns(r.patterns || []);
       })
       .catch((err) => {
         console.error(err);
-        setRule({ pattern: "feat_{issueId}_{taskSlug}" });
-        setPattern("feat_{issueId}_{taskSlug}");
+        setRule({ patterns: [] });
+        setPatterns([]);
       });
   }, [selectedPinId, repoPins]);
 
@@ -66,7 +66,7 @@ export default function SettingsPage() {
       // Save branch naming rule
       await api.updateBranchNaming({
         repoId: selectedPin.repoId,
-        pattern,
+        patterns: patterns.filter((p) => p.trim() !== ""),
       });
 
       // Save default branch
@@ -137,17 +137,37 @@ export default function SettingsPage() {
             </small>
           </div>
 
-          {/* Branch Naming Pattern */}
+          {/* Branch Naming Patterns */}
           <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
-            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>BRANCH NAMING PATTERN</label>
-            <input
-              type="text"
-              value={pattern}
-              onChange={(e) => setPattern(e.target.value)}
-              placeholder="feat_{issueId}_{taskSlug}"
-              style={{ width: "100%", padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
-            />
-            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}>
+            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>BRANCH NAMING PATTERNS</label>
+            {patterns.map((p, i) => (
+              <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                <input
+                  type="text"
+                  value={p}
+                  onChange={(e) => {
+                    const newPatterns = [...patterns];
+                    newPatterns[i] = e.target.value;
+                    setPatterns(newPatterns);
+                  }}
+                  placeholder="feat_{issueId}_{taskSlug}"
+                  style={{ flex: 1, padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
+                />
+                <button
+                  onClick={() => setPatterns(patterns.filter((_, j) => j !== i))}
+                  style={{ padding: "8px 12px", background: "#7f1d1d", color: "#f87171", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => setPatterns([...patterns, ""])}
+              style={{ padding: "6px 12px", background: "#374151", color: "#9ca3af", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }}
+            >
+              + Add Pattern
+            </button>
+            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "8px", display: "block" }}>
               {"{issueId}"} と {"{taskSlug}"} が使えます
             </small>
           </div>

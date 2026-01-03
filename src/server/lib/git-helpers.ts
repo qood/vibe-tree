@@ -344,15 +344,18 @@ export function calculateWarnings(
 ): Warning[] {
   const warnings: Warning[] = [];
 
-  let branchPattern: RegExp | null = null;
-  if (branchNaming?.pattern) {
-    try {
-      const regexStr = branchNaming.pattern
-        .replace(/\{issueId\}/g, "\\d+")
-        .replace(/\{taskSlug\}/g, "[a-z0-9-]+");
-      branchPattern = new RegExp(`^${regexStr}$`);
-    } catch {
-      // Ignore invalid patterns
+  // Build array of regex patterns from naming rules
+  const branchPatterns: RegExp[] = [];
+  if (branchNaming?.patterns && branchNaming.patterns.length > 0) {
+    for (const pattern of branchNaming.patterns) {
+      try {
+        const regexStr = pattern
+          .replace(/\{issueId\}/g, "\\d+")
+          .replace(/\{taskSlug\}/g, "[a-z0-9-]+");
+        branchPatterns.push(new RegExp(`^${regexStr}$`));
+      } catch {
+        // Ignore invalid patterns
+      }
     }
   }
 
@@ -393,10 +396,11 @@ export function calculateWarnings(
       });
     }
 
+    // Check branch naming against any of the patterns
     if (
-      branchPattern &&
+      branchPatterns.length > 0 &&
       node.branchName !== defaultBranch &&
-      !branchPattern.test(node.branchName)
+      !branchPatterns.some((pattern) => pattern.test(node.branchName))
     ) {
       warnings.push({
         severity: "warn",
@@ -441,8 +445,7 @@ export function generateRestartInfo(
 
 ## Project Rules
 ### Branch Naming
-- Pattern: \`${branchNaming?.pattern ?? "N/A"}\`
-- Examples: ${branchNaming?.examples?.join(", ") ?? "N/A"}
+- Patterns: ${branchNaming?.patterns?.map(p => `\`${p}\``).join(", ") ?? "N/A"}
 
 ## Current State
 - Branch: \`${worktree.branch}\`

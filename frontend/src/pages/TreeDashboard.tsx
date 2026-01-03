@@ -82,7 +82,7 @@ export default function TreeDashboard() {
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
   const [settingsRule, setSettingsRule] = useState<BranchNamingRule | null>(null);
-  const [settingsPattern, setSettingsPattern] = useState("");
+  const [settingsPatterns, setSettingsPatterns] = useState<string[]>([]);
   const [settingsDefaultBranch, setSettingsDefaultBranch] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -440,9 +440,10 @@ export default function TreeDashboard() {
       slug = taskId ? taskId.substring(0, 8) : `task-${Date.now()}`;
     }
 
-    // Use branch naming rule if available
-    const pattern = snapshot?.rules?.branchNaming?.pattern;
-    if (pattern && pattern.includes("{taskSlug}")) {
+    // Use branch naming rule if available (use first pattern with {taskSlug})
+    const patterns = snapshot?.rules?.branchNaming?.patterns || [];
+    const pattern = patterns.find((p) => p.includes("{taskSlug}"));
+    if (pattern) {
       return pattern.replace("{taskSlug}", slug);
     }
     return `task/${slug}`;
@@ -530,11 +531,11 @@ export default function TreeDashboard() {
     try {
       const rule = await api.getBranchNaming(snapshot.repoId);
       setSettingsRule(rule);
-      setSettingsPattern(rule.pattern);
+      setSettingsPatterns(rule.patterns || []);
     } catch {
-      // Default rule if not exists
-      setSettingsRule({ pattern: "feat_{issueId}_{taskSlug}" });
-      setSettingsPattern("feat_{issueId}_{taskSlug}");
+      // No rule exists yet
+      setSettingsRule({ patterns: [] });
+      setSettingsPatterns([]);
     } finally {
       setSettingsLoading(false);
     }
@@ -545,10 +546,11 @@ export default function TreeDashboard() {
     setSettingsLoading(true);
     setSettingsSaved(false);
     try {
-      // Save branch naming rule
+      // Save branch naming rule with multiple patterns
+      const validPatterns = settingsPatterns.filter(p => p.trim());
       const updated = await api.updateBranchNaming({
         repoId: snapshot.repoId,
-        pattern: settingsPattern,
+        patterns: validPatterns,
       });
       setSettingsRule(updated);
 
@@ -1182,14 +1184,44 @@ export default function TreeDashboard() {
                     <small>Task Instruction と Chat は表示されません</small>
                   </div>
                   <div className="settings-section">
-                    <label>Branch Naming Pattern</label>
-                    <input
-                      type="text"
-                      value={settingsPattern}
-                      onChange={(e) => setSettingsPattern(e.target.value)}
-                      placeholder="feat_{issueId}_{taskSlug}"
-                    />
-                    <small>Use {"{issueId}"} and {"{taskSlug}"} as placeholders</small>
+                    <label>Branch Naming Patterns</label>
+                    {settingsPatterns.map((pattern, index) => (
+                      <div key={index} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          value={pattern}
+                          onChange={(e) => {
+                            const newPatterns = [...settingsPatterns];
+                            newPatterns[index] = e.target.value;
+                            setSettingsPatterns(newPatterns);
+                          }}
+                          placeholder="feat_{taskSlug}"
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          onClick={() => {
+                            setSettingsPatterns(settingsPatterns.filter((_, i) => i !== index));
+                          }}
+                          style={{ padding: "4px 8px", color: "#ef4444" }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setSettingsPatterns([...settingsPatterns, ""])}
+                      style={{ marginTop: 4 }}
+                    >
+                      + Add Pattern
+                    </button>
+                    <small style={{ display: "block", marginTop: 8 }}>
+                      Use {"{issueId}"} and {"{taskSlug}"} as placeholders<br/>
+                      例: feat_{"{taskSlug}"}, feat_{"{issueId}"}_{"{taskSlug}"}
+                    </small>
                   </div>
                 </>
               ) : (

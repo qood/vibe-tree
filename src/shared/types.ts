@@ -12,7 +12,7 @@ export interface Repo {
 }
 
 export interface BranchNamingRule {
-  pattern: string;
+  patterns: string[]; // Multiple patterns allowed (e.g., ["feat_{taskSlug}", "feat_{issueId}_{taskSlug}"])
 }
 
 export interface ProjectRule {

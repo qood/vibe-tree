@@ -5,12 +5,12 @@ const repoIdSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/, "Invalid repo ID 
 
 // Branch naming schemas
 export const branchNamingRuleSchema = z.object({
-  pattern: z.string().min(1, "Pattern is required"),
+  patterns: z.array(z.string()),
 });
 
 export const updateBranchNamingSchema = z.object({
   repoId: repoIdSchema,
-  pattern: z.string().min(1, "Pattern is required"),
+  patterns: z.array(z.string()),
 });
 
 export type UpdateBranchNamingInput = z.infer<typeof updateBranchNamingSchema>;

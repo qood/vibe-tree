@@ -14,32 +14,29 @@ import {
 } from "../shared/validation";
 
 describe("updateBranchNamingSchema", () => {
-  test("accepts valid input", () => {
+  test("accepts valid input with multiple patterns", () => {
     const result = updateBranchNamingSchema.safeParse({
       repoId: "owner/repo",
-      pattern: "vt/{planId}/{taskSlug}",
-      description: "Test description",
-      examples: ["vt/1/feature"],
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test("uses defaults for optional fields", () => {
-    const result = updateBranchNamingSchema.safeParse({
-      repoId: "owner/repo",
-      pattern: "vt/{planId}/{taskSlug}",
+      patterns: ["feat_{issueId}_{taskSlug}", "feat_{taskSlug}"],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.description).toBe("");
-      expect(result.data.examples).toEqual([]);
+      expect(result.data.patterns).toEqual(["feat_{issueId}_{taskSlug}", "feat_{taskSlug}"]);
     }
+  });
+
+  test("accepts empty patterns array", () => {
+    const result = updateBranchNamingSchema.safeParse({
+      repoId: "owner/repo",
+      patterns: [],
+    });
+    expect(result.success).toBe(true);
   });
 
   test("rejects invalid repoId format", () => {
     const result = updateBranchNamingSchema.safeParse({
       repoId: "invalid",
-      pattern: "vt/{planId}/{taskSlug}",
+      patterns: ["feat_{taskSlug}"],
     });
     expect(result.success).toBe(false);
   });
@@ -47,15 +44,14 @@ describe("updateBranchNamingSchema", () => {
   test("rejects repoId with multiple slashes", () => {
     const result = updateBranchNamingSchema.safeParse({
       repoId: "owner/repo/extra",
-      pattern: "vt/{planId}/{taskSlug}",
+      patterns: ["feat_{taskSlug}"],
     });
     expect(result.success).toBe(false);
   });
 
-  test("rejects empty pattern", () => {
+  test("rejects missing patterns field", () => {
     const result = updateBranchNamingSchema.safeParse({
       repoId: "owner/repo",
-      pattern: "",
     });
     expect(result.success).toBe(false);
   });
