@@ -308,6 +308,7 @@ export function TaskDetailPanel({
 
   const [checkingOut, setCheckingOut] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handlePull = async () => {
     setPulling(true);
@@ -319,6 +320,22 @@ export function TaskDetailPanel({
       setError((err as Error).message);
     } finally {
       setPulling(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete branch "${branchName}"? This will also delete the remote branch.`)) {
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.deleteBranch(localPath, branchName);
+      onWorktreeCreated?.(); // Rescan to update
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -546,29 +563,51 @@ export function TaskDetailPanel({
       <div className="task-detail-panel__worktree-section">
         {worktreePath ? (
           <div className="task-detail-panel__worktree-info">
-            <span className="task-detail-panel__worktree-badge">Active</span>
-            {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
-              <button
-                className="task-detail-panel__pull-btn"
-                onClick={handlePull}
-                disabled={pulling}
-              >
-                {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
-              </button>
-            )}
+            <span className="task-detail-panel__status-text">Worktree: {worktreePath.split("/").pop()}</span>
+            <div className="task-detail-panel__branch-actions">
+              {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
+                <button
+                  className="task-detail-panel__pull-btn"
+                  onClick={handlePull}
+                  disabled={pulling}
+                >
+                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
+                </button>
+              )}
+              {isMerged && (
+                <button
+                  className="task-detail-panel__delete-btn"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete Branch"}
+                </button>
+              )}
+            </div>
           </div>
         ) : checkedOut ? (
           <div className="task-detail-panel__worktree-info">
-            <span className="task-detail-panel__worktree-badge task-detail-panel__worktree-badge--checkout">Checked Out</span>
-            {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
-              <button
-                className="task-detail-panel__pull-btn"
-                onClick={handlePull}
-                disabled={pulling}
-              >
-                {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
-              </button>
-            )}
+            <span className="task-detail-panel__status-text">Checked out in main repo</span>
+            <div className="task-detail-panel__branch-actions">
+              {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
+                <button
+                  className="task-detail-panel__pull-btn"
+                  onClick={handlePull}
+                  disabled={pulling}
+                >
+                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
+                </button>
+              )}
+              {isMerged && (
+                <button
+                  className="task-detail-panel__delete-btn"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete Branch"}
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="task-detail-panel__branch-actions">
@@ -593,6 +632,15 @@ export function TaskDetailPanel({
                 disabled={pulling}
               >
                 {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
+              </button>
+            )}
+            {isMerged && (
+              <button
+                className="task-detail-panel__delete-btn"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Branch"}
               </button>
             )}
           </div>

@@ -763,6 +763,16 @@ export const api = {
       }
     ),
 
+  // Delete branch
+  deleteBranch: (localPath: string, branchName: string, force?: boolean) =>
+    fetchJson<{ success: boolean; branchName: string }>(
+      `${API_BASE}/branch/delete`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, branchName, force }),
+      }
+    ),
+
   // Branch Links
   getBranchLinks: (repoId: string, branchName: string) =>
     fetchJson<BranchLink[]>(

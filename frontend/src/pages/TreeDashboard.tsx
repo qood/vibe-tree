@@ -140,6 +140,19 @@ export default function TreeDashboard() {
     }
   }, [selectedPin?.id, handleScan]);
 
+  // Sync selectedNode with latest snapshot data
+  useEffect(() => {
+    if (selectedNode && snapshot) {
+      const updatedNode = snapshot.nodes.find((n) => n.branchName === selectedNode.branchName);
+      if (updatedNode && updatedNode !== selectedNode) {
+        setSelectedNode(updatedNode);
+      } else if (!updatedNode) {
+        // Node was deleted
+        setSelectedNode(null);
+      }
+    }
+  }, [snapshot, selectedNode]);
+
   // Load plan and connect WS when snapshot is available
   useEffect(() => {
     if (!snapshot?.repoId) return;

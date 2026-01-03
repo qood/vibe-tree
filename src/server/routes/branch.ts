@@ -506,3 +506,80 @@ branchRouter.post("/pull", async (c) => {
     throw new BadRequestError(`Failed to pull: ${err instanceof Error ? err.message : String(err)}`);
   }
 });
+
+// DELETE /api/branch/delete - Delete a branch
+branchRouter.post("/delete", async (c) => {
+  const body = await c.req.json();
+  const { localPath: rawLocalPath, branchName, force } = body;
+
+  if (!rawLocalPath || !branchName) {
+    throw new BadRequestError("localPath and branchName are required");
+  }
+
+  const localPath = expandTilde(rawLocalPath);
+
+  // Verify local path exists
+  if (!existsSync(localPath)) {
+    throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Check if branch exists
+  try {
+    const existingBranches = execSync(
+      `cd "${localPath}" && git branch --list "${branchName}"`,
+      { encoding: "utf-8" }
+    ).trim();
+    if (!existingBranches) {
+      throw new BadRequestError(`Branch does not exist: ${branchName}`);
+    }
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    throw new BadRequestError(`Failed to check branch: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Check if currently on this branch
+  try {
+    const currentBranch = execSync(
+      `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
+      { encoding: "utf-8" }
+    ).trim();
+    if (currentBranch === branchName) {
+      throw new BadRequestError("Cannot delete the currently checked out branch");
+    }
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    // Ignore other errors
+  }
+
+  // Delete the branch
+  try {
+    const flag = force ? "-D" : "-d";
+    execSync(
+      `cd "${localPath}" && git branch ${flag} "${branchName}"`,
+      { encoding: "utf-8" }
+    );
+
+    // Also delete remote branch if it exists
+    try {
+      execSync(
+        `cd "${localPath}" && git push origin --delete "${branchName}" 2>/dev/null || true`,
+        { encoding: "utf-8", timeout: 30000 }
+      );
+    } catch {
+      // Ignore errors deleting remote branch
+    }
+
+    return c.json({
+      success: true,
+      branchName,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("not fully merged")) {
+      throw new BadRequestError(
+        `Branch "${branchName}" is not fully merged. Use force delete if you're sure.`
+      );
+    }
+    throw new BadRequestError(`Failed to delete branch: ${message}`);
+  }
+});

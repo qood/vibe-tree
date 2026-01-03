@@ -202,6 +202,34 @@
   cursor: not-allowed;
 }
 
+.task-detail-panel__delete-btn {
+  padding: 4px 12px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.task-detail-panel__delete-btn:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.task-detail-panel__delete-btn:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+}
+
+.task-detail-panel__status-text {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+  display: block;
+}
+
 /* Branch Links Section */
 .task-detail-panel__links-section {
   padding: 8px 16px;
