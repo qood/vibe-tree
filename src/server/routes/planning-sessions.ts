@@ -69,6 +69,7 @@ const updateSessionSchema = z.object({
     title: z.string(),
     description: z.string().optional(),
     branchName: z.string().optional(),
+    issueUrl: z.string().optional(),
   })).optional(),
   edges: z.array(z.object({
     parent: z.string(),
