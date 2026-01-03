@@ -1292,9 +1292,9 @@ export default function TreeDashboard() {
                           >
                             + Add Pattern
                           </button>
-                          <small style={{ display: "block", marginTop: 8 }}>
+                          <p style={{ marginTop: 8, color: "#9ca3af" }}>
                             Placeholders: <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{issueId}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{taskSlug}"}</code>
-                          </small>
+                          </p>
                         </div>
                       </>
                     )}
@@ -1305,10 +1305,10 @@ export default function TreeDashboard() {
                         <h3>Worktree</h3>
                         <div className="settings-section">
                           <label>Worktree Creation Command</label>
-                          <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                          <p style={{ marginBottom: 8, color: "#9ca3af" }}>
                             Custom command to create worktree. Leave empty for default.
                             <br />Placeholders: <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{worktreePath}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{branchName}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{localPath}"}</code>
-                          </small>
+                          </p>
                           <input
                             type="text"
                             value={worktreeCreateScript}
@@ -1319,9 +1319,9 @@ export default function TreeDashboard() {
                         </div>
                         <div className="settings-section">
                           <label>Post-Create Script</label>
-                          <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                          <p style={{ marginBottom: 8, color: "#9ca3af" }}>
                             Script to run after creating a worktree (runs in worktree directory)
-                          </small>
+                          </p>
                           <textarea
                             value={worktreePostCreateScript}
                             onChange={(e) => setWorktreePostCreateScript(e.target.value)}
@@ -1339,7 +1339,7 @@ export default function TreeDashboard() {
                         <h3>Cleanup</h3>
                         <div className="settings-section">
                           <label>Stale Data Cleanup</label>
-                          <p style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 12px" }}>
+                          <p style={{ color: "#9ca3af", margin: "4px 0 12px" }}>
                             Remove chat history and settings for branches that no longer exist in the repository.
                           </p>
                           <button
