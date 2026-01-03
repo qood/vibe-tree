@@ -329,12 +329,8 @@ chatRouter.post("/send", async (c) => {
     throw new BadRequestError("Failed to save user message");
   }
 
-  // Broadcast user message
-  broadcast({
-    type: "chat.message",
-    repoId: session.repoId,
-    data: toMessage(userMsg),
-  });
+  // Note: User message is returned via API response, not broadcast
+  // Only assistant messages are broadcast via WebSocket to avoid duplicates
 
   // 2. Build prompt with context
   const prompt = await buildPrompt(session, input.userMessage, input.context);
