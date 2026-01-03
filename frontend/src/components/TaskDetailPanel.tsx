@@ -78,8 +78,6 @@ export function TaskDetailPanel({
   // Check if PR is merged
   const isMerged = branchLinks.some((l) => l.linkType === "pr" && l.status === "merged");
 
-  // Check if branch is currently active (can't be deleted)
-  const isCurrentlyActive = node?.worktree?.isActive || checkedOut;
 
   // Planning mode can work without workingPath (uses localPath), Execution requires workingPath
   const effectivePath = workingPath || localPath; // For Planning mode, use localPath as fallback
@@ -565,9 +563,6 @@ export function TaskDetailPanel({
       <div className="task-detail-panel__worktree-section">
         {worktreePath ? (
           <div className="task-detail-panel__worktree-info">
-            {node?.worktree?.isActive && (
-              <span className="task-detail-panel__active-badge">Active</span>
-            )}
             <span className="task-detail-panel__status-text">Worktree: {worktreePath.split("/").pop()}</span>
             <div className="task-detail-panel__branch-actions">
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
@@ -583,8 +578,7 @@ export function TaskDetailPanel({
                 <button
                   className="task-detail-panel__delete-btn"
                   onClick={() => setShowDeleteBranchModal(true)}
-                  disabled={deleting || isCurrentlyActive}
-                  title={isCurrentlyActive ? "別のブランチにチェックアウトしてから削除してください" : undefined}
+                  disabled={deleting}
                 >
                   {deleting ? "Deleting..." : "Delete Branch"}
                 </button>
@@ -593,7 +587,6 @@ export function TaskDetailPanel({
           </div>
         ) : checkedOut ? (
           <div className="task-detail-panel__worktree-info">
-            <span className="task-detail-panel__active-badge">Active</span>
             <span className="task-detail-panel__status-text">Checked out in main repo</span>
             <div className="task-detail-panel__branch-actions">
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
@@ -609,8 +602,7 @@ export function TaskDetailPanel({
                 <button
                   className="task-detail-panel__delete-btn"
                   onClick={() => setShowDeleteBranchModal(true)}
-                  disabled={deleting || isCurrentlyActive}
-                  title={isCurrentlyActive ? "別のブランチにチェックアウトしてから削除してください" : undefined}
+                  disabled={deleting}
                 >
                   {deleting ? "Deleting..." : "Delete Branch"}
                 </button>
@@ -626,13 +618,15 @@ export function TaskDetailPanel({
             >
               {checkingOut ? "Checking out..." : "Checkout"}
             </button>
-            <button
-              className="task-detail-panel__create-worktree-btn"
-              onClick={handleCreateWorktree}
-              disabled={creatingWorktree || checkingOut}
-            >
-              {creatingWorktree ? "Creating..." : "Create Worktree"}
-            </button>
+            {!isMerged && (
+              <button
+                className="task-detail-panel__create-worktree-btn"
+                onClick={handleCreateWorktree}
+                disabled={creatingWorktree || checkingOut}
+              >
+                {creatingWorktree ? "Creating..." : "Create Worktree"}
+              </button>
+            )}
             {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
               <button
                 className="task-detail-panel__pull-btn"
@@ -646,8 +640,7 @@ export function TaskDetailPanel({
               <button
                 className="task-detail-panel__delete-btn"
                 onClick={() => setShowDeleteBranchModal(true)}
-                disabled={deleting || isCurrentlyActive}
-                title={isCurrentlyActive ? "別のブランチにチェックアウトしてから削除してください" : undefined}
+                disabled={deleting}
               >
                 {deleting ? "Deleting..." : "Delete Branch"}
               </button>
@@ -916,14 +909,18 @@ export function TaskDetailPanel({
             >
               Planning
             </button>
-            <button
-              className={`task-detail-panel__mode-btn ${chatMode === "execution" ? "task-detail-panel__mode-btn--active" : ""} ${!workingPath || isMerged ? "task-detail-panel__mode-btn--locked" : ""}`}
-              onClick={() => setChatMode("execution")}
-              disabled={!workingPath || isMerged}
-              title={isMerged ? "PR is merged - Execution mode disabled" : !workingPath ? "Checkout or create worktree to use Execution mode" : ""}
+            <span
+              className={(!workingPath || isMerged) ? "task-detail-panel__tooltip-wrapper" : ""}
+              data-tooltip={isMerged ? "PR is merged" : !workingPath ? "Checkout or Worktree required" : undefined}
             >
-              Execution
-            </button>
+              <button
+                className={`task-detail-panel__mode-btn ${chatMode === "execution" ? "task-detail-panel__mode-btn--active" : ""} ${!workingPath || isMerged ? "task-detail-panel__mode-btn--locked" : ""}`}
+                onClick={() => setChatMode("execution")}
+                disabled={!workingPath || isMerged}
+              >
+                Execution
+              </button>
+            </span>
           </div>
         </div>
           <div className="task-detail-panel__messages">

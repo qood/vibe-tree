@@ -399,9 +399,6 @@ export default function BranchGraph({
       fillColor = "#1a1625";
       strokeColor = "#6b21a8";
       strokeDash = "2,2";
-    } else if (isDefault) {
-      fillColor = "#1e3a5f";
-      strokeColor = "#3b82f6";
     } else if (node.worktree?.isActive) {
       fillColor = "#14532d";
       strokeColor = "#22c55e";
@@ -414,6 +411,7 @@ export default function BranchGraph({
 
     if (isSelected) {
       strokeColor = "#3b82f6";
+      strokeDash = undefined; // Solid border when selected
     }
 
     // Highlight drop target

@@ -1358,3 +1358,40 @@
 .task-detail-panel__modal-confirm--danger:hover {
   background: #b91c1c;
 }
+
+/* Custom Tooltip */
+.task-detail-panel__tooltip-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.task-detail-panel__tooltip-wrapper[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 4px;
+  border: 1px solid #374151;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.task-detail-panel__tooltip-wrapper[data-tooltip]:hover::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: #374151;
+  z-index: 100;
+  pointer-events: none;
+}
