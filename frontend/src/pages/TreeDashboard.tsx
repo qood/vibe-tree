@@ -1255,7 +1255,7 @@ export default function TreeDashboard() {
                             onChange={(e) => setSettingsDefaultBranch(e.target.value)}
                             placeholder="develop"
                           />
-                          <small>Task instructions and chat history will not be shown for this branch</small>
+                          <p style={{ marginTop: 4, color: "#9ca3af" }}>Task instructions and chat history will not be shown for this branch</p>
                         </div>
                         <div className="settings-section">
                           <label>Branch Naming Patterns</label>
@@ -1269,7 +1269,7 @@ export default function TreeDashboard() {
                                   newPatterns[index] = e.target.value;
                                   setSettingsPatterns(newPatterns);
                                 }}
-                                placeholder="feat_{issueId}_{taskSlug}"
+                                placeholder="^feat/.*"
                                 style={{ flex: 1 }}
                               />
                               <button
@@ -1293,7 +1293,7 @@ export default function TreeDashboard() {
                             + Add Pattern
                           </button>
                           <p style={{ marginTop: 8, color: "#9ca3af" }}>
-                            Placeholders: <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{issueId}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{taskSlug}"}</code>
+                            Regular expressions are supported
                           </p>
                         </div>
                       </>
