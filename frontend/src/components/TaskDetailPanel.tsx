@@ -55,6 +55,7 @@ export function TaskDetailPanel({
   // Streaming state
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [streamingMode, setStreamingMode] = useState<"planning" | "execution" | null>(null);
+  const [canCancel, setCanCancel] = useState(false);
 
   // Worktree state
   const [creatingWorktree, setCreatingWorktree] = useState(false);
@@ -265,6 +266,17 @@ export function TaskDetailPanel({
       messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
     }
   }, [messages, streamingContent]);
+
+  // Enable cancel button after 5 seconds of loading
+  useEffect(() => {
+    if (chatLoading) {
+      setCanCancel(false);
+      const timer = setTimeout(() => setCanCancel(true), 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setCanCancel(false);
+    }
+  }, [chatLoading]);
 
   // Subscribe to streaming events and chat messages
   useEffect(() => {
@@ -1192,6 +1204,7 @@ export function TaskDetailPanel({
                         }
                       }
                     }}
+                    disabled={!canCancel}
                   >
                     Cancel
                   </button>

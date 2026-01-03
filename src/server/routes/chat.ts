@@ -488,14 +488,7 @@ chatRouter.post("/send", async (c) => {
         try {
           const json = JSON.parse(line);
           let textUpdated = false;
-          if (json.type === "assistant" && json.message?.content) {
-            for (const block of json.message.content) {
-              if (block.type === "text" && block.text) {
-                accumulatedText = block.text;
-                textUpdated = true;
-              }
-            }
-          } else if (json.type === "content_block_delta" && json.delta?.text) {
+          if (json.type === "content_block_delta" && json.delta?.text) {
             accumulatedText += json.delta.text;
             textUpdated = true;
           } else if (json.type === "result" && json.result) {

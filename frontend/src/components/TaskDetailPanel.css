@@ -1593,6 +1593,11 @@
   transition: background 0.15s;
 }
 
-.task-detail-panel__cancel-btn:hover {
+.task-detail-panel__cancel-btn:hover:not(:disabled) {
   background: #7f1d1d;
+}
+
+.task-detail-panel__cancel-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
