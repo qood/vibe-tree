@@ -45,10 +45,10 @@ interface LayoutEdge {
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 68; // Taller for multi-line layout (labels + branch name with wrap)
 const TENTATIVE_NODE_HEIGHT = 64;
-const HORIZONTAL_GAP = 40; // Gap between nodes
-const VERTICAL_GAP = 48; // Extra space for worktree labels above and indicators below
+const HORIZONTAL_GAP = 60; // Gap between sibling nodes (horizontal)
+const VERTICAL_GAP = 80; // Gap between parent-child levels (vertical)
 const PADDING = 40; // Base padding
-const TOP_PADDING = 50; // Extra top padding for worktree labels above nodes
+const LEFT_PADDING = 40; // Left padding for worktree labels
 
 
 export default function BranchGraph({
@@ -144,61 +144,69 @@ export default function BranchGraph({
       return a.branchName.localeCompare(b.branchName);
     });
 
-    // Layout nodes - horizontal tree (root on left, children to right)
+    // Layout nodes - vertical tree (root on top, children below)
     const layoutNodes: LayoutNode[] = [];
     const nodeMap = new Map<string, LayoutNode>();
 
-    function layoutSubtree(branchName: string, depth: number, minRow: number): number {
+    // Calculate subtree width for centering children
+    function getSubtreeWidth(branchName: string): number {
+      const children = childrenMap.get(branchName) || [];
+      if (children.length === 0) return 1;
+      return children.reduce((sum, child) => sum + getSubtreeWidth(child), 0);
+    }
+
+    function layoutSubtree(branchName: string, depth: number, minCol: number): number {
       const node = nodes.find((n) => n.branchName === branchName);
-      if (!node || nodeMap.has(branchName)) return minRow;
+      if (!node || nodeMap.has(branchName)) return minCol;
 
       const children = childrenMap.get(branchName) || [];
+      const subtreeWidth = getSubtreeWidth(branchName);
 
-      // Place this node at the top of its subtree (minRow)
-      const row = minRow;
+      // Center this node over its children
+      const col = minCol + (subtreeWidth - 1) / 2;
 
-      // Horizontal layout: depth controls X, row controls Y
+      // Vertical layout: depth controls Y, col controls X
       const layoutNode: LayoutNode = {
         id: branchName,
-        x: PADDING + depth * (NODE_WIDTH + HORIZONTAL_GAP),
-        y: TOP_PADDING + row * (NODE_HEIGHT + VERTICAL_GAP),
+        x: LEFT_PADDING + col * (NODE_WIDTH + HORIZONTAL_GAP),
+        y: PADDING + depth * (NODE_HEIGHT + VERTICAL_GAP),
         node,
         depth,
-        row,
+        row: col,
       };
 
       layoutNodes.push(layoutNode);
       nodeMap.set(branchName, layoutNode);
 
-      // Layout children below (they go to the right, starting from the same row)
-      let currentRow = minRow;
+      // Layout children below (they spread horizontally)
+      let currentCol = minCol;
       children.forEach((childName) => {
-        currentRow = layoutSubtree(childName, depth + 1, currentRow);
+        currentCol = layoutSubtree(childName, depth + 1, currentCol);
       });
 
-      // Return the next available row (at least minRow + 1 for this node)
-      return Math.max(currentRow, minRow + 1);
+      // Return the next available column
+      return Math.max(currentCol, minCol + 1);
     }
 
     // Layout from each root
-    let nextRow = 0;
+    let nextCol = 0;
     rootNodes.forEach((root) => {
-      nextRow = layoutSubtree(root.branchName, 0, nextRow);
+      nextCol = layoutSubtree(root.branchName, 0, nextCol);
     });
 
     // Handle orphan nodes (not connected to any root)
     nodes.forEach((node) => {
       if (!nodeMap.has(node.branchName)) {
         const depth = 0;
-        const row = nextRow++;
+        const col = nextCol++;
 
         const layoutNode: LayoutNode = {
           id: node.branchName,
-          x: PADDING + depth * (NODE_WIDTH + HORIZONTAL_GAP),
-          y: TOP_PADDING + row * (NODE_HEIGHT + VERTICAL_GAP),
+          x: LEFT_PADDING + col * (NODE_WIDTH + HORIZONTAL_GAP),
+          y: PADDING + depth * (NODE_HEIGHT + VERTICAL_GAP),
           node,
           depth,
-          row,
+          row: col,
         };
         layoutNodes.push(layoutNode);
         nodeMap.set(node.branchName, layoutNode);
@@ -210,8 +218,6 @@ export default function BranchGraph({
     if (tentativeNodes.length > 0 && tentativeBaseBranch) {
       const baseBranchNode = nodeMap.get(tentativeBaseBranch);
       const baseDepth = baseBranchNode?.depth ?? 0;
-      // baseX reserved for future horizontal positioning
-      void (baseBranchNode?.x ?? PADDING);
 
       // Build tentative children map
       const tentChildrenMap = new Map<string, string[]>();
@@ -238,20 +244,20 @@ export default function BranchGraph({
         return `task/${slug}`;
       };
 
-      // Layout tentative subtree
+      // Layout tentative subtree (vertical)
       function layoutTentativeSubtree(
         taskId: string,
         parentLayoutNode: LayoutNode | null,
         depth: number,
-        minRow: number
+        minCol: number
       ): number {
         const task = tentativeNodes.find((t) => t.id === taskId);
-        if (!task) return minRow;
+        if (!task) return minCol;
 
         const branchName = task.branchName || generateTentBranchName(task.title, task.id);
-        if (nodeMap.has(branchName)) return minRow; // Already exists as real branch
+        if (nodeMap.has(branchName)) return minCol; // Already exists as real branch
 
-        const row = minRow;
+        const col = minCol;
         const tentDummyNode: TreeNode = {
           branchName,
           badges: [],
@@ -260,11 +266,11 @@ export default function BranchGraph({
 
         const layoutNode: LayoutNode = {
           id: branchName,
-          x: PADDING + depth * (NODE_WIDTH + HORIZONTAL_GAP),
-          y: TOP_PADDING + row * (NODE_HEIGHT + VERTICAL_GAP),
+          x: LEFT_PADDING + col * (NODE_WIDTH + HORIZONTAL_GAP),
+          y: PADDING + depth * (NODE_HEIGHT + VERTICAL_GAP),
           node: tentDummyNode,
           depth,
-          row,
+          row: col,
           isTentative: true,
           tentativeTitle: task.title,
         };
@@ -282,21 +288,21 @@ export default function BranchGraph({
           });
         }
 
-        // Layout children
+        // Layout children below
         const children = tentChildrenMap.get(taskId) || [];
-        let currentRow = minRow + 1;
+        let currentCol = minCol + 1;
         children.forEach((childId) => {
-          currentRow = layoutTentativeSubtree(childId, layoutNode, depth + 1, currentRow);
+          currentCol = layoutTentativeSubtree(childId, layoutNode, depth + 1, currentCol);
         });
 
-        return Math.max(currentRow, minRow + 1);
+        return Math.max(currentCol, minCol + 1);
       }
 
       // Layout from tentative roots, connected to base branch
       tentRootTasks.forEach((task) => {
         const fromNode = baseBranchNode || layoutNodes[0];
         if (fromNode) {
-          nextRow = layoutTentativeSubtree(task.id, fromNode, baseDepth + 1, nextRow);
+          nextCol = layoutTentativeSubtree(task.id, fromNode, baseDepth + 1, nextCol);
         }
       });
     }
@@ -332,17 +338,16 @@ export default function BranchGraph({
   }, [nodes, edges, defaultBranch, tentativeNodes, tentativeEdges, tentativeBaseBranch]);
 
   const renderEdge = (edge: LayoutEdge, index: number) => {
-    // Horizontal edge: from right side of parent to left side of child
+    // Vertical edge: from bottom of parent to top of child
     const fromHeight = edge.from.isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT;
-    const toHeight = edge.to.isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT;
-    const startX = edge.from.x + NODE_WIDTH;
-    const startY = edge.from.y + fromHeight / 2;
-    const endX = edge.to.x;
-    const endY = edge.to.y + toHeight / 2;
+    const startX = edge.from.x + NODE_WIDTH / 2;
+    const startY = edge.from.y + fromHeight;
+    const endX = edge.to.x + NODE_WIDTH / 2;
+    const endY = edge.to.y;
 
-    // Simple right-angle path: go right, then vertical, then right to target
-    const cornerX = startX + 20;
-    const path = `M ${startX} ${startY} L ${cornerX} ${startY} L ${cornerX} ${endY} L ${endX} ${endY}`;
+    // Simple path: go down, then horizontal, then down to target
+    const cornerY = startY + 20;
+    const path = `M ${startX} ${startY} L ${startX} ${cornerY} L ${endX} ${cornerY} L ${endX} ${endY}`;
 
     // Tentative edges use dashed lines with purple color
     const strokeColor = edge.isTentative ? "#9c27b0" : edge.isDesigned ? "#9c27b0" : "#4b5563";
@@ -357,9 +362,9 @@ export default function BranchGraph({
           strokeWidth={edge.isDesigned || edge.isTentative ? 2 : 1.5}
           strokeDasharray={strokeDash}
         />
-        {/* Arrow head pointing right */}
+        {/* Arrow head pointing down */}
         <polygon
-          points={`${endX},${endY} ${endX - 6},${endY - 3} ${endX - 6},${endY + 3}`}
+          points={`${endX},${endY} ${endX - 4},${endY - 6} ${endX + 4},${endY - 6}`}
           fill={strokeColor}
         />
       </g>
@@ -424,10 +429,10 @@ export default function BranchGraph({
     const branchNameDisplay = isTentative ? id : null;
     const nodeHeight = isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT;
 
-    // In edit mode, the whole node is draggable (line starts from left edge of node)
+    // In edit mode, the whole node is draggable (line starts from top edge of node for vertical layout)
     const handleNodeMouseDown = canDrag ? (e: React.MouseEvent) => {
       e.stopPropagation();
-      handleDragStart(id, x, y + nodeHeight / 2);
+      handleDragStart(id, x + NODE_WIDTH / 2, y);
     } : undefined;
 
     return (
@@ -599,10 +604,11 @@ export default function BranchGraph({
           </div>
         </foreignObject>
 
-        {/* Worktree label on top-left + active border effect */}
+        {/* Worktree label on left side + active border effect */}
         {hasWorktree && (() => {
           const worktreeName = node.worktree?.path?.split("/").pop() || "worktree";
           const isActive = node.worktree?.isActive;
+          const labelWidth = Math.min(worktreeName.length * 6 + 10, 100);
           return (
             <g>
               {/* Active glow effect */}
@@ -620,11 +626,11 @@ export default function BranchGraph({
                   opacity={0.6}
                 />
               )}
-              {/* Worktree folder name label */}
+              {/* Worktree folder name label - positioned to the left of node */}
               <rect
-                x={x}
-                y={y - 18}
-                width={Math.min(worktreeName.length * 6.5 + 12, NODE_WIDTH)}
+                x={x - labelWidth - 6}
+                y={y + nodeHeight / 2 - 8}
+                width={labelWidth}
                 height={16}
                 rx={3}
                 fill={isActive ? "#14532d" : "#1e293b"}
@@ -632,37 +638,37 @@ export default function BranchGraph({
                 strokeWidth={1}
               />
               <text
-                x={x + 6}
-                y={y - 9}
-                textAnchor="start"
+                x={x - labelWidth / 2 - 6}
+                y={y + nodeHeight / 2}
+                textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={10}
+                fontSize={9}
                 fill={isActive ? "#4ade80" : "#94a3b8"}
                 fontWeight="600"
               >
-                {worktreeName.length > 24 ? worktreeName.substring(0, 22) + "..." : worktreeName}
+                {worktreeName.length > 14 ? worktreeName.substring(0, 12) + "…" : worktreeName}
               </text>
             </g>
           );
         })()}
 
 
-        {/* Ahead/Behind indicator below node */}
+        {/* Ahead/Behind indicator on right side of node */}
         {node.aheadBehind && (node.aheadBehind.ahead > 0 || node.aheadBehind.behind > 0) && (
           <g>
             {node.aheadBehind.ahead > 0 && (
               <>
                 <rect
-                  x={x + NODE_WIDTH / 2 - 24}
-                  y={y + nodeHeight + 4}
+                  x={x + NODE_WIDTH + 4}
+                  y={y + nodeHeight / 2 - 16}
                   width={22}
                   height={14}
                   rx={3}
                   fill="#4caf50"
                 />
                 <text
-                  x={x + NODE_WIDTH / 2 - 13}
-                  y={y + nodeHeight + 12}
+                  x={x + NODE_WIDTH + 15}
+                  y={y + nodeHeight / 2 - 9}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={9}
@@ -676,16 +682,16 @@ export default function BranchGraph({
             {node.aheadBehind.behind > 0 && (
               <>
                 <rect
-                  x={x + NODE_WIDTH / 2 + 2}
-                  y={y + nodeHeight + 4}
+                  x={x + NODE_WIDTH + 4}
+                  y={y + nodeHeight / 2 + 2}
                   width={22}
                   height={14}
                   rx={3}
                   fill="#f44336"
                 />
                 <text
-                  x={x + NODE_WIDTH / 2 + 13}
-                  y={y + nodeHeight + 12}
+                  x={x + NODE_WIDTH + 15}
+                  y={y + nodeHeight / 2 + 9}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={9}
@@ -699,26 +705,26 @@ export default function BranchGraph({
           </g>
         )}
 
-        {/* Remote ahead/behind indicator (vs origin) - shown below local indicators */}
+        {/* Remote ahead/behind indicator (vs origin) - shown to the right of local indicators */}
         {node.remoteAheadBehind && (node.remoteAheadBehind.ahead > 0 || node.remoteAheadBehind.behind > 0) && (() => {
-          // Position below local indicators if they exist, otherwise directly below node
+          // Position to the right of local indicators if they exist
           const hasLocalIndicator = node.aheadBehind && (node.aheadBehind.ahead > 0 || node.aheadBehind.behind > 0);
-          const remoteY = y + nodeHeight + (hasLocalIndicator ? 22 : 4);
+          const remoteX = x + NODE_WIDTH + (hasLocalIndicator ? 30 : 4);
           return (
           <g>
             {node.remoteAheadBehind.ahead > 0 && (
               <>
                 <rect
-                  x={x + NODE_WIDTH / 2 - 24}
-                  y={remoteY}
+                  x={remoteX}
+                  y={y + nodeHeight / 2 - 16}
                   width={22}
                   height={14}
                   rx={3}
                   fill="#3b82f6"
                 />
                 <text
-                  x={x + NODE_WIDTH / 2 - 13}
-                  y={remoteY + 8}
+                  x={remoteX + 11}
+                  y={y + nodeHeight / 2 - 9}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={9}
@@ -732,16 +738,16 @@ export default function BranchGraph({
             {node.remoteAheadBehind.behind > 0 && (
               <>
                 <rect
-                  x={x + NODE_WIDTH / 2 + 2}
-                  y={remoteY}
+                  x={remoteX}
+                  y={y + nodeHeight / 2 + 2}
                   width={22}
                   height={14}
                   rx={3}
                   fill="#f59e0b"
                 />
                 <text
-                  x={x + NODE_WIDTH / 2 + 13}
-                  y={remoteY + 8}
+                  x={remoteX + 11}
+                  y={y + nodeHeight / 2 + 9}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={9}
