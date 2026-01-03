@@ -59,6 +59,29 @@
   background: #2563eb;
 }
 
+.planning-panel--collapsed {
+  height: auto;
+}
+
+.planning-panel--collapsed .planning-panel__header {
+  border-bottom: none;
+}
+
+.planning-panel__collapse-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.planning-panel__collapse-btn:hover {
+  color: #e5e7eb;
+}
+
 .planning-panel__back-btn {
   padding: 4px 8px;
   background: transparent;

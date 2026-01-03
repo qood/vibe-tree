@@ -184,11 +184,24 @@ export function PlanningPanel({
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const saved = localStorage.getItem("planningPanel.collapsed");
+    return saved === "true";
+  });
 
   // New session form
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBaseBranch, setNewBaseBranch] = useState(defaultBranch);
+
+  // Persist collapse state
+  const toggleCollapse = useCallback(() => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("planningPanel.collapsed", String(next));
+      return next;
+    });
+  }, []);
 
   // External links for selected session
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
@@ -641,20 +654,29 @@ export function PlanningPanel({
   // Session list view
   if (!selectedSession) {
     return (
-      <div className="planning-panel">
+      <div className={`planning-panel ${isCollapsed ? "planning-panel--collapsed" : ""}`}>
         <div className="planning-panel__header">
-          <h3>Planning Sessions</h3>
           <button
-            className="planning-panel__new-btn"
-            onClick={() => setShowNewForm(true)}
+            className="planning-panel__collapse-btn"
+            onClick={toggleCollapse}
+            title={isCollapsed ? "Expand" : "Collapse"}
           >
-            + New Planning
+            {isCollapsed ? "▶" : "▼"}
           </button>
+          <h3>Planning Sessions</h3>
+          {!isCollapsed && (
+            <button
+              className="planning-panel__new-btn"
+              onClick={() => setShowNewForm(true)}
+            >
+              + New
+            </button>
+          )}
         </div>
 
-        {error && <div className="planning-panel__error">{error}</div>}
+        {!isCollapsed && error && <div className="planning-panel__error">{error}</div>}
 
-        {showNewForm && (
+        {!isCollapsed && showNewForm && (
           <div
             className="planning-panel__new-form"
             onKeyDown={(e) => {
@@ -688,48 +710,50 @@ export function PlanningPanel({
           </div>
         )}
 
-        <div className="planning-panel__list">
-          {sessions.length === 0 ? (
-            <div className="planning-panel__empty">
-              No planning sessions yet. Create one to start!
-            </div>
-          ) : (
-            sessions.map((session) => (
-              <div
-                key={session.id}
-                className={`planning-panel__session-item planning-panel__session-item--${session.status}`}
-                onClick={() => handleSelectSession(session)}
-              >
-                <div className="planning-panel__session-title">
-                  {session.title}
-                </div>
-                <div className="planning-panel__session-meta">
-                  <span className="planning-panel__session-base">
-                    {session.baseBranch}
-                  </span>
-                  <span className={`planning-panel__session-status planning-panel__session-status--${session.status}`}>
-                    {session.status}
-                  </span>
-                  <span className="planning-panel__session-tasks">
-                    {session.nodes.length} tasks
-                  </span>
-                  {(session.status === "discarded" || session.status === "confirmed") && (
-                    <button
-                      className="planning-panel__session-delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteFromList(session.id);
-                      }}
-                      title="Delete"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
+        {!isCollapsed && (
+          <div className="planning-panel__list">
+            {sessions.length === 0 ? (
+              <div className="planning-panel__empty">
+                No planning sessions yet. Create one to start!
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className={`planning-panel__session-item planning-panel__session-item--${session.status}`}
+                  onClick={() => handleSelectSession(session)}
+                >
+                  <div className="planning-panel__session-title">
+                    {session.title}
+                  </div>
+                  <div className="planning-panel__session-meta">
+                    <span className="planning-panel__session-base">
+                      {session.baseBranch}
+                    </span>
+                    <span className={`planning-panel__session-status planning-panel__session-status--${session.status}`}>
+                      {session.status}
+                    </span>
+                    <span className="planning-panel__session-tasks">
+                      {session.nodes.length} tasks
+                    </span>
+                    {(session.status === "discarded" || session.status === "confirmed") && (
+                      <button
+                        className="planning-panel__session-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFromList(session.id);
+                        }}
+                        title="Delete"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     );
   }
