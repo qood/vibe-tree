@@ -499,22 +499,9 @@ export function TaskDetailPanel({
 
         {/* Working Path Section - checkout available for default branch too */}
         <div className="task-detail-panel__worktree-section">
-          {worktreePath ? (
+          {(worktreePath || checkedOut) ? (
             <div className="task-detail-panel__worktree-info">
-              <span className="task-detail-panel__worktree-badge">Active</span>
-              {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
-                <button
-                  className="task-detail-panel__pull-btn"
-                  onClick={handlePull}
-                  disabled={pulling}
-                >
-                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
-                </button>
-              )}
-            </div>
-          ) : checkedOut ? (
-            <div className="task-detail-panel__worktree-info">
-              <span className="task-detail-panel__worktree-badge task-detail-panel__worktree-badge--checkout">Checked Out</span>
+              <span className="task-detail-panel__active-badge">Active</span>
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
                 <button
                   className="task-detail-panel__pull-btn"
@@ -580,13 +567,14 @@ export function TaskDetailPanel({
                 </button>
               )}
               {isMerged && (
-                <button
-                  className="task-detail-panel__delete-btn"
-                  onClick={() => setShowDeleteBranchModal(true)}
-                  disabled={deleting}
-                >
-                  {deleting ? "Deleting..." : "Delete Branch"}
-                </button>
+                <span className="task-detail-panel__tooltip-wrapper" data-tooltip="Checkout another branch first">
+                  <button
+                    className="task-detail-panel__delete-btn"
+                    disabled
+                  >
+                    Delete Branch
+                  </button>
+                </span>
               )}
             </div>
           </div>

@@ -999,6 +999,7 @@ export default function TreeDashboard() {
             <div className="tree-view__details">
               {selectedNode && selectedPin ? (
                 <TaskDetailPanel
+                  key={selectedNode.branchName}
                   repoId={snapshot.repoId}
                   localPath={selectedPin.localPath}
                   branchName={selectedNode.branchName}
