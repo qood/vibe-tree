@@ -53,8 +53,14 @@ export function TaskDetailPanel({
   const [grantedPermissions, setGrantedPermissions] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Streaming state
+  interface StreamingChunk {
+    type: "thinking" | "text" | "tool_use" | "tool_result" | "thinking_delta" | "text_delta";
+    content?: string;
+    toolName?: string;
+    toolInput?: Record<string, unknown>;
+  }
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
-  const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
+  const [streamingChunks, setStreamingChunks] = useState<StreamingChunk[]>([]);
   const [streamingMode, setStreamingMode] = useState<"planning" | "execution" | null>(null);
   const [canCancel, setCanCancel] = useState(false);
   const hasStreamingChunksRef = useRef(false);
@@ -295,13 +301,22 @@ export function TaskDetailPanel({
     });
 
     const unsubChunk = wsClient.on("chat.streaming.chunk", (msg) => {
-      const data = msg.data as { sessionId: string; chunk?: string; accumulated: string };
-      if (data.sessionId === chatSessionId) {
-        setStreamingContent(data.accumulated);
-        if (data.chunk) {
-          hasStreamingChunksRef.current = true;
-          setStreamingChunks((prev) => [...prev, data.chunk!]);
-        }
+      const data = msg.data as {
+        sessionId: string;
+        chunkType?: string;
+        content?: string;
+        toolName?: string;
+        toolInput?: Record<string, unknown>;
+      };
+      if (data.sessionId === chatSessionId && data.chunkType) {
+        hasStreamingChunksRef.current = true;
+        setStreamingContent("streaming");
+        setStreamingChunks((prev) => [...prev, {
+          type: data.chunkType as StreamingChunk["type"],
+          content: data.content,
+          toolName: data.toolName,
+          toolInput: data.toolInput,
+        }]);
       }
     });
 
@@ -318,10 +333,11 @@ export function TaskDetailPanel({
     const unsubMessage = wsClient.on("chat.message", (msg) => {
       const data = msg.data as ChatMessage | undefined;
       if (data && data.sessionId === chatSessionId) {
-        // Clear streaming chunks when we receive the final assistant message
+        // Skip adding assistant message if we have streaming chunks (chunks already show full content)
         if (data.role === "assistant" && hasStreamingChunksRef.current) {
-          setStreamingChunks([]);
-          hasStreamingChunksRef.current = false;
+          // Don't add to messages, chunks are already showing
+          setChatLoading(false);
+          return;
         }
         setMessages((prev) => {
           // Avoid duplicates
@@ -1201,42 +1217,53 @@ export function TaskDetailPanel({
               );
             })}
             {streamingChunks.map((chunk, i) => (
-              <div key={`stream-${i}`} className="task-detail-panel__message task-detail-panel__message--assistant">
+              <div key={`stream-${i}`} className={`task-detail-panel__message task-detail-panel__message--assistant task-detail-panel__chunk--${chunk.type}`}>
                 {i === 0 && (
                   <div className="task-detail-panel__message-role">
                     ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}
                   </div>
                 )}
                 <div className="task-detail-panel__message-content">
-                  <pre>{linkifyPreContent(chunk)}</pre>
+                  {(chunk.type === "thinking" || chunk.type === "thinking_delta") && (
+                    <div className="task-detail-panel__thinking">
+                      <div className="task-detail-panel__thinking-header">💭 Thinking</div>
+                      <pre>{chunk.content}</pre>
+                    </div>
+                  )}
+                  {(chunk.type === "text" || chunk.type === "text_delta") && (
+                    <pre>{linkifyPreContent(chunk.content || "")}</pre>
+                  )}
+                  {chunk.type === "tool_use" && (
+                    <div className="task-detail-panel__tool-use">
+                      <div className="task-detail-panel__tool-header">🔧 {chunk.toolName}</div>
+                      {chunk.toolInput && (
+                        <pre className="task-detail-panel__tool-input">
+                          {(() => {
+                            const input = chunk.toolInput!;
+                            if (input.command) return `$ ${input.command}`;
+                            if (input.pattern) return `🔍 ${input.pattern}`;
+                            if (input.file_path && input.old_string !== undefined) {
+                              return `📝 ${input.file_path}\n\n- ${String(input.old_string).split('\n').slice(0, 3).join('\n- ')}...\n+ ${String(input.new_string).split('\n').slice(0, 3).join('\n+ ')}...`;
+                            }
+                            if (input.file_path) return `📄 ${input.file_path}`;
+                            return JSON.stringify(input, null, 2);
+                          })()}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                  {chunk.type === "tool_result" && (
+                    <div className="task-detail-panel__tool-result">
+                      <pre>{chunk.content?.slice(0, 500)}{(chunk.content?.length || 0) > 500 ? "..." : ""}</pre>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
-            {(chatLoading || streamingContent !== null) && (
+            {(chatLoading || streamingContent !== null) && streamingChunks.length === 0 && (
               <div className="task-detail-panel__message task-detail-panel__message--loading">
                 <div className="task-detail-panel__message-role">
-                  {streamingChunks.length === 0 && (
-                    <span>ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}</span>
-                  )}
-                  {canCancel && (
-                    <button
-                      className="task-detail-panel__cancel-btn"
-                      onClick={async () => {
-                        if (chatSessionId) {
-                          try {
-                            await api.cancelChat(chatSessionId);
-                            setChatLoading(false);
-                            setStreamingContent(null);
-                            setStreamingChunks([]);
-                          } catch (err) {
-                            console.error("Failed to cancel:", err);
-                          }
-                        }
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  )}
+                  ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}
                 </div>
                 <div className="task-detail-panel__message-content">
                   Thinking...
@@ -1257,12 +1284,32 @@ export function TaskDetailPanel({
               }}
               placeholder="Ask about the task or request implementation... (⌘+Enter to send)"
             />
-            <button
-              onClick={handleSendMessage}
-              disabled={!chatInput.trim() || chatLoading}
-            >
-              Send
-            </button>
+            {canCancel ? (
+              <button
+                className="task-detail-panel__cancel-btn"
+                onClick={async () => {
+                  if (chatSessionId) {
+                    try {
+                      await api.cancelChat(chatSessionId);
+                      setChatLoading(false);
+                      setStreamingContent(null);
+                      setStreamingChunks([]);
+                    } catch (err) {
+                      console.error("Failed to cancel:", err);
+                    }
+                  }
+                }}
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                onClick={handleSendMessage}
+                disabled={!chatInput.trim() || chatLoading}
+              >
+                {chatLoading ? "..." : "Send"}
+              </button>
+            )}
           </div>
         </div>
 

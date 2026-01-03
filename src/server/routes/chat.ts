@@ -487,40 +487,79 @@ chatRouter.post("/send", async (c) => {
         if (!line.trim()) continue;
         try {
           const json = JSON.parse(line);
-          let newContent = "";
 
           if (json.type === "assistant" && json.message?.content) {
             for (const block of json.message.content) {
               if (block.type === "thinking" && block.thinking) {
-                newContent += block.thinking;
+                broadcast({
+                  type: "chat.streaming.chunk",
+                  repoId: session.repoId,
+                  data: {
+                    sessionId: input.sessionId,
+                    chunkType: "thinking",
+                    content: block.thinking,
+                  },
+                });
               } else if (block.type === "text" && block.text) {
-                newContent += block.text;
+                accumulatedText += block.text;
+                broadcast({
+                  type: "chat.streaming.chunk",
+                  repoId: session.repoId,
+                  data: {
+                    sessionId: input.sessionId,
+                    chunkType: "text",
+                    content: block.text,
+                  },
+                });
+              } else if (block.type === "tool_use") {
+                broadcast({
+                  type: "chat.streaming.chunk",
+                  repoId: session.repoId,
+                  data: {
+                    sessionId: input.sessionId,
+                    chunkType: "tool_use",
+                    toolName: block.name,
+                    toolInput: block.input,
+                  },
+                });
+              } else if (block.type === "tool_result") {
+                broadcast({
+                  type: "chat.streaming.chunk",
+                  repoId: session.repoId,
+                  data: {
+                    sessionId: input.sessionId,
+                    chunkType: "tool_result",
+                    content: typeof block.content === "string" ? block.content : JSON.stringify(block.content),
+                  },
+                });
               }
             }
           } else if (json.type === "content_block_delta") {
             if (json.delta?.thinking) {
-              newContent += json.delta.thinking;
+              broadcast({
+                type: "chat.streaming.chunk",
+                repoId: session.repoId,
+                data: {
+                  sessionId: input.sessionId,
+                  chunkType: "thinking_delta",
+                  content: json.delta.thinking,
+                },
+              });
             } else if (json.delta?.text) {
-              newContent += json.delta.text;
+              accumulatedText += json.delta.text;
+              broadcast({
+                type: "chat.streaming.chunk",
+                repoId: session.repoId,
+                data: {
+                  sessionId: input.sessionId,
+                  chunkType: "text_delta",
+                  content: json.delta.text,
+                },
+              });
             }
           }
-
-          if (newContent) {
-            accumulatedText += newContent;
-            broadcast({
-              type: "chat.streaming.chunk",
-              repoId: session.repoId,
-              data: { sessionId: input.sessionId, chunk: newContent, accumulated: accumulatedText },
-            });
-          }
         } catch {
-          // Non-JSON line, append as-is
-          accumulatedText += line + "\n";
-          broadcast({
-            type: "chat.streaming.chunk",
-            repoId: session.repoId,
-            data: { sessionId: input.sessionId, accumulated: accumulatedText },
-          });
+          // Non-JSON line, ignore
         }
       }
     } else {

@@ -1580,24 +1580,95 @@
   font-weight: 500;
 }
 
-/* Cancel button */
-.task-detail-panel__cancel-btn {
-  margin-left: auto;
-  padding: 2px 8px;
-  background: transparent;
-  color: #f87171;
-  border: 1px solid #ef4444;
-  border-radius: 4px;
-  font-size: 11px;
+/* Cancel button in chat input area */
+.task-detail-panel__chat-input .task-detail-panel__cancel-btn {
+  padding: 8px 16px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.task-detail-panel__cancel-btn:hover:not(:disabled) {
-  background: #7f1d1d;
+.task-detail-panel__chat-input .task-detail-panel__cancel-btn:hover {
+  background: #b91c1c;
 }
 
-.task-detail-panel__cancel-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+/* Streaming Chunk Styles */
+.task-detail-panel__thinking {
+  background: transparent;
+}
+
+.task-detail-panel__thinking-header {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.task-detail-panel__thinking pre {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.task-detail-panel__tool-use {
+  background: transparent;
+}
+
+.task-detail-panel__tool-header {
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.task-detail-panel__tool-input {
+  margin: 0;
+  font-size: 12px;
+  color: #93c5fd;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: monospace;
+  line-height: 1.4;
+}
+
+.task-detail-panel__tool-result {
+  background: transparent;
+}
+
+.task-detail-panel__tool-result pre {
+  margin: 0;
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: monospace;
+}
+
+/* Chunk type specific message styles */
+.task-detail-panel__chunk--thinking,
+.task-detail-panel__chunk--thinking_delta {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.task-detail-panel__chunk--tool_use {
+  background: #1a2332;
+  border-color: #1e3a5f;
+}
+
+.task-detail-panel__chunk--tool_result {
+  background: #1a1f2e;
+  border-color: #4b5563;
 }
