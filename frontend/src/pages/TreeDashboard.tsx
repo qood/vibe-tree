@@ -282,11 +282,32 @@ export default function TreeDashboard() {
 
   // Create branch handler
   const handleCreateBranch = async () => {
-    if (!createBranchBase || !createBranchName.trim() || !selectedPin) return;
+    if (!createBranchBase || !createBranchName.trim() || !selectedPin || !snapshot) return;
 
     setCreateBranchLoading(true);
     try {
-      await api.createBranch(selectedPin.localPath, createBranchName.trim(), createBranchBase);
+      const newBranchName = createBranchName.trim();
+
+      // Create the git branch
+      await api.createBranch(selectedPin.localPath, newBranchName, createBranchBase);
+
+      // Add edge to tree spec (parent -> child relationship)
+      const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
+      const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
+
+      // Add edge from base branch to new branch
+      const newEdges = [
+        ...currentEdges,
+        { parent: createBranchBase, child: newBranchName },
+      ];
+
+      // Update tree spec
+      await api.updateTreeSpec({
+        repoId: snapshot.repoId,
+        baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+        nodes: currentNodes,
+        edges: newEdges,
+      });
 
       // Rescan to update the graph
       const newSnapshot = await api.scan(selectedPin.localPath);
