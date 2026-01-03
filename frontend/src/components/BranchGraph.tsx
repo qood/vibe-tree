@@ -42,9 +42,9 @@ interface LayoutEdge {
   isTentative?: boolean;
 }
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 40;
-const TENTATIVE_NODE_HEIGHT = 52;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 52; // Taller for 2-line layout (labels + branch name)
+const TENTATIVE_NODE_HEIGHT = 64;
 const HORIZONTAL_GAP = 40; // Gap between nodes
 const VERTICAL_GAP = 48; // Extra space for worktree labels above and indicators below
 const PADDING = 40; // Base padding
@@ -462,12 +462,12 @@ export default function BranchGraph({
           onClick={() => !isTentative && !dragState && onSelectBranch(id)}
         />
 
-        {/* Branch name or task title using foreignObject for proper wrapping */}
+        {/* Node content using foreignObject */}
         <foreignObject
           x={x + 8}
-          y={y + 2}
-          width={hasPR ? NODE_WIDTH - 70 : NODE_WIDTH - 16}
-          height={nodeHeight - 4}
+          y={y + 4}
+          width={NODE_WIDTH - 16}
+          height={nodeHeight - 8}
           style={{ pointerEvents: "none" }}
         >
           <div
@@ -476,33 +476,110 @@ export default function BranchGraph({
               height: "100%",
               display: "flex",
               flexDirection: "column",
-              justifyContent: "center",
+              justifyContent: "space-between",
               overflow: "hidden",
             }}
           >
+            {/* Line 1: Status labels */}
+            {hasPR && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "nowrap" }}>
+                {/* Review status */}
+                {node.pr?.reviewDecision === "APPROVED" && (
+                  <span style={{
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#14532d",
+                    color: "#4ade80",
+                    whiteSpace: "nowrap",
+                  }}>Approved ✔</span>
+                )}
+                {node.pr?.reviewDecision === "CHANGES_REQUESTED" && (
+                  <span style={{
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#450a0a",
+                    color: "#f87171",
+                    whiteSpace: "nowrap",
+                  }}>Changes ✗</span>
+                )}
+                {node.pr?.reviewDecision === "REVIEW_REQUIRED" && (
+                  <span style={{
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#422006",
+                    color: "#fbbf24",
+                    whiteSpace: "nowrap",
+                  }}>Review?</span>
+                )}
+                {/* CI status */}
+                {node.pr?.checks === "SUCCESS" && (
+                  <span style={{
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#14532d",
+                    color: "#4ade80",
+                    whiteSpace: "nowrap",
+                  }}>CI ✔</span>
+                )}
+                {node.pr?.checks === "FAILURE" && (
+                  <span style={{
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#450a0a",
+                    color: "#f87171",
+                    whiteSpace: "nowrap",
+                  }}>CI ✗</span>
+                )}
+                {node.pr?.checks === "PENDING" && (
+                  <span style={{
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#422006",
+                    color: "#fbbf24",
+                    whiteSpace: "nowrap",
+                  }}>CI …</span>
+                )}
+                {/* PR indicator */}
+                <span style={{
+                  fontSize: 11,
+                  padding: "1px 6px",
+                  borderRadius: 3,
+                  background: node.pr?.state === "MERGED" ? "#3b0764" : "#374151",
+                  color: node.pr?.state === "MERGED" ? "#c084fc" : "#9ca3af",
+                  whiteSpace: "nowrap",
+                }}>PR</span>
+              </div>
+            )}
+            {/* Spacer for nodes without PR */}
+            {!hasPR && <div style={{ height: 16 }} />}
+
+            {/* Line 2: Branch name */}
             <div
               style={{
-                fontSize: isTentative ? 11 : 12,
+                fontSize: isTentative ? 12 : 13,
                 fontFamily: isTentative ? "sans-serif" : "monospace",
                 fontWeight: isDefault ? "bold" : isTentative ? 500 : "normal",
                 color: isTentative ? "#c084fc" : isMerged ? "#9ca3af" : "#e5e7eb",
-                lineHeight: 1.3,
                 overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical" as const,
-                wordBreak: "break-all",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
               {displayText}
             </div>
+            {/* Tentative: also show branch name */}
             {branchNameDisplay && (
               <div
                 style={{
-                  fontSize: 9,
+                  fontSize: 10,
                   fontFamily: "monospace",
                   color: "#9ca3af",
-                  marginTop: 2,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -561,58 +638,6 @@ export default function BranchGraph({
           );
         })()}
 
-        {/* PR badges - positioned inside node at top-right */}
-        {hasPR && (() => {
-          const badges: Array<{ label: string; color: string }> = [];
-
-          // Review status first
-          if (node.pr?.reviewDecision === "APPROVED") {
-            badges.push({ label: "✓R", color: "#4ade80" });
-          } else if (node.pr?.reviewDecision === "CHANGES_REQUESTED") {
-            badges.push({ label: "✗R", color: "#f87171" });
-          } else if (node.pr?.reviewDecision === "REVIEW_REQUIRED") {
-            badges.push({ label: "?R", color: "#fbbf24" });
-          }
-
-          // CI status
-          if (node.pr?.checks === "SUCCESS") {
-            badges.push({ label: "✓", color: "#4ade80" });
-          } else if (node.pr?.checks === "FAILURE") {
-            badges.push({ label: "✗", color: "#f87171" });
-          } else if (node.pr?.checks === "PENDING") {
-            badges.push({ label: "…", color: "#fbbf24" });
-          }
-
-          // PR indicator
-          badges.push({
-            label: "PR",
-            color: node.pr?.state === "MERGED" ? "#c084fc" : node.pr?.state === "OPEN" ? "#4ade80" : "#9ca3af"
-          });
-
-          // Calculate total width to position from right
-          const badgeWidth = 18;
-          const totalWidth = badges.length * badgeWidth;
-
-          return (
-            <g>
-              {badges.map((badge, i) => (
-                <text
-                  key={i}
-                  x={x + NODE_WIDTH - 8 - totalWidth + i * badgeWidth}
-                  y={y + 12}
-                  textAnchor="start"
-                  dominantBaseline="middle"
-                  fontSize={9}
-                  fill={badge.color}
-                  fontFamily="monospace"
-                  fontWeight="500"
-                >
-                  {badge.label}
-                </text>
-              ))}
-            </g>
-          );
-        })()}
 
         {/* Ahead/Behind indicator below node */}
         {node.aheadBehind && (node.aheadBehind.ahead > 0 || node.aheadBehind.behind > 0) && (
