@@ -448,10 +448,30 @@ branchRouter.post("/pull", async (c) => {
     }
   }
 
+  // If not checked out, try fast-forward fetch
   if (!pullPath) {
-    throw new BadRequestError(
-      `Cannot pull: branch "${branchName}" is not checked out. Please checkout the branch first.`
-    );
+    try {
+      // Use git fetch origin branchname:branchname for fast-forward update
+      const output = execSync(
+        `cd "${localPath}" && git fetch origin "${branchName}:${branchName}"`,
+        { encoding: "utf-8", timeout: 30000 }
+      );
+      return c.json({
+        success: true,
+        branchName,
+        output: output.trim() || "Fast-forward updated",
+        method: "fetch",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // If fast-forward fails (e.g., diverged), suggest checkout
+      if (message.includes("non-fast-forward") || message.includes("rejected")) {
+        throw new BadRequestError(
+          `Cannot fast-forward: branch "${branchName}" has diverged. Please checkout and merge manually.`
+        );
+      }
+      throw new BadRequestError(`Failed to update branch: ${message}`);
+    }
   }
 
   // Check for uncommitted changes
@@ -480,6 +500,7 @@ branchRouter.post("/pull", async (c) => {
       success: true,
       branchName,
       output: output.trim(),
+      method: "pull",
     });
   } catch (err) {
     throw new BadRequestError(`Failed to pull: ${err instanceof Error ? err.message : String(err)}`);

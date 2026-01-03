@@ -656,14 +656,14 @@ export default function BranchGraph({
           </g>
         )}
 
-        {/* Remote ahead/behind indicator (vs origin) - shown above node */}
+        {/* Remote ahead/behind indicator (vs origin) - shown below local indicators */}
         {node.remoteAheadBehind && (node.remoteAheadBehind.ahead > 0 || node.remoteAheadBehind.behind > 0) && (
           <g>
             {node.remoteAheadBehind.ahead > 0 && (
               <>
                 <rect
                   x={x + NODE_WIDTH / 2 - 24}
-                  y={y - 18}
+                  y={y + nodeHeight + 22}
                   width={22}
                   height={14}
                   rx={3}
@@ -671,14 +671,14 @@ export default function BranchGraph({
                 />
                 <text
                   x={x + NODE_WIDTH / 2 - 13}
-                  y={y - 10}
+                  y={y + nodeHeight + 30}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={9}
                   fill="white"
                   fontWeight="bold"
                 >
-                  +{node.remoteAheadBehind.ahead}
+                  ↑{node.remoteAheadBehind.ahead}
                 </text>
               </>
             )}
@@ -686,7 +686,7 @@ export default function BranchGraph({
               <>
                 <rect
                   x={x + NODE_WIDTH / 2 + 2}
-                  y={y - 18}
+                  y={y + nodeHeight + 22}
                   width={22}
                   height={14}
                   rx={3}
@@ -694,17 +694,17 @@ export default function BranchGraph({
                 />
                 <text
                   x={x + NODE_WIDTH / 2 + 13}
-                  y={y - 10}
+                  y={y + nodeHeight + 30}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={9}
                   fill="white"
                   fontWeight="bold"
                 >
-                  -{node.remoteAheadBehind.behind}
+                  ↓{node.remoteAheadBehind.behind}
                 </text>
-                {/* Pull button - only show if worktree exists or is default branch */}
-                {onPull && (node.worktree || isDefault) && (
+                {/* Pull button - works for any branch via fast-forward fetch */}
+                {onPull && (
                   <g
                     style={{ cursor: pullingBranch === node.branchName ? "wait" : "pointer" }}
                     onClick={(e) => {
@@ -716,7 +716,7 @@ export default function BranchGraph({
                   >
                     <rect
                       x={x + NODE_WIDTH / 2 + 26}
-                      y={y - 18}
+                      y={y + nodeHeight + 22}
                       width={28}
                       height={14}
                       rx={3}
@@ -724,7 +724,7 @@ export default function BranchGraph({
                     />
                     <text
                       x={x + NODE_WIDTH / 2 + 40}
-                      y={y - 10}
+                      y={y + nodeHeight + 30}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fontSize={8}
