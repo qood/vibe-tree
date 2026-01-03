@@ -466,6 +466,12 @@ chatRouter.post("/send", async (c) => {
   }
 
   let accumulatedText = "";
+  const streamingChunks: Array<{
+    type: "thinking" | "text" | "tool_use" | "tool_result";
+    content?: string;
+    toolName?: string;
+    toolInput?: unknown;
+  }> = [];
   let stderr = "";
   let lineBuffer = "";
 
@@ -491,6 +497,7 @@ chatRouter.post("/send", async (c) => {
           if (json.type === "assistant" && json.message?.content) {
             for (const block of json.message.content) {
               if (block.type === "thinking" && block.thinking) {
+                streamingChunks.push({ type: "thinking", content: block.thinking });
                 broadcast({
                   type: "chat.streaming.chunk",
                   repoId: session.repoId,
@@ -502,6 +509,7 @@ chatRouter.post("/send", async (c) => {
                 });
               } else if (block.type === "text" && block.text) {
                 accumulatedText += block.text;
+                streamingChunks.push({ type: "text", content: block.text });
                 broadcast({
                   type: "chat.streaming.chunk",
                   repoId: session.repoId,
@@ -512,6 +520,7 @@ chatRouter.post("/send", async (c) => {
                   },
                 });
               } else if (block.type === "tool_use") {
+                streamingChunks.push({ type: "tool_use", toolName: block.name, toolInput: block.input });
                 broadcast({
                   type: "chat.streaming.chunk",
                   repoId: session.repoId,
@@ -523,19 +532,22 @@ chatRouter.post("/send", async (c) => {
                   },
                 });
               } else if (block.type === "tool_result") {
+                const resultContent = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+                streamingChunks.push({ type: "tool_result", content: resultContent });
                 broadcast({
                   type: "chat.streaming.chunk",
                   repoId: session.repoId,
                   data: {
                     sessionId: input.sessionId,
                     chunkType: "tool_result",
-                    content: typeof block.content === "string" ? block.content : JSON.stringify(block.content),
+                    content: resultContent,
                   },
                 });
               }
             }
           } else if (json.type === "content_block_delta") {
             if (json.delta?.thinking) {
+              streamingChunks.push({ type: "thinking", content: json.delta.thinking });
               broadcast({
                 type: "chat.streaming.chunk",
                 repoId: session.repoId,
@@ -547,6 +559,7 @@ chatRouter.post("/send", async (c) => {
               });
             } else if (json.delta?.text) {
               accumulatedText += json.delta.text;
+              streamingChunks.push({ type: "text", content: json.delta.text });
               broadcast({
                 type: "chat.streaming.chunk",
                 repoId: session.repoId,
@@ -575,7 +588,15 @@ chatRouter.post("/send", async (c) => {
   claudeProcess.on("close", async (code) => {
     const finishedAt = new Date().toISOString();
     const status = code === 0 ? "success" : "failed";
-    let assistantContent = accumulatedText.trim() || "Claude execution failed. Please try again.";
+
+    // For execution mode with chunks, save structured content
+    // For planning mode, save plain text
+    let assistantContent: string;
+    if (isExecution && streamingChunks.length > 0) {
+      assistantContent = JSON.stringify({ chunks: streamingChunks });
+    } else {
+      assistantContent = accumulatedText.trim() || "Claude execution failed. Please try again.";
+    }
 
     // Update agent run
     await db
@@ -583,7 +604,7 @@ chatRouter.post("/send", async (c) => {
       .set({
         finishedAt,
         status,
-        stdoutSnippet: assistantContent.slice(0, 5000),
+        stdoutSnippet: accumulatedText.slice(0, 5000),
         stderrSnippet: stderr.slice(0, 1000),
       })
       .where(eq(schema.agentRuns.id, runId));

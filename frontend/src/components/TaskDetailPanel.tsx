@@ -13,6 +13,27 @@ import {
 import { linkifyPreContent } from "../lib/linkify";
 import "./TaskDetailPanel.css";
 
+// Helper to parse saved chunk content
+interface SavedChunk {
+  type: "thinking" | "text" | "tool_use" | "tool_result";
+  content?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+}
+
+function parseChunkedContent(content: string): SavedChunk[] | null {
+  try {
+    if (!content.startsWith('{"chunks":')) return null;
+    const parsed = JSON.parse(content);
+    if (parsed.chunks && Array.isArray(parsed.chunks)) {
+      return parsed.chunks as SavedChunk[];
+    }
+  } catch {
+    // Not JSON or invalid format
+  }
+  return null;
+}
+
 interface TaskDetailPanelProps {
   repoId: string;
   localPath: string;
@@ -1097,15 +1118,70 @@ export function TaskDetailPanel({
               </div>
             )}
             {messages.map((msg) => {
-              const instructionEdit = msg.role === "assistant" ? extractInstructionEdit(msg.content) : null;
-              const permissionRequests = msg.role === "assistant" ? extractPermissionRequests(msg.content) : [];
-              let displayContent = msg.content;
-              if (instructionEdit) displayContent = removeInstructionEditTags(displayContent);
-              if (permissionRequests.length > 0) displayContent = removePermissionTags(displayContent);
+              // Check if content is saved chunks (JSON format)
+              const savedChunks = msg.role === "assistant" ? parseChunkedContent(msg.content) : null;
+
+              const instructionEdit = msg.role === "assistant" && !savedChunks ? extractInstructionEdit(msg.content) : null;
+              const permissionRequests = msg.role === "assistant" && !savedChunks ? extractPermissionRequests(msg.content) : [];
+              let displayContent = savedChunks ? null : msg.content;
+              if (instructionEdit && displayContent) displayContent = removeInstructionEditTags(displayContent);
+              if (permissionRequests.length > 0 && displayContent) displayContent = removePermissionTags(displayContent);
               const editStatus = editStatuses.get(msg.id);
               const msgMode = msg.chatMode || "planning"; // Fallback to planning for old messages
               const hasExecutionRequest = permissionRequests.some(p => p.action === "switch_to_execution");
               const isPermissionGranted = grantedPermissions.has(msg.id);
+
+              // Render saved chunks
+              if (savedChunks && savedChunks.length > 0) {
+                return (
+                  <div key={msg.id}>
+                    {savedChunks.map((chunk, i) => (
+                      <div key={`${msg.id}-chunk-${i}`} className={`task-detail-panel__message task-detail-panel__message--assistant task-detail-panel__chunk--${chunk.type}`}>
+                        {i === 0 && (
+                          <div className="task-detail-panel__message-role">
+                            ASSISTANT - {msgMode === "planning" ? "Planning" : "Execution"}
+                          </div>
+                        )}
+                        <div className="task-detail-panel__message-content">
+                          {chunk.type === "thinking" && (
+                            <div className="task-detail-panel__thinking">
+                              <div className="task-detail-panel__thinking-header">💭 Thinking</div>
+                              <pre>{chunk.content}</pre>
+                            </div>
+                          )}
+                          {chunk.type === "text" && (
+                            <pre>{linkifyPreContent(chunk.content || "")}</pre>
+                          )}
+                          {chunk.type === "tool_use" && (
+                            <div className="task-detail-panel__tool-use">
+                              <div className="task-detail-panel__tool-header">🔧 {chunk.toolName}</div>
+                              {chunk.toolInput && (
+                                <pre className="task-detail-panel__tool-input">
+                                  {(() => {
+                                    const input = chunk.toolInput!;
+                                    if (input.command) return `$ ${input.command}`;
+                                    if (input.pattern) return `🔍 ${input.pattern}`;
+                                    if (input.file_path && input.old_string !== undefined) {
+                                      return `📝 ${input.file_path}\n\n- ${String(input.old_string).split('\n').slice(0, 3).join('\n- ')}...\n+ ${String(input.new_string).split('\n').slice(0, 3).join('\n+ ')}...`;
+                                    }
+                                    if (input.file_path) return `📄 ${input.file_path}`;
+                                    return JSON.stringify(input, null, 2);
+                                  })()}
+                                </pre>
+                              )}
+                            </div>
+                          )}
+                          {chunk.type === "tool_result" && (
+                            <div className="task-detail-panel__tool-result">
+                              <pre>{chunk.content?.slice(0, 500)}{(chunk.content?.length || 0) > 500 ? "..." : ""}</pre>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
 
               return (
                 <div
