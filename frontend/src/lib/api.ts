@@ -773,6 +773,36 @@ export const api = {
       }
     ),
 
+  // Rebase onto parent
+  rebase: (localPath: string, branchName: string, parentBranch: string, worktreePath?: string) =>
+    fetchJson<{ success: boolean; branchName: string; parentBranch: string; output: string }>(
+      `${API_BASE}/branch/rebase`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, branchName, parentBranch, worktreePath }),
+      }
+    ),
+
+  // Merge parent into current branch
+  mergeParent: (localPath: string, branchName: string, parentBranch: string, worktreePath?: string) =>
+    fetchJson<{ success: boolean; branchName: string; parentBranch: string; output: string }>(
+      `${API_BASE}/branch/merge-parent`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, branchName, parentBranch, worktreePath }),
+      }
+    ),
+
+  // Push branch to remote
+  push: (localPath: string, branchName: string, worktreePath?: string, force?: boolean) =>
+    fetchJson<{ success: boolean; branchName: string; output: string }>(
+      `${API_BASE}/branch/push`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, branchName, worktreePath, force }),
+      }
+    ),
+
   // Branch Links
   getBranchLinks: (repoId: string, branchName: string) =>
     fetchJson<BranchLink[]>(

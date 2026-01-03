@@ -113,27 +113,7 @@ scanRouter.post("/", async (c) => {
       }
     : undefined;
 
-  // 8. Merge treeSpec edges into scanned edges (designed edges override inferred)
-  if (treeSpec) {
-    const designedEdgeSet = new Set(
-      treeSpec.specJson.edges.map((e: { parent: string; child: string }) => e.child)
-    );
-    // Remove inferred edges where we have designed ones
-    const filteredEdges = edges.filter((e) => !designedEdgeSet.has(e.child));
-    // Add designed edges
-    for (const designedEdge of treeSpec.specJson.edges) {
-      filteredEdges.push({
-        parent: designedEdge.parent,
-        child: designedEdge.child,
-        confidence: "high" as const,
-        isDesigned: true,
-      });
-    }
-    edges.length = 0;
-    edges.push(...filteredEdges);
-  }
-
-  // 8.5. Merge confirmed planning session edges
+  // 8. Merge confirmed planning session edges
   const confirmedSessions = await db
     .select()
     .from(schema.planningSessions)
@@ -150,9 +130,10 @@ scanRouter.post("/", async (c) => {
       title: string;
       branchName?: string;
     }>;
+    // Planning session edges use { from, to } format (from = parent branch, to = child branch)
     const sessionEdges = JSON.parse(session.edgesJson) as Array<{
-      parent: string;
-      child: string;
+      from: string;
+      to: string;
     }>;
 
     // Build taskId -> branchName map
@@ -165,8 +146,9 @@ scanRouter.post("/", async (c) => {
 
     // Convert task edges to branch edges
     for (const edge of sessionEdges) {
-      const parentBranch = taskToBranch.get(edge.parent);
-      const childBranch = taskToBranch.get(edge.child);
+      // First try to resolve as task IDs, then as branch names directly
+      const parentBranch = taskToBranch.get(edge.from) ?? edge.from;
+      const childBranch = taskToBranch.get(edge.to) ?? edge.to;
 
       if (parentBranch && childBranch) {
         // Check if this child already has an edge
@@ -203,7 +185,7 @@ scanRouter.post("/", async (c) => {
     }
 
     // Also add edges for root tasks (tasks without parent edge) to base branch
-    const childTaskIds = new Set(sessionEdges.map((e) => e.child));
+    const childTaskIds = new Set(sessionEdges.map((e) => e.to));
     for (const node of sessionNodes) {
       if (node.branchName && !childTaskIds.has(node.id)) {
         // This is a root task - connect to base branch
@@ -224,6 +206,29 @@ scanRouter.post("/", async (c) => {
             isDesigned: true,
           });
         }
+      }
+    }
+  }
+
+  // 8.5. Merge treeSpec edges LAST (manual edits take highest priority)
+  if (treeSpec) {
+    for (const designedEdge of treeSpec.specJson.edges as Array<{ parent: string; child: string }>) {
+      // Find and replace existing edge for this child
+      const existingIndex = edges.findIndex((e) => e.child === designedEdge.child);
+      if (existingIndex >= 0) {
+        edges[existingIndex] = {
+          parent: designedEdge.parent,
+          child: designedEdge.child,
+          confidence: "high" as const,
+          isDesigned: true,
+        };
+      } else {
+        edges.push({
+          parent: designedEdge.parent,
+          child: designedEdge.child,
+          confidence: "high" as const,
+          isDesigned: true,
+        });
       }
     }
   }

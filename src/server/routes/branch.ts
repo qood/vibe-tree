@@ -507,6 +507,252 @@ branchRouter.post("/pull", async (c) => {
   }
 });
 
+// POST /api/branch/rebase - Rebase branch onto its parent
+branchRouter.post("/rebase", async (c) => {
+  const body = await c.req.json();
+  const { localPath: rawLocalPath, branchName, parentBranch, worktreePath: rawWorktreePath } = body;
+
+  if (!rawLocalPath || !branchName || !parentBranch) {
+    throw new BadRequestError("localPath, branchName, and parentBranch are required");
+  }
+
+  const localPath = expandTilde(rawLocalPath);
+  const worktreePath = rawWorktreePath ? expandTilde(rawWorktreePath) : null;
+
+  // Verify local path exists
+  if (!existsSync(localPath)) {
+    throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Determine which path to use for rebase
+  let rebasePath: string | null = null;
+
+  if (worktreePath && existsSync(worktreePath)) {
+    rebasePath = worktreePath;
+  } else {
+    // Check if the main repo is on this branch
+    try {
+      const currentBranch = execSync(
+        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
+        { encoding: "utf-8" }
+      ).trim();
+      if (currentBranch === branchName) {
+        rebasePath = localPath;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  if (!rebasePath) {
+    throw new BadRequestError(`Branch "${branchName}" must be checked out to rebase`);
+  }
+
+  // Check for uncommitted changes
+  try {
+    const status = execSync(
+      `cd "${rebasePath}" && git status --porcelain`,
+      { encoding: "utf-8" }
+    ).trim();
+    if (status) {
+      throw new BadRequestError("Cannot rebase: you have uncommitted changes. Please commit or stash them first.");
+    }
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // First fetch latest from remote
+  try {
+    execSync(`cd "${rebasePath}" && git fetch origin "${parentBranch}"`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+  } catch {
+    // Ignore fetch errors - continue with local
+  }
+
+  // Rebase
+  try {
+    const output = execSync(
+      `cd "${rebasePath}" && git rebase "origin/${parentBranch}"`,
+      { encoding: "utf-8", timeout: 60000 }
+    );
+    return c.json({
+      success: true,
+      branchName,
+      parentBranch,
+      output: output.trim() || "Rebase successful",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Abort rebase if it failed
+    try {
+      execSync(`cd "${rebasePath}" && git rebase --abort 2>/dev/null || true`, { encoding: "utf-8" });
+    } catch {
+      // Ignore
+    }
+    if (message.includes("conflict")) {
+      throw new BadRequestError("Rebase failed due to conflicts. Rebase has been aborted.");
+    }
+    throw new BadRequestError(`Failed to rebase: ${message}`);
+  }
+});
+
+// POST /api/branch/merge-parent - Merge parent branch into current
+branchRouter.post("/merge-parent", async (c) => {
+  const body = await c.req.json();
+  const { localPath: rawLocalPath, branchName, parentBranch, worktreePath: rawWorktreePath } = body;
+
+  if (!rawLocalPath || !branchName || !parentBranch) {
+    throw new BadRequestError("localPath, branchName, and parentBranch are required");
+  }
+
+  const localPath = expandTilde(rawLocalPath);
+  const worktreePath = rawWorktreePath ? expandTilde(rawWorktreePath) : null;
+
+  // Verify local path exists
+  if (!existsSync(localPath)) {
+    throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Determine which path to use for merge
+  let mergePath: string | null = null;
+
+  if (worktreePath && existsSync(worktreePath)) {
+    mergePath = worktreePath;
+  } else {
+    // Check if the main repo is on this branch
+    try {
+      const currentBranch = execSync(
+        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
+        { encoding: "utf-8" }
+      ).trim();
+      if (currentBranch === branchName) {
+        mergePath = localPath;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  if (!mergePath) {
+    throw new BadRequestError(`Branch "${branchName}" must be checked out to merge`);
+  }
+
+  // Check for uncommitted changes
+  try {
+    const status = execSync(
+      `cd "${mergePath}" && git status --porcelain`,
+      { encoding: "utf-8" }
+    ).trim();
+    if (status) {
+      throw new BadRequestError("Cannot merge: you have uncommitted changes. Please commit or stash them first.");
+    }
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // First fetch latest from remote
+  try {
+    execSync(`cd "${mergePath}" && git fetch origin "${parentBranch}"`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+  } catch {
+    // Ignore fetch errors - continue with local
+  }
+
+  // Merge
+  try {
+    const output = execSync(
+      `cd "${mergePath}" && git merge "origin/${parentBranch}" --no-edit`,
+      { encoding: "utf-8", timeout: 60000 }
+    );
+    return c.json({
+      success: true,
+      branchName,
+      parentBranch,
+      output: output.trim() || "Merge successful",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Abort merge if it failed
+    try {
+      execSync(`cd "${mergePath}" && git merge --abort 2>/dev/null || true`, { encoding: "utf-8" });
+    } catch {
+      // Ignore
+    }
+    if (message.includes("conflict") || message.includes("CONFLICT")) {
+      throw new BadRequestError("Merge failed due to conflicts. Merge has been aborted.");
+    }
+    throw new BadRequestError(`Failed to merge: ${message}`);
+  }
+});
+
+// POST /api/branch/push - Push branch to remote
+branchRouter.post("/push", async (c) => {
+  const body = await c.req.json();
+  const { localPath: rawLocalPath, branchName, worktreePath: rawWorktreePath, force } = body;
+
+  if (!rawLocalPath || !branchName) {
+    throw new BadRequestError("localPath and branchName are required");
+  }
+
+  const localPath = expandTilde(rawLocalPath);
+  const worktreePath = rawWorktreePath ? expandTilde(rawWorktreePath) : null;
+
+  // Verify local path exists
+  if (!existsSync(localPath)) {
+    throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Determine which path to use for push
+  let pushPath: string | null = null;
+
+  if (worktreePath && existsSync(worktreePath)) {
+    pushPath = worktreePath;
+  } else {
+    // Check if the main repo is on this branch
+    try {
+      const currentBranch = execSync(
+        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
+        { encoding: "utf-8" }
+      ).trim();
+      if (currentBranch === branchName) {
+        pushPath = localPath;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  if (!pushPath) {
+    throw new BadRequestError(`Branch "${branchName}" must be checked out to push`);
+  }
+
+  // Push
+  try {
+    const forceFlag = force ? "--force-with-lease" : "";
+    const output = execSync(
+      `cd "${pushPath}" && git push ${forceFlag} -u origin "${branchName}" 2>&1`,
+      { encoding: "utf-8", timeout: 60000 }
+    );
+    return c.json({
+      success: true,
+      branchName,
+      output: output.trim() || "Push successful",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("rejected") || message.includes("non-fast-forward")) {
+      throw new BadRequestError("Push rejected. Remote has changes not in your branch. Pull/rebase first or use force push.");
+    }
+    throw new BadRequestError(`Failed to push: ${message}`);
+  }
+});
+
 // DELETE /api/branch/delete - Delete a branch
 branchRouter.post("/delete", async (c) => {
   const body = await c.req.json();

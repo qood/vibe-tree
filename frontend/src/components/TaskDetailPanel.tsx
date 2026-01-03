@@ -15,8 +15,9 @@ interface TaskDetailPanelProps {
   branchName: string;
   node: TreeNode | null;
   defaultBranch?: string;
+  parentBranch?: string;
   onClose: () => void;
-  onWorktreeCreated?: () => void;
+  onWorktreeCreated?: () => void | Promise<void>;
 }
 
 export function TaskDetailPanel({
@@ -25,6 +26,7 @@ export function TaskDetailPanel({
   branchName,
   node,
   defaultBranch,
+  parentBranch,
   onClose,
   onWorktreeCreated,
 }: TaskDetailPanelProps) {
@@ -77,6 +79,10 @@ export function TaskDetailPanel({
   const [refreshingLink, setRefreshingLink] = useState<number | null>(null);
   const [showDeleteBranchModal, setShowDeleteBranchModal] = useState(false);
   const [showCreateWorktreeModal, setShowCreateWorktreeModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showPushModal, setShowPushModal] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [pushing, setPushing] = useState(false);
 
   // The working path is either the worktree path or localPath if checked out
   const workingPath = worktreePath || (checkedOut ? localPath : null);
@@ -324,7 +330,7 @@ export function TaskDetailPanel({
     setError(null);
     try {
       await api.pull(localPath, branchName, worktreePath);
-      onWorktreeCreated?.(); // Rescan to update
+      await onWorktreeCreated?.(); // Wait for rescan to complete
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -357,6 +363,50 @@ export function TaskDetailPanel({
       setError((err as Error).message);
     } finally {
       setCheckingOut(false);
+    }
+  };
+
+  const handleRebase = async () => {
+    if (!parentBranch) return;
+    setShowSyncModal(false);
+    setSyncing(true);
+    setError(null);
+    try {
+      await api.rebase(localPath, branchName, parentBranch, worktreePath);
+      await onWorktreeCreated?.(); // Wait for rescan to complete
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleMergeParent = async () => {
+    if (!parentBranch) return;
+    setShowSyncModal(false);
+    setSyncing(true);
+    setError(null);
+    try {
+      await api.mergeParent(localPath, branchName, parentBranch, worktreePath);
+      await onWorktreeCreated?.(); // Wait for rescan to complete
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handlePush = async (force?: boolean) => {
+    setShowPushModal(false);
+    setPushing(true);
+    setError(null);
+    try {
+      await api.push(localPath, branchName, worktreePath, force);
+      await onWorktreeCreated?.(); // Wait for rescan to complete
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPushing(false);
     }
   };
 
@@ -568,6 +618,17 @@ export function TaskDetailPanel({
           <div className="task-detail-panel__worktree-info">
             <span className="task-detail-panel__active-badge">Active</span>
             <div className="task-detail-panel__branch-actions">
+              {/* Behind parent - show Sync button */}
+              {node?.aheadBehind && node.aheadBehind.behind > 0 && parentBranch && (
+                <button
+                  className="task-detail-panel__sync-btn"
+                  onClick={() => setShowSyncModal(true)}
+                  disabled={syncing}
+                >
+                  {syncing ? "Syncing..." : `Sync (↓${node.aheadBehind.behind} from ${parentBranch})`}
+                </button>
+              )}
+              {/* Behind remote - show Pull button */}
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
                 <button
                   className="task-detail-panel__pull-btn"
@@ -575,6 +636,16 @@ export function TaskDetailPanel({
                   disabled={pulling}
                 >
                   {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
+                </button>
+              )}
+              {/* Ahead of remote - show Push button */}
+              {node?.remoteAheadBehind && node.remoteAheadBehind.ahead > 0 && (
+                <button
+                  className="task-detail-panel__push-btn"
+                  onClick={() => setShowPushModal(true)}
+                  disabled={pushing}
+                >
+                  {pushing ? "Pushing..." : `Push (↑${node.remoteAheadBehind.ahead})`}
                 </button>
               )}
               {isMerged && (
@@ -1125,6 +1196,79 @@ export function TaskDetailPanel({
                 onClick={handleDelete}
               >
                 削除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Modal - Choose Rebase or Merge */}
+      {showSyncModal && parentBranch && (
+        <div className="task-detail-panel__modal-overlay" onClick={() => setShowSyncModal(false)}>
+          <div className="task-detail-panel__modal task-detail-panel__modal--sync" onClick={(e) => e.stopPropagation()}>
+            <h4>Sync with Parent</h4>
+            <p className="task-detail-panel__modal-branch-name" style={{ color: "#4ade80" }}>{parentBranch}</p>
+            <p className="task-detail-panel__modal-info">
+              {node?.aheadBehind && `${node.aheadBehind.behind} commit${node.aheadBehind.behind > 1 ? "s" : ""} behind`}
+            </p>
+            <div className="task-detail-panel__sync-options">
+              <button
+                className="task-detail-panel__sync-option"
+                onClick={handleRebase}
+              >
+                <span className="task-detail-panel__sync-option-title">Rebase</span>
+                <span className="task-detail-panel__sync-option-desc">Keep history clean (recommended)</span>
+              </button>
+              <button
+                className="task-detail-panel__sync-option"
+                onClick={handleMergeParent}
+              >
+                <span className="task-detail-panel__sync-option-title">Merge</span>
+                <span className="task-detail-panel__sync-option-desc">Create a merge commit</span>
+              </button>
+            </div>
+            <div className="task-detail-panel__modal-actions">
+              <button
+                className="task-detail-panel__modal-cancel"
+                onClick={() => setShowSyncModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Push Modal - Choose Push or Force Push */}
+      {showPushModal && (
+        <div className="task-detail-panel__modal-overlay" onClick={() => setShowPushModal(false)}>
+          <div className="task-detail-panel__modal task-detail-panel__modal--sync" onClick={(e) => e.stopPropagation()}>
+            <h4>Push to Remote</h4>
+            <p className="task-detail-panel__modal-info">
+              {node?.remoteAheadBehind && `${node.remoteAheadBehind.ahead} commit${node.remoteAheadBehind.ahead > 1 ? "s" : ""} ahead`}
+            </p>
+            <div className="task-detail-panel__sync-options">
+              <button
+                className="task-detail-panel__sync-option"
+                onClick={() => handlePush(false)}
+              >
+                <span className="task-detail-panel__sync-option-title">Push</span>
+                <span className="task-detail-panel__sync-option-desc">Normal push (recommended)</span>
+              </button>
+              <button
+                className="task-detail-panel__sync-option task-detail-panel__sync-option--danger"
+                onClick={() => handlePush(true)}
+              >
+                <span className="task-detail-panel__sync-option-title">Force Push</span>
+                <span className="task-detail-panel__sync-option-desc">Overwrite remote history (use with caution)</span>
+              </button>
+            </div>
+            <div className="task-detail-panel__modal-actions">
+              <button
+                className="task-detail-panel__modal-cancel"
+                onClick={() => setShowPushModal(false)}
+              >
+                Cancel
               </button>
             </div>
           </div>

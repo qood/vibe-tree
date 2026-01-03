@@ -91,14 +91,18 @@ export default function BranchGraph({
     };
   }, []);
 
-  // Handle drag start from node handle
-  const handleDragStart = useCallback((branchName: string, handleX: number, handleY: number) => {
+  // Handle drag start from node
+  const handleDragStart = useCallback((
+    branchName: string,
+    startX: number,
+    startY: number
+  ) => {
     setDragState({
       fromBranch: branchName,
-      fromX: handleX,
-      fromY: handleY,
-      currentX: handleX,
-      currentY: handleY,
+      fromX: startX,
+      fromY: startY,
+      currentX: startX,
+      currentY: startY,
     });
   }, []);
 
@@ -112,8 +116,9 @@ export default function BranchGraph({
   // Handle drag end
   const handleMouseUp = useCallback(() => {
     if (dragState && dropTarget && dropTarget !== dragState.fromBranch) {
-      // Create edge: dragState.fromBranch becomes parent of dropTarget
-      onEdgeCreate?.(dragState.fromBranch, dropTarget);
+      // Create edge: dropTarget becomes parent of dragState.fromBranch
+      // (User drags a branch TO its new parent)
+      onEdgeCreate?.(dropTarget, dragState.fromBranch);
     }
     setDragState(null);
     setDropTarget(null);
@@ -383,6 +388,7 @@ export default function BranchGraph({
     const isMerged = node.pr?.state === "MERGED";
     const isDragging = dragState?.fromBranch === id;
     const isDropTarget = dropTarget === id && dragState && dragState.fromBranch !== id;
+    const canDrag = editMode && !isTentative && !isDefault && onEdgeCreate;
 
     // Determine node color (dark mode)
     let fillColor = "#1f2937";
@@ -414,8 +420,14 @@ export default function BranchGraph({
       strokeDash = undefined; // Solid border when selected
     }
 
+    // In edit mode, highlight draggable nodes
+    if (editMode && canDrag && !isSelected && !isMerged) {
+      strokeColor = "#6366f1";
+    }
+
     // Highlight drop target
     if (isDropTarget) {
+      fillColor = "#14532d";
       strokeColor = "#22c55e";
     }
 
@@ -425,14 +437,16 @@ export default function BranchGraph({
     const branchNameDisplay = isTentative ? id : null;
     const nodeHeight = isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT;
 
-    // Drag handle position (left side of node)
-    const handleX = x;
-    const handleY = y + nodeHeight / 2;
+    // In edit mode, the whole node is draggable (line starts from left edge of node)
+    const handleNodeMouseDown = canDrag ? (e: React.MouseEvent) => {
+      e.stopPropagation();
+      handleDragStart(id, x, y + nodeHeight / 2);
+    } : undefined;
 
     return (
       <g
         key={id}
-        style={{ cursor: isTentative ? "default" : "pointer" }}
+        style={{ cursor: canDrag ? (isDragging ? "grabbing" : "grab") : (isTentative ? "default" : "pointer") }}
         opacity={isTentative ? 0.8 : isDragging ? 0.5 : isMerged ? 0.6 : 1}
         onMouseEnter={() => {
           if (dragState && dragState.fromBranch !== id && !isTentative) {
@@ -444,6 +458,7 @@ export default function BranchGraph({
             setDropTarget(null);
           }
         }}
+        onMouseDown={handleNodeMouseDown}
       >
         {/* Node rectangle */}
         <rect
@@ -743,32 +758,7 @@ export default function BranchGraph({
           );
         })()}
 
-        {/* Drag handle (left side) - only in edit mode for non-default, non-tentative nodes */}
-        {editMode && !isTentative && !isDefault && onEdgeCreate && (
-          <g
-            style={{ cursor: "grab" }}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              handleDragStart(id, handleX, handleY);
-            }}
-          >
-            <circle
-              cx={handleX}
-              cy={handleY}
-              r={6}
-              fill="#4b5563"
-              stroke="#6b7280"
-              strokeWidth={1}
-            />
-            <circle
-              cx={handleX}
-              cy={handleY}
-              r={2}
-              fill="#9ca3af"
-            />
-          </g>
-        )}
-      </g>
+              </g>
     );
   };
 
@@ -802,16 +792,55 @@ export default function BranchGraph({
 
         {/* Render drag line while dragging */}
         {dragState && (
-          <line
-            x1={dragState.fromX}
-            y1={dragState.fromY}
-            x2={dragState.currentX}
-            y2={dragState.currentY}
-            stroke={dropTarget ? "#22c55e" : "#3b82f6"}
-            strokeWidth={2}
-            strokeDasharray="4,4"
-            pointerEvents="none"
-          />
+          <g pointerEvents="none">
+            {/* Glow effect */}
+            <line
+              x1={dragState.fromX}
+              y1={dragState.fromY}
+              x2={dragState.currentX}
+              y2={dragState.currentY}
+              stroke={dropTarget ? "#22c55e" : "#6366f1"}
+              strokeWidth={6}
+              opacity={0.3}
+            />
+            {/* Main line */}
+            <line
+              x1={dragState.fromX}
+              y1={dragState.fromY}
+              x2={dragState.currentX}
+              y2={dragState.currentY}
+              stroke={dropTarget ? "#22c55e" : "#6366f1"}
+              strokeWidth={2}
+              strokeDasharray={dropTarget ? undefined : "6,4"}
+            />
+            {/* Arrow head at end */}
+            {dropTarget && (() => {
+              const dx = dragState.currentX - dragState.fromX;
+              const dy = dragState.currentY - dragState.fromY;
+              const angle = Math.atan2(dy, dx);
+              const arrowSize = 10;
+              return (
+                <polygon
+                  points={`
+                    ${dragState.currentX},${dragState.currentY}
+                    ${dragState.currentX - arrowSize * Math.cos(angle - Math.PI / 6)},${dragState.currentY - arrowSize * Math.sin(angle - Math.PI / 6)}
+                    ${dragState.currentX - arrowSize * Math.cos(angle + Math.PI / 6)},${dragState.currentY - arrowSize * Math.sin(angle + Math.PI / 6)}
+                  `}
+                  fill="#22c55e"
+                />
+              );
+            })()}
+            {/* Instruction text */}
+            <text
+              x={dragState.currentX + 10}
+              y={dragState.currentY - 10}
+              fontSize={11}
+              fill={dropTarget ? "#22c55e" : "#9ca3af"}
+              fontWeight={500}
+            >
+              {dropTarget ? `Set parent: ${dropTarget}` : "Drop on new parent"}
+            </text>
+          </g>
         )}
 
         {/* Render nodes */}

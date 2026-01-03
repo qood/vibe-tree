@@ -70,6 +70,7 @@ export default function TreeDashboard() {
 
   // Fetch state
   const [fetching, setFetching] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [originalTreeSpecEdges, setOriginalTreeSpecEdges] = useState<TreeSpecEdge[] | null>(null);
 
   // Settings modal state
@@ -857,9 +858,11 @@ export default function TreeDashboard() {
                       <>
                         <button
                           className="btn-icon btn-icon--danger"
+                          disabled={discarding}
                           onClick={async () => {
                             // Discard: restore original edges
                             if (selectedPin && snapshot?.repoId && originalTreeSpecEdges !== null) {
+                              setDiscarding(true);
                               try {
                                 await api.updateTreeSpec({
                                   repoId: snapshot.repoId,
@@ -871,6 +874,8 @@ export default function TreeDashboard() {
                                 setSnapshot(newSnapshot);
                               } catch (err) {
                                 console.error("Failed to discard:", err);
+                              } finally {
+                                setDiscarding(false);
                               }
                             }
                             setOriginalTreeSpecEdges(null);
@@ -878,7 +883,7 @@ export default function TreeDashboard() {
                           }}
                           title="変更を破棄"
                         >
-                          Discard
+                          {discarding ? "Discarding..." : "Discard"}
                         </button>
                         <button
                           className="btn-icon btn-icon--active"
@@ -887,31 +892,34 @@ export default function TreeDashboard() {
                             setBranchGraphEditMode(false);
                           }}
                           title="編集モード終了"
+                          disabled={discarding}
                         >
                           Done
                         </button>
                       </>
                     ) : (
-                      <button
-                        className="btn-icon"
-                        onClick={() => {
-                          // Save current edges before entering edit mode
-                          setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
-                          setBranchGraphEditMode(true);
-                        }}
-                        title="ブランチ構造を編集"
-                      >
-                        Edit
-                      </button>
+                      <>
+                        <button
+                          className="btn-icon"
+                          onClick={() => {
+                            // Save current edges before entering edit mode
+                            setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
+                            setBranchGraphEditMode(true);
+                          }}
+                          title="ブランチ構造を編集"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-icon"
+                          onClick={() => selectedPin && handleFetch(selectedPin.localPath)}
+                          disabled={fetching}
+                          title="Fetch from remote"
+                        >
+                          {fetching ? "Fetching..." : "Fetch"}
+                        </button>
+                      </>
                     )}
-                    <button
-                      className="btn-icon"
-                      onClick={() => selectedPin && handleFetch(selectedPin.localPath)}
-                      disabled={fetching}
-                      title="Fetch from remote"
-                    >
-                      {fetching ? "Fetching..." : "Fetch"}
-                    </button>
                     <span className="panel__count">{snapshot.nodes.length} branches</span>
                   </div>
                 </div>
@@ -929,7 +937,7 @@ export default function TreeDashboard() {
                     tentativeEdges={tentativeEdges}
                     editMode={branchGraphEditMode}
                     onEdgeCreate={async (parentBranch, childBranch) => {
-                      // Create a new edge from parent to child
+                      // Create a new edge from parent to child (reparent operation)
                       // This will be saved in tree_specs as a designed edge
                       if (!snapshot?.repoId || !selectedPin) return;
 
@@ -937,7 +945,7 @@ export default function TreeDashboard() {
                         // Get current tree spec edges (using branch names directly)
                         const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
 
-                        // Check if edge already exists
+                        // Check if this exact edge already exists
                         const edgeExists = currentEdges.some(
                           (e) => e.parent === parentBranch && e.child === childBranch
                         ) || snapshot.edges.some(
@@ -949,9 +957,15 @@ export default function TreeDashboard() {
                           return;
                         }
 
-                        // Add the edge using branch names directly
+                        // Remove any existing edges where childBranch is the child (reparent)
+                        // This ensures a branch can only have one parent
+                        const filteredEdges = currentEdges.filter(
+                          (e) => e.child !== childBranch
+                        );
+
+                        // Add the new edge using branch names directly
                         const newEdges = [
-                          ...currentEdges,
+                          ...filteredEdges,
                           { parent: parentBranch, child: childBranch },
                         ];
 
@@ -1005,6 +1019,7 @@ export default function TreeDashboard() {
                   branchName={selectedNode.branchName}
                   node={selectedNode}
                   defaultBranch={snapshot.defaultBranch}
+                  parentBranch={snapshot.edges.find((e) => e.child === selectedNode.branchName)?.parent}
                   onClose={() => setSelectedNode(null)}
                   onWorktreeCreated={() => handleScan(selectedPin.localPath)}
                 />
