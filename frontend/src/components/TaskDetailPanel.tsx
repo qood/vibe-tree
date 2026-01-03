@@ -230,7 +230,7 @@ export function TaskDetailPanel({
     }
   }, [messages, streamingContent]);
 
-  // Subscribe to streaming events
+  // Subscribe to streaming events and chat messages
   useEffect(() => {
     if (!chatSessionId) return;
 
@@ -258,10 +258,29 @@ export function TaskDetailPanel({
       }
     });
 
+    // Listen for chat messages (async response from Claude)
+    const unsubMessage = wsClient.on("chat.message", (msg) => {
+      const data = msg.data as ChatMessage | undefined;
+      if (data && data.sessionId === chatSessionId) {
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === data.id)) {
+            return prev;
+          }
+          return [...prev, data];
+        });
+        // Stop loading when we receive an assistant message
+        if (data.role === "assistant") {
+          setChatLoading(false);
+        }
+      }
+    });
+
     return () => {
       unsubStart();
       unsubChunk();
       unsubEnd();
+      unsubMessage();
     };
   }, [chatSessionId]);
 
@@ -497,8 +516,9 @@ export function TaskDetailPanel({
     setChatLoading(true);
 
     // Optimistically add user message
+    const tempId = Date.now();
     const tempUserMsg: ChatMessage = {
-      id: Date.now(),
+      id: tempId,
       sessionId: chatSessionId,
       role: "user",
       content: userMessage,
@@ -512,16 +532,16 @@ export function TaskDetailPanel({
       const context = instruction?.instructionMd
         ? `[Task Instruction]\n${instruction.instructionMd}\n\n[Mode: ${chatMode}]`
         : `[Mode: ${chatMode}]`;
+      // API returns immediately, assistant message comes via WebSocket
       const result = await api.sendChatMessage(chatSessionId, userMessage, context, chatMode);
-      // Replace temp user message with saved one, add assistant message
-      setMessages((prev) => [
-        ...prev.slice(0, -1), // Remove temp user message
-        result.userMessage,
-        result.assistantMessage,
-      ]);
+      // Replace temp user message with saved one
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? result.userMessage : m))
+      );
+      // Loading will be set to false when assistant message arrives via WebSocket
     } catch (err) {
       setError((err as Error).message);
-    } finally {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setChatLoading(false);
     }
   }, [chatSessionId, chatInput, chatLoading, instruction, chatMode]);

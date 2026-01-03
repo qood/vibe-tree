@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db, schema } from "../../db";
 import { eq, and, desc, gt, asc } from "drizzle-orm";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import { existsSync } from "fs";
 import { randomUUID, createHash } from "crypto";
 import { expandTilde } from "../utils";
@@ -269,7 +269,7 @@ chatRouter.patch("/messages/:id/instruction-status", async (c) => {
   return c.json({ success: true, status });
 });
 
-// POST /api/chat/send - Send a message (execute Claude)
+// POST /api/chat/send - Send a message (execute Claude asynchronously)
 chatRouter.post("/send", async (c) => {
   const body = await c.req.json();
   const input = validateOrThrow(chatSendSchema, body);
@@ -339,11 +339,10 @@ chatRouter.post("/send", async (c) => {
   // 2. Build prompt with context
   const prompt = await buildPrompt(session, input.userMessage, input.context);
 
-  // 3. Execute Claude
+  // 3. Create agent run record (status: running)
   const promptDigest = createHash("md5").update(prompt).digest("hex");
   const startedAt = new Date().toISOString();
 
-  // Create agent run record
   const runResult = await db
     .insert(schema.agentRuns)
     .values({
@@ -363,91 +362,131 @@ chatRouter.post("/send", async (c) => {
   }
   const runId = run.id;
 
-  let assistantContent = "";
-  let stderr = "";
-  let status: "success" | "failed" = "success";
-
-  try {
-    // Run claude -p synchronously
-    // In execution mode, bypass permissions for autonomous operation
-    const bypassFlag = input.chatMode === "execution" ? " --dangerously-skip-permissions" : "";
-    assistantContent = execSync(`claude -p "${escapeShell(prompt)}"${bypassFlag}`, {
-      cwd: worktreePath,
-      encoding: "utf-8",
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-      timeout: 300000, // 5 minutes
-    });
-  } catch (err: unknown) {
-    status = "failed";
-    if (err && typeof err === "object" && "stderr" in err) {
-      stderr = String((err as { stderr: unknown }).stderr);
-    }
-    if (err && typeof err === "object" && "stdout" in err) {
-      assistantContent = String((err as { stdout: unknown }).stdout) || "Claude execution failed";
-    }
-    if (!assistantContent) {
-      assistantContent = "Claude execution failed. Please try again.";
-    }
+  // 4. Execute Claude ASYNCHRONOUSLY (non-blocking)
+  // Return immediately, process in background
+  const bypassFlag = input.chatMode === "execution" ? "--dangerously-skip-permissions" : "";
+  const claudeArgs = ["-p", prompt];
+  if (bypassFlag) {
+    claudeArgs.push(bypassFlag);
   }
 
-  const finishedAt = new Date().toISOString();
-
-  // Update agent run
-  await db
-    .update(schema.agentRuns)
-    .set({
-      finishedAt,
-      status,
-      stdoutSnippet: assistantContent.slice(0, 5000),
-      stderrSnippet: stderr.slice(0, 1000),
-    })
-    .where(eq(schema.agentRuns.id, runId));
-
-  // 4. Save assistant message
-  const assistantMsgResult = await db
-    .insert(schema.chatMessages)
-    .values({
-      sessionId: input.sessionId,
-      role: "assistant",
-      content: assistantContent,
-      chatMode: input.chatMode ?? null,
-      createdAt: finishedAt,
-    })
-    .returning();
-
-  const assistantMsg = assistantMsgResult[0];
-  if (!assistantMsg) {
-    throw new BadRequestError("Failed to save assistant message");
-  }
-
-  // Update session lastUsedAt
-  await db
-    .update(schema.chatSessions)
-    .set({ lastUsedAt: finishedAt, updatedAt: finishedAt })
-    .where(eq(schema.chatSessions.id, input.sessionId));
-
-  // Broadcast assistant message
-  broadcast({
-    type: "chat.message",
-    repoId: session.repoId,
-    data: toMessage(assistantMsg),
+  // Spawn claude process in background
+  const claudeProcess = spawn("claude", claudeArgs, {
+    cwd: worktreePath,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: false,
   });
 
-  // Auto-link PRs found in assistant response (for execution mode)
-  if (input.chatMode === "execution" && session.branchName) {
-    const prUrls = extractGitHubPrUrls(assistantContent);
-    for (const pr of prUrls) {
-      try {
-        await savePrLink(session.repoId, session.branchName, pr.url, pr.number);
-      } catch (err) {
-        console.error(`[Chat] Failed to auto-link PR:`, err);
+  let stdout = "";
+  let stderr = "";
+
+  claudeProcess.stdout.on("data", (data: Buffer) => {
+    stdout += data.toString();
+  });
+
+  claudeProcess.stderr.on("data", (data: Buffer) => {
+    stderr += data.toString();
+  });
+
+  claudeProcess.on("close", async (code) => {
+    const finishedAt = new Date().toISOString();
+    const status = code === 0 ? "success" : "failed";
+    let assistantContent = stdout.trim() || "Claude execution failed. Please try again.";
+
+    // Update agent run
+    await db
+      .update(schema.agentRuns)
+      .set({
+        finishedAt,
+        status,
+        stdoutSnippet: assistantContent.slice(0, 5000),
+        stderrSnippet: stderr.slice(0, 1000),
+      })
+      .where(eq(schema.agentRuns.id, runId));
+
+    // Save assistant message
+    const assistantMsgResult = await db
+      .insert(schema.chatMessages)
+      .values({
+        sessionId: input.sessionId,
+        role: "assistant",
+        content: assistantContent,
+        chatMode: input.chatMode ?? null,
+        createdAt: finishedAt,
+      })
+      .returning();
+
+    const assistantMsg = assistantMsgResult[0];
+    if (assistantMsg) {
+      // Update session lastUsedAt
+      await db
+        .update(schema.chatSessions)
+        .set({ lastUsedAt: finishedAt, updatedAt: finishedAt })
+        .where(eq(schema.chatSessions.id, input.sessionId));
+
+      // Broadcast assistant message
+      broadcast({
+        type: "chat.message",
+        repoId: session.repoId,
+        data: toMessage(assistantMsg),
+      });
+
+      // Auto-link PRs found in assistant response (for execution mode)
+      if (input.chatMode === "execution" && session.branchName) {
+        const prUrls = extractGitHubPrUrls(assistantContent);
+        for (const pr of prUrls) {
+          try {
+            await savePrLink(session.repoId, session.branchName, pr.url, pr.number);
+          } catch (err) {
+            console.error(`[Chat] Failed to auto-link PR:`, err);
+          }
+        }
       }
     }
-  }
+  });
 
+  claudeProcess.on("error", async (err) => {
+    console.error(`[Chat] Claude process error:`, err);
+    const finishedAt = new Date().toISOString();
+
+    // Update agent run as failed
+    await db
+      .update(schema.agentRuns)
+      .set({
+        finishedAt,
+        status: "failed",
+        stderrSnippet: err.message.slice(0, 1000),
+      })
+      .where(eq(schema.agentRuns.id, runId));
+
+    // Save error message
+    const assistantMsgResult = await db
+      .insert(schema.chatMessages)
+      .values({
+        sessionId: input.sessionId,
+        role: "assistant",
+        content: `Claude execution failed: ${err.message}`,
+        chatMode: input.chatMode ?? null,
+        createdAt: finishedAt,
+      })
+      .returning();
+
+    const assistantMsg = assistantMsgResult[0];
+    if (assistantMsg) {
+      broadcast({
+        type: "chat.message",
+        repoId: session.repoId,
+        data: toMessage(assistantMsg),
+      });
+    }
+  });
+
+  // Return immediately with user message and run ID
+  // Assistant message will be broadcast via WebSocket when ready
   return c.json({
     userMessage: toMessage(userMsg),
-    assistantMessage: toMessage(assistantMsg),
+    runId: runId,
+    status: "processing",
   });
 });
 

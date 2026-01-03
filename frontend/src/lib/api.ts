@@ -585,7 +585,7 @@ export const api = {
   getChatMessages: (sessionId: string) =>
     fetchJson<ChatMessage[]>(`${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`),
   sendChatMessage: (sessionId: string, userMessage: string, context?: string, chatMode?: ChatMode) =>
-    fetchJson<{ userMessage: ChatMessage; assistantMessage: ChatMessage }>(`${API_BASE}/chat/send`, {
+    fetchJson<{ userMessage: ChatMessage; runId: number; status: string }>(`${API_BASE}/chat/send`, {
       method: "POST",
       body: JSON.stringify({ sessionId, userMessage, context, chatMode }),
     }),

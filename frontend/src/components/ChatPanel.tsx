@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api, type ChatMessage } from "../lib/api";
 import { extractTaskSuggestions, removeTaskTags, type TaskSuggestion } from "../lib/task-parser";
+import { wsClient } from "../lib/ws";
 
 interface ChatPanelProps {
   sessionId: string;
@@ -32,6 +33,28 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     loadMessages();
   }, [loadMessages]);
 
+  // Listen for WebSocket chat messages
+  useEffect(() => {
+    const unsubscribe = wsClient.on("chat.message", (msg) => {
+      const data = msg.data as ChatMessage | undefined;
+      if (data && data.sessionId === sessionId) {
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === data.id)) {
+            return prev;
+          }
+          return [...prev, data];
+        });
+        // Stop loading when we receive an assistant message
+        if (data.role === "assistant") {
+          setLoading(false);
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [sessionId]);
+
   // Auto scroll to bottom
   useEffect(() => {
     if (messages.length > 0) {
@@ -48,9 +71,10 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     setLoading(true);
     setError(null);
 
-    // Optimistic update
+    // Optimistic update with temp user message
+    const tempId = Date.now();
     const tempUserMsg: ChatMessage = {
-      id: Date.now(),
+      id: tempId,
       sessionId,
       role: "user",
       content: userMessage,
@@ -59,16 +83,17 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     setMessages((prev) => [...prev, tempUserMsg]);
 
     try {
+      // API returns immediately, assistant message comes via WebSocket
       const result = await api.sendChatMessage(sessionId, userMessage);
-      setMessages((prev) => [
-        ...prev.slice(0, -1),
-        result.userMessage,
-        result.assistantMessage,
-      ]);
+      // Replace temp message with real one
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? result.userMessage : m))
+      );
+      // Loading will be set to false when assistant message arrives via WebSocket
+      inputRef.current?.focus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send message");
-      setMessages((prev) => prev.slice(0, -1));
-    } finally {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setLoading(false);
       inputRef.current?.focus();
     }
