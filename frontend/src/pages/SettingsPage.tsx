@@ -64,10 +64,13 @@ export default function SettingsPage() {
     setError(null);
     try {
       // Save branch naming rule
-      await api.updateBranchNaming({
+      const filteredPatterns = patterns.filter((p) => p.trim() !== "");
+      const result = await api.updateBranchNaming({
         repoId: selectedPin.repoId,
-        patterns: patterns.filter((p) => p.trim() !== ""),
+        patterns: filteredPatterns,
       });
+      // Update local state with saved patterns
+      setPatterns(result.patterns || filteredPatterns);
 
       // Save default branch
       if (defaultBranch) {
@@ -167,9 +170,6 @@ export default function SettingsPage() {
             >
               + Add Pattern
             </button>
-            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "8px", display: "block" }}>
-              {"{issueId}"} と {"{taskSlug}"} が使えます
-            </small>
           </div>
 
           {/* Save Button */}
