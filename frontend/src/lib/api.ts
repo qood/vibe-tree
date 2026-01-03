@@ -15,6 +15,12 @@ export interface BranchNamingRule {
   patterns: string[];
 }
 
+export interface WorktreeSettings {
+  worktreesDir?: string;
+  postCreateCommands?: string[];
+  checkoutPreference?: "main" | "first" | "ask";
+}
+
 export interface Plan {
   id: number;
   repoId: string;
@@ -385,6 +391,22 @@ export const api = {
     ),
   updateBranchNaming: (data: { repoId: string; patterns: string[] }) =>
     fetchJson<BranchNamingRule>(`${API_BASE}/project-rules/branch-naming`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  // Worktree Settings
+  getWorktreeSettings: (repoId: string) =>
+    fetchJson<WorktreeSettings & { id: number | null; repoId: string }>(
+      `${API_BASE}/project-rules/worktree?repoId=${encodeURIComponent(repoId)}`
+    ),
+  updateWorktreeSettings: (data: {
+    repoId: string;
+    worktreesDir?: string;
+    postCreateCommands?: string[];
+    checkoutPreference?: "main" | "first" | "ask";
+  }) =>
+    fetchJson<WorktreeSettings>(`${API_BASE}/project-rules/worktree`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -807,6 +829,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ localPath }),
     }),
+
+  // Delete worktree
+  deleteWorktree: (localPath: string, worktreePath: string) =>
+    fetchJson<{ success: boolean; worktreePath: string; branchName: string | null }>(
+      `${API_BASE}/branch/delete-worktree`,
+      {
+        method: "POST",
+        body: JSON.stringify({ localPath, worktreePath }),
+      }
+    ),
 
   // Rebase onto parent
   rebase: (localPath: string, branchName: string, parentBranch: string, worktreePath?: string) =>

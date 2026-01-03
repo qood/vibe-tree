@@ -86,6 +86,9 @@ export default function TreeDashboard() {
   const [settingsDefaultBranch, setSettingsDefaultBranch] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  // Worktree settings
+  const [worktreePostCommands, setWorktreePostCommands] = useState<string[]>([]);
+  const [worktreeCheckoutPref, setWorktreeCheckoutPref] = useState<"main" | "first" | "ask">("main");
 
   // Warnings modal state
   const [showWarnings, setShowWarnings] = useState(false);
@@ -529,13 +532,20 @@ export default function TreeDashboard() {
     setSettingsLoading(true);
     setSettingsDefaultBranch(selectedPin.baseBranch || "");
     try {
-      const rule = await api.getBranchNaming(snapshot.repoId);
+      const [rule, wtSettings] = await Promise.all([
+        api.getBranchNaming(snapshot.repoId),
+        api.getWorktreeSettings(snapshot.repoId),
+      ]);
       setSettingsRule(rule);
       setSettingsPatterns(rule.patterns || []);
+      setWorktreePostCommands(wtSettings.postCreateCommands || []);
+      setWorktreeCheckoutPref(wtSettings.checkoutPreference || "main");
     } catch {
       // No rule exists yet
       setSettingsRule({ patterns: [] });
       setSettingsPatterns([]);
+      setWorktreePostCommands([]);
+      setWorktreeCheckoutPref("main");
     } finally {
       setSettingsLoading(false);
     }
@@ -554,6 +564,14 @@ export default function TreeDashboard() {
       });
       setSettingsRule(updated);
       setSettingsPatterns(updated.patterns || validPatterns);
+
+      // Save worktree settings
+      const validCommands = worktreePostCommands.filter(c => c.trim());
+      await api.updateWorktreeSettings({
+        repoId: snapshot.repoId,
+        postCreateCommands: validCommands,
+        checkoutPreference: worktreeCheckoutPref,
+      });
 
       // Save default branch (empty string clears it)
       await api.updateRepoPin(selectedPin.id, { baseBranch: settingsDefaultBranch || null });
@@ -900,11 +918,34 @@ export default function TreeDashboard() {
                     if (node) setSelectedNode(node);
                   }}
                 >
-                  <div className="sidebar__worktree-branch">
-                    {wt.branch || "(detached)"}
-                    {wt.dirty && <span className="sidebar__worktree-dirty">●</span>}
+                  <div className="sidebar__worktree-header">
+                    <div className="sidebar__worktree-name">
+                      {wt.path.split("/").pop()}
+                      {wt.dirty && <span className="sidebar__worktree-dirty">●</span>}
+                    </div>
+                    <button
+                      className="sidebar__worktree-delete"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!selectedPin) return;
+                        if (wt.dirty) {
+                          alert("Worktree has uncommitted changes. Please commit or stash first.");
+                          return;
+                        }
+                        if (!confirm(`Delete worktree "${wt.path.split("/").pop()}"?`)) return;
+                        try {
+                          await api.deleteWorktree(selectedPin.localPath, wt.path);
+                          handleScan(selectedPin.localPath);
+                        } catch (err) {
+                          alert("Failed to delete worktree: " + (err as Error).message);
+                        }
+                      }}
+                      title="Delete worktree"
+                    >
+                      ×
+                    </button>
                   </div>
-                  <div className="sidebar__worktree-path">{wt.path.split("/").pop()}</div>
+                  <div className="sidebar__worktree-branch">{wt.branch || "(detached)"}</div>
                 </div>
               ))}
             </div>
@@ -1222,6 +1263,63 @@ export default function TreeDashboard() {
                     <small style={{ display: "block", marginTop: 8 }}>
                       Use {"{issueId}"} and {"{taskSlug}"} as placeholders
                     </small>
+                  </div>
+
+                  {/* Worktree Settings */}
+                  <div className="settings-section" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #374151" }}>
+                    <label>Worktree Post-Create Commands</label>
+                    <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                      Commands to run after creating a worktree (e.g., npm install)
+                    </small>
+                    {worktreePostCommands.map((cmd, index) => (
+                      <div key={index} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          value={cmd}
+                          onChange={(e) => {
+                            const newCmds = [...worktreePostCommands];
+                            newCmds[index] = e.target.value;
+                            setWorktreePostCommands(newCmds);
+                          }}
+                          placeholder="bun install"
+                          style={{ flex: 1, fontFamily: "monospace" }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          onClick={() => {
+                            setWorktreePostCommands(worktreePostCommands.filter((_, i) => i !== index));
+                          }}
+                          style={{ padding: "4px 8px", color: "#ef4444" }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setWorktreePostCommands([...worktreePostCommands, ""])}
+                      style={{ marginTop: 4 }}
+                    >
+                      + Add Command
+                    </button>
+                  </div>
+
+                  <div className="settings-section" style={{ marginTop: 16 }}>
+                    <label>Checkout Preference</label>
+                    <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
+                      When checking out a branch with multiple worktrees
+                    </small>
+                    <select
+                      value={worktreeCheckoutPref}
+                      onChange={(e) => setWorktreeCheckoutPref(e.target.value as "main" | "first" | "ask")}
+                      style={{ width: "100%", padding: "8px", background: "#1f2937", border: "1px solid #374151", borderRadius: 4, color: "white" }}
+                    >
+                      <option value="main">Always use main repo</option>
+                      <option value="first">Use first worktree found</option>
+                      <option value="ask">Ask each time</option>
+                    </select>
                   </div>
 
                   {/* Cleanup Section */}
@@ -1589,7 +1687,13 @@ export default function TreeDashboard() {
           background: #14532d;
           border-left: 3px solid #22c55e;
         }
-        .sidebar__worktree-branch {
+        .sidebar__worktree-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 4px;
+        }
+        .sidebar__worktree-name {
           font-family: monospace;
           font-weight: 600;
           overflow: hidden;
@@ -1598,15 +1702,38 @@ export default function TreeDashboard() {
           display: flex;
           align-items: center;
           gap: 6px;
+          flex: 1;
+        }
+        .sidebar__worktree-delete {
+          padding: 2px 6px;
+          background: transparent;
+          border: none;
+          color: #6b7280;
+          font-size: 14px;
+          cursor: pointer;
+          border-radius: 3px;
+          opacity: 0;
+          transition: all 0.15s;
+        }
+        .sidebar__worktree:hover .sidebar__worktree-delete {
+          opacity: 1;
+        }
+        .sidebar__worktree-delete:hover {
+          background: #7f1d1d;
+          color: #fca5a5;
         }
         .sidebar__worktree-dirty {
           color: #f59e0b;
           font-size: 8px;
         }
-        .sidebar__worktree-path {
+        .sidebar__worktree-branch {
+          font-family: monospace;
           font-size: 10px;
           color: #9ca3af;
           margin-top: 2px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .sidebar__worktree-terminal {
           padding: 2px 8px;

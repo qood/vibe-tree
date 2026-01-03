@@ -5,6 +5,7 @@ import {
   extractInstructionEdit,
   removeInstructionEditTags,
   computeSimpleDiff,
+  type DiffLine,
 } from "../lib/instruction-parser";
 import {
   extractPermissionRequests,
@@ -32,6 +33,132 @@ function parseChunkedContent(content: string): SavedChunk[] | null {
     // Not JSON or invalid format
   }
   return null;
+}
+
+// Expandable diff component for Edit tool
+function ExpandableDiff({ filePath, oldString, newString }: { filePath: string; oldString: string; newString: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const MAX_VISIBLE_LINES = 8;
+
+  const diffLines = computeSimpleDiff(oldString, newString);
+  // Filter to only show changed lines and some context
+  const changedLines: Array<DiffLine & { index: number }> = [];
+
+  diffLines.forEach((line, i) => {
+    if (line.type !== "unchanged") {
+      changedLines.push({ ...line, index: i });
+    }
+  });
+
+  // If all lines are unchanged (no diff), show a message
+  if (changedLines.length === 0) {
+    return (
+      <div className="task-detail-panel__tool-input">
+        <div style={{ color: "#9ca3af", marginBottom: 4 }}>📝 {filePath}</div>
+        <div style={{ color: "#6b7280", fontStyle: "italic" }}>No changes</div>
+      </div>
+    );
+  }
+
+  // Build display lines: changed lines with 1 line of context
+  const displaySet = new Set<number>();
+  changedLines.forEach(({ index }) => {
+    if (index > 0) displaySet.add(index - 1);
+    displaySet.add(index);
+    if (index < diffLines.length - 1) displaySet.add(index + 1);
+  });
+
+  const displayIndices = Array.from(displaySet).sort((a, b) => a - b);
+  const visibleLines = expanded ? displayIndices : displayIndices.slice(0, MAX_VISIBLE_LINES);
+  const hasMore = displayIndices.length > MAX_VISIBLE_LINES;
+
+  return (
+    <div className="task-detail-panel__tool-input">
+      <div style={{ color: "#9ca3af", marginBottom: 4 }}>📝 {filePath}</div>
+      <div className="task-detail-panel__diff">
+        {visibleLines.map((idx, i) => {
+          const line = diffLines[idx];
+          const prevIdx = visibleLines[i - 1];
+          const showEllipsis = i > 0 && idx - prevIdx > 1;
+          return (
+            <div key={idx}>
+              {showEllipsis && <div style={{ color: "#6b7280", padding: "2px 12px" }}>...</div>}
+              <div className={`task-detail-panel__diff-line task-detail-panel__diff-line--${line.type}`}>
+                <span className="task-detail-panel__diff-prefix">
+                  {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
+                </span>
+                <span>{line.content || " "}</span>
+              </div>
+            </div>
+          );
+        })}
+        {hasMore && !expanded && (
+          <button
+            className="task-detail-panel__diff-expand-btn"
+            onClick={() => setExpanded(true)}
+          >
+            Show {displayIndices.length - MAX_VISIBLE_LINES} more lines
+          </button>
+        )}
+        {hasMore && expanded && (
+          <button
+            className="task-detail-panel__diff-expand-btn"
+            onClick={() => setExpanded(false)}
+          >
+            Collapse
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Helper to render tool_use content with proper formatting
+function RenderToolUseContent({ toolName, input }: { toolName: string; input: Record<string, unknown> }): React.ReactNode {
+  // Bash command
+  if (input.command) {
+    return <pre className="task-detail-panel__tool-input">$ {String(input.command)}</pre>;
+  }
+
+  // Grep/search pattern
+  if (input.pattern) {
+    return <pre className="task-detail-panel__tool-input">🔍 {String(input.pattern)}{input.path ? ` in ${input.path}` : ""}</pre>;
+  }
+
+  // Edit with diff
+  if (input.file_path && input.old_string !== undefined) {
+    return (
+      <ExpandableDiff
+        filePath={String(input.file_path)}
+        oldString={String(input.old_string)}
+        newString={String(input.new_string || "")}
+      />
+    );
+  }
+
+  // Read file
+  if (input.file_path) {
+    return <pre className="task-detail-panel__tool-input">📄 {String(input.file_path)}</pre>;
+  }
+
+  // Glob pattern
+  if (toolName === "Glob") {
+    return <pre className="task-detail-panel__tool-input">📁 {String(input.pattern || input.path || JSON.stringify(input))}</pre>;
+  }
+
+  // Write file
+  if (toolName === "Write" && input.file_path) {
+    const contentPreview = input.content ? String(input.content).slice(0, 200) : "";
+    return (
+      <div className="task-detail-panel__tool-input">
+        <div style={{ color: "#9ca3af", marginBottom: 4 }}>✏️ {String(input.file_path)}</div>
+        {contentPreview && <pre style={{ color: "#4ade80" }}>{contentPreview}{String(input.content || "").length > 200 ? "..." : ""}</pre>}
+      </div>
+    );
+  }
+
+  // Default: show JSON
+  return <pre className="task-detail-panel__tool-input">{JSON.stringify(input, null, 2)}</pre>;
 }
 
 interface TaskDetailPanelProps {
@@ -117,8 +244,10 @@ export function TaskDetailPanel({
   const [showCreateWorktreeModal, setShowCreateWorktreeModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showPushModal, setShowPushModal] = useState(false);
+  const [showClearChatModal, setShowClearChatModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [clearingChat, setClearingChat] = useState(false);
 
   // Deletable branch check (no commits + not on remote)
   const [isDeletable, setIsDeletable] = useState(false);
@@ -644,6 +773,28 @@ export function TaskDetailPanel({
     }
   }, [chatSessionId, chatInput, chatLoading, instruction, chatMode]);
 
+  const handleClearChat = useCallback(async () => {
+    if (!chatSessionId || clearingChat) return;
+    setClearingChat(true);
+    setShowClearChatModal(false);
+    try {
+      // Archive current session
+      await api.archiveChatSession(chatSessionId);
+      // Create new session for this branch
+      const newSession = await api.createChatSession(repoId, effectivePath, branchName);
+      setChatSessionId(newSession.id);
+      setMessages([]);
+      setEditStatuses(new Map());
+      setStreamingChunks([]);
+      setStreamingContent(null);
+      setGrantedPermissions(new Set());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setClearingChat(false);
+    }
+  }, [chatSessionId, clearingChat, repoId, effectivePath, branchName]);
+
   if (loading && !isDefaultBranch) {
     return (
       <div className="task-detail-panel">
@@ -1090,25 +1241,35 @@ export function TaskDetailPanel({
       <div className="task-detail-panel__chat-section">
         <div className="task-detail-panel__chat-header">
           <h4>Chat</h4>
-          <div className="task-detail-panel__chat-mode-toggle">
-            <button
-              className={`task-detail-panel__mode-btn ${chatMode === "planning" ? "task-detail-panel__mode-btn--active" : ""}`}
-              onClick={() => setChatMode("planning")}
-            >
-              Planning
-            </button>
-            <span
-              className={(!workingPath || isMerged) ? "task-detail-panel__tooltip-wrapper" : ""}
-              data-tooltip={isMerged ? "PR is merged" : !workingPath ? "Checkout or Worktree required" : undefined}
-            >
+          <div className="task-detail-panel__chat-header-actions">
+            <div className="task-detail-panel__chat-mode-toggle">
               <button
-                className={`task-detail-panel__mode-btn ${chatMode === "execution" ? "task-detail-panel__mode-btn--active" : ""} ${!workingPath || isMerged ? "task-detail-panel__mode-btn--locked" : ""}`}
-                onClick={() => setChatMode("execution")}
-                disabled={!workingPath || isMerged}
+                className={`task-detail-panel__mode-btn ${chatMode === "planning" ? "task-detail-panel__mode-btn--active" : ""}`}
+                onClick={() => setChatMode("planning")}
               >
-                Execution
+                Planning
               </button>
-            </span>
+              <span
+                className={(!workingPath || isMerged) ? "task-detail-panel__tooltip-wrapper" : ""}
+                data-tooltip={isMerged ? "PR is merged" : !workingPath ? "Checkout or Worktree required" : undefined}
+              >
+                <button
+                  className={`task-detail-panel__mode-btn ${chatMode === "execution" ? "task-detail-panel__mode-btn--active" : ""} ${!workingPath || isMerged ? "task-detail-panel__mode-btn--locked" : ""}`}
+                  onClick={() => setChatMode("execution")}
+                  disabled={!workingPath || isMerged}
+                >
+                  Execution
+                </button>
+              </span>
+            </div>
+            <button
+              className="task-detail-panel__clear-chat-btn"
+              onClick={() => setShowClearChatModal(true)}
+              disabled={clearingChat || chatLoading || messages.length === 0}
+              title="Clear chat history"
+            >
+              {clearingChat ? "..." : "Clear"}
+            </button>
           </div>
         </div>
           <div className="task-detail-panel__messages">
@@ -1155,20 +1316,7 @@ export function TaskDetailPanel({
                           {chunk.type === "tool_use" && (
                             <div className="task-detail-panel__tool-use">
                               <div className="task-detail-panel__tool-header">🔧 {chunk.toolName}</div>
-                              {chunk.toolInput && (
-                                <pre className="task-detail-panel__tool-input">
-                                  {(() => {
-                                    const input = chunk.toolInput!;
-                                    if (input.command) return `$ ${input.command}`;
-                                    if (input.pattern) return `🔍 ${input.pattern}`;
-                                    if (input.file_path && input.old_string !== undefined) {
-                                      return `📝 ${input.file_path}\n\n- ${String(input.old_string).split('\n').slice(0, 3).join('\n- ')}...\n+ ${String(input.new_string).split('\n').slice(0, 3).join('\n+ ')}...`;
-                                    }
-                                    if (input.file_path) return `📄 ${input.file_path}`;
-                                    return JSON.stringify(input, null, 2);
-                                  })()}
-                                </pre>
-                              )}
+                              {chunk.toolInput && <RenderToolUseContent toolName={chunk.toolName || ""} input={chunk.toolInput} />}
                             </div>
                           )}
                           {chunk.type === "tool_result" && (
@@ -1312,20 +1460,7 @@ export function TaskDetailPanel({
                   {chunk.type === "tool_use" && (
                     <div className="task-detail-panel__tool-use">
                       <div className="task-detail-panel__tool-header">🔧 {chunk.toolName}</div>
-                      {chunk.toolInput && (
-                        <pre className="task-detail-panel__tool-input">
-                          {(() => {
-                            const input = chunk.toolInput!;
-                            if (input.command) return `$ ${input.command}`;
-                            if (input.pattern) return `🔍 ${input.pattern}`;
-                            if (input.file_path && input.old_string !== undefined) {
-                              return `📝 ${input.file_path}\n\n- ${String(input.old_string).split('\n').slice(0, 3).join('\n- ')}...\n+ ${String(input.new_string).split('\n').slice(0, 3).join('\n+ ')}...`;
-                            }
-                            if (input.file_path) return `📄 ${input.file_path}`;
-                            return JSON.stringify(input, null, 2);
-                          })()}
-                        </pre>
-                      )}
+                      {chunk.toolInput && <RenderToolUseContent toolName={chunk.toolName || ""} input={chunk.toolInput} />}
                     </div>
                   )}
                   {chunk.type === "tool_result" && (
@@ -1579,6 +1714,30 @@ export function TaskDetailPanel({
                 onClick={() => setShowPushModal(false)}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Chat Confirmation Modal */}
+      {showClearChatModal && (
+        <div className="task-detail-panel__modal-overlay" onClick={() => setShowClearChatModal(false)}>
+          <div className="task-detail-panel__modal" onClick={(e) => e.stopPropagation()}>
+            <h4>チャット履歴をクリアしますか？</h4>
+            <p>現在のチャット履歴は保存されますが、新しいセッションが開始されます。</p>
+            <div className="task-detail-panel__modal-actions">
+              <button
+                className="task-detail-panel__modal-cancel"
+                onClick={() => setShowClearChatModal(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="task-detail-panel__modal-confirm"
+                onClick={handleClearChat}
+              >
+                クリア
               </button>
             </div>
           </div>

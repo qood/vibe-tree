@@ -15,6 +15,17 @@ export interface BranchNamingRule {
   patterns: string[]; // Multiple patterns allowed (e.g., ["feat_{taskSlug}", "feat_{issueId}_{taskSlug}"])
 }
 
+export interface WorktreeSettings {
+  // Worktree directory path template. Placeholders: {repoName}, {parentDir}
+  // Default: "{parentDir}/{repoName}-worktrees"
+  worktreesDir?: string;
+  // Commands to run after worktree creation (in worktree directory)
+  postCreateCommands?: string[];
+  // Which worktree to use for checkout when multiple exist
+  // "main" = always use main repo, "first" = use first worktree found, "ask" = show selection
+  checkoutPreference?: "main" | "first" | "ask";
+}
+
 export interface ProjectRule {
   id: number;
   repoId: string; // owner/name format

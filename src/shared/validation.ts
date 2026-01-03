@@ -15,6 +15,22 @@ export const updateBranchNamingSchema = z.object({
 
 export type UpdateBranchNamingInput = z.infer<typeof updateBranchNamingSchema>;
 
+// Worktree settings schemas
+export const worktreeSettingsSchema = z.object({
+  worktreesDir: z.string().optional(),
+  postCreateCommands: z.array(z.string()).optional(),
+  checkoutPreference: z.enum(["main", "first", "ask"]).optional(),
+});
+
+export const updateWorktreeSettingsSchema = z.object({
+  repoId: repoIdSchema,
+  worktreesDir: z.string().optional(),
+  postCreateCommands: z.array(z.string()).optional(),
+  checkoutPreference: z.enum(["main", "first", "ask"]).optional(),
+});
+
+export type UpdateWorktreeSettingsInput = z.infer<typeof updateWorktreeSettingsSchema>;
+
 // Plan schemas
 export const startPlanSchema = z.object({
   repoId: repoIdSchema,

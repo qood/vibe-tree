@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { execSync } from "child_process";
+import { execSync, exec } from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { dirname, basename, join } from "path";
 import { randomUUID } from "crypto";
@@ -8,6 +8,48 @@ import { expandTilde, getRepoId } from "../utils";
 import { createBranchSchema, createTreeSchema, validateOrThrow } from "../../shared/validation";
 import { BadRequestError } from "../middleware/error-handler";
 import { db, schema } from "../../db";
+import type { WorktreeSettings } from "../../shared/types";
+
+// Helper to get worktree settings for a repo
+async function getWorktreeSettings(repoId: string): Promise<WorktreeSettings> {
+  const rules = await db
+    .select()
+    .from(schema.projectRules)
+    .where(
+      and(
+        eq(schema.projectRules.repoId, repoId),
+        eq(schema.projectRules.ruleType, "worktree"),
+        eq(schema.projectRules.isActive, true)
+      )
+    );
+
+  if (!rules[0]) {
+    return { postCreateCommands: [], checkoutPreference: "main" };
+  }
+
+  return JSON.parse(rules[0].ruleJson) as WorktreeSettings;
+}
+
+// Helper to run post-creation commands (async, fire-and-forget for UI responsiveness)
+function runPostCreateCommands(worktreePath: string, commands: string[]): void {
+  if (!commands || commands.length === 0) return;
+
+  // Run commands in background
+  const allCommands = commands.map(cmd => cmd.trim()).filter(Boolean).join(" && ");
+  if (!allCommands) return;
+
+  console.log(`[Worktree] Running post-create commands in ${worktreePath}: ${allCommands}`);
+
+  exec(`cd "${worktreePath}" && ${allCommands}`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`[Worktree] Post-create command failed:`, error.message);
+      if (stderr) console.error(`[Worktree] stderr:`, stderr);
+    } else {
+      console.log(`[Worktree] Post-create commands completed successfully`);
+      if (stdout) console.log(`[Worktree] stdout:`, stdout);
+    }
+  });
+}
 
 export const branchRouter = new Hono();
 
@@ -178,6 +220,12 @@ branchRouter.post("/create-tree", async (c) => {
           `cd "${localPath}" && git worktree add "${result.worktreePath}" "${task.branchName}"`,
           { encoding: "utf-8" }
         );
+
+        // Run post-creation commands if configured
+        const wtSettings = await getWorktreeSettings(input.repoId);
+        if (wtSettings.postCreateCommands && wtSettings.postCreateCommands.length > 0) {
+          runPostCreateCommands(result.worktreePath, wtSettings.postCreateCommands);
+        }
       }
 
       // Create chat session for this worktree
@@ -339,6 +387,13 @@ branchRouter.post("/create-worktree", async (c) => {
       `cd "${localPath}" && git worktree add "${worktreePath}" "${branchName}"`,
       { encoding: "utf-8" }
     );
+
+    // Run post-creation commands if configured
+    const repoId = getRepoId(localPath);
+    const wtSettings = await getWorktreeSettings(repoId);
+    if (wtSettings.postCreateCommands && wtSettings.postCreateCommands.length > 0) {
+      runPostCreateCommands(worktreePath, wtSettings.postCreateCommands);
+    }
   } catch (err) {
     throw new BadRequestError(`Failed to create worktree: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -1248,5 +1303,74 @@ branchRouter.post("/cleanup-orphaned", async (c) => {
     success: true,
     cleaned,
     existingBranches: existingBranches.length,
+  });
+});
+
+// POST /api/branch/delete-worktree - Delete a worktree
+branchRouter.post("/delete-worktree", async (c) => {
+  const body = await c.req.json();
+  const { localPath: rawLocalPath, worktreePath: rawWorktreePath } = body;
+
+  if (!rawLocalPath || !rawWorktreePath) {
+    throw new BadRequestError("localPath and worktreePath are required");
+  }
+
+  const localPath = expandTilde(rawLocalPath);
+  const worktreePath = expandTilde(rawWorktreePath);
+
+  // Verify local path exists
+  if (!existsSync(localPath)) {
+    throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Check if worktree exists
+  if (!existsSync(worktreePath)) {
+    throw new BadRequestError(`Worktree path does not exist: ${worktreePath}`);
+  }
+
+  // Get branch name from worktree
+  let branchName: string | null = null;
+  try {
+    branchName = execSync(
+      `cd "${worktreePath}" && git rev-parse --abbrev-ref HEAD`,
+      { encoding: "utf-8" }
+    ).trim();
+  } catch {
+    // Could be detached HEAD
+  }
+
+  // Check for uncommitted changes
+  try {
+    const status = execSync(
+      `cd "${worktreePath}" && git status --porcelain`,
+      { encoding: "utf-8" }
+    ).trim();
+    if (status) {
+      throw new BadRequestError("Cannot delete worktree: you have uncommitted changes. Please commit, stash, or discard them first.");
+    }
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Remove worktree
+  try {
+    execSync(
+      `cd "${localPath}" && git worktree remove "${worktreePath}"`,
+      { encoding: "utf-8" }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Try force remove if normal fails
+    if (message.includes("not empty") || message.includes("dirty")) {
+      throw new BadRequestError("Cannot delete worktree: working tree is dirty. Please clean up first.");
+    }
+    throw new BadRequestError(`Failed to delete worktree: ${message}`);
+  }
+
+  return c.json({
+    success: true,
+    worktreePath,
+    branchName,
   });
 });
