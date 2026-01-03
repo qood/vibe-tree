@@ -607,7 +607,7 @@ export default function BranchGraph({
         {hasWorktree && (() => {
           const worktreeName = node.worktree?.path?.split("/").pop() || "worktree";
           const isActive = node.worktree?.isActive;
-          const labelWidth = Math.min(worktreeName.length * 7 + 20, NODE_WIDTH);
+          const labelWidth = Math.min(worktreeName.length * 7 + 16, NODE_WIDTH);
           return (
             <g>
               {/* Active glow effect */}
@@ -632,29 +632,20 @@ export default function BranchGraph({
                 width={labelWidth}
                 height={20}
                 rx={4}
-                fill={isActive ? "#166534" : "#1e293b"}
-                stroke={isActive ? "#22c55e" : "#475569"}
-                strokeWidth={isActive ? 2 : 1}
+                fill={isActive ? "#15803d" : "#0f766e"}
+                stroke={isActive ? "#4ade80" : "#14b8a6"}
+                strokeWidth={2}
               />
-              {/* Folder icon */}
               <text
-                x={x + 6}
-                y={y - 11}
-                dominantBaseline="middle"
-                fontSize={11}
-              >
-                📁
-              </text>
-              <text
-                x={x + 22}
+                x={x + 8}
                 y={y - 11}
                 textAnchor="start"
                 dominantBaseline="middle"
                 fontSize={11}
-                fill={isActive ? "#4ade80" : "#94a3b8"}
-                fontWeight={isActive ? "bold" : "600"}
+                fill={isActive ? "#bbf7d0" : "#99f6e4"}
+                fontWeight="bold"
               >
-                {worktreeName.length > 20 ? worktreeName.substring(0, 18) + "…" : worktreeName}
+                {worktreeName.length > 22 ? worktreeName.substring(0, 20) + "…" : worktreeName}
               </text>
             </g>
           );
