@@ -492,14 +492,9 @@ chatRouter.post("/send", async (c) => {
           if (json.type === "assistant" && json.message?.content) {
             for (const block of json.message.content) {
               if (block.type === "thinking" && block.thinking) {
-                newContent += `[Thinking]\n${block.thinking}\n\n`;
+                newContent += block.thinking;
               } else if (block.type === "text" && block.text) {
                 newContent += block.text;
-              } else if (block.type === "tool_use") {
-                newContent += `[Tool: ${block.name}]\n`;
-                if (block.input) {
-                  newContent += JSON.stringify(block.input, null, 2) + "\n";
-                }
               }
             }
           } else if (json.type === "content_block_delta") {
@@ -508,8 +503,6 @@ chatRouter.post("/send", async (c) => {
             } else if (json.delta?.text) {
               newContent += json.delta.text;
             }
-          } else if (json.type === "tool_result") {
-            newContent += `[Tool Result]\n${json.content || ""}\n`;
           }
 
           if (newContent) {
