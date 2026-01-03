@@ -489,7 +489,8 @@ export default function BranchGraph({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 3,
-                    background: "#14532d",
+                    background: "transparent",
+                    border: "1px solid #22c55e",
                     color: "#4ade80",
                     whiteSpace: "nowrap",
                   }}>Approved ✔</span>
@@ -499,7 +500,8 @@ export default function BranchGraph({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 3,
-                    background: "#450a0a",
+                    background: "transparent",
+                    border: "1px solid #ef4444",
                     color: "#f87171",
                     whiteSpace: "nowrap",
                   }}>Changes ✗</span>
@@ -509,7 +511,8 @@ export default function BranchGraph({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 3,
-                    background: "#422006",
+                    background: "transparent",
+                    border: "1px solid #f59e0b",
                     color: "#fbbf24",
                     whiteSpace: "nowrap",
                   }}>Review?</span>
@@ -520,7 +523,8 @@ export default function BranchGraph({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 3,
-                    background: "#14532d",
+                    background: "transparent",
+                    border: "1px solid #22c55e",
                     color: "#4ade80",
                     whiteSpace: "nowrap",
                   }}>CI ✔</span>
@@ -530,7 +534,8 @@ export default function BranchGraph({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 3,
-                    background: "#450a0a",
+                    background: "transparent",
+                    border: "1px solid #ef4444",
                     color: "#f87171",
                     whiteSpace: "nowrap",
                   }}>CI ✗</span>
@@ -540,19 +545,20 @@ export default function BranchGraph({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 3,
-                    background: "#422006",
+                    background: "transparent",
+                    border: "1px solid #f59e0b",
                     color: "#fbbf24",
                     whiteSpace: "nowrap",
                   }}>CI …</span>
                 )}
-                {/* PR indicator - with border */}
+                {/* PR indicator - with background */}
                 <span style={{
                   fontSize: 11,
                   padding: "1px 6px",
                   borderRadius: 3,
-                  background: node.pr?.state === "MERGED" ? "#3b0764" : "transparent",
-                  border: node.pr?.state === "MERGED" ? "none" : "1px solid #6b7280",
-                  color: node.pr?.state === "MERGED" ? "#c084fc" : "#d1d5db",
+                  background: node.pr?.state === "MERGED" ? "#3b0764" : "#374151",
+                  border: node.pr?.state === "MERGED" ? "1px solid #9333ea" : "1px solid #4b5563",
+                  color: node.pr?.state === "MERGED" ? "#c084fc" : "#e5e7eb",
                   whiteSpace: "nowrap",
                 }}>PR</span>
               </div>
