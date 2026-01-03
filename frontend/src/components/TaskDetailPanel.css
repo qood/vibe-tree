@@ -243,6 +243,7 @@
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .task-detail-panel__delete-btn:hover:not(:disabled) {

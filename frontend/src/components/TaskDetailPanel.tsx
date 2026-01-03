@@ -761,7 +761,7 @@ export function TaskDetailPanel({
                     className="task-detail-panel__delete-btn"
                     disabled
                   >
-                    Delete Empty Branch
+                    Delete Branch
                   </button>
                 </span>
               )}
@@ -809,7 +809,7 @@ export function TaskDetailPanel({
                 onClick={() => setShowDeleteBranchModal(true)}
                 disabled={deleting}
               >
-                {deleting ? "Deleting..." : "Delete Empty Branch"}
+                {deleting ? "Deleting..." : "Delete Branch"}
               </button>
             )}
           </div>
