@@ -1202,6 +1202,11 @@ export function TaskDetailPanel({
             })}
             {streamingChunks.map((chunk, i) => (
               <div key={`stream-${i}`} className="task-detail-panel__message task-detail-panel__message--assistant">
+                {i === 0 && (
+                  <div className="task-detail-panel__message-role">
+                    ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}
+                  </div>
+                )}
                 <div className="task-detail-panel__message-content">
                   <pre>{linkifyPreContent(chunk)}</pre>
                 </div>
@@ -1210,7 +1215,9 @@ export function TaskDetailPanel({
             {(chatLoading || streamingContent !== null) && (
               <div className="task-detail-panel__message task-detail-panel__message--loading">
                 <div className="task-detail-panel__message-role">
-                  <span>ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}</span>
+                  {streamingChunks.length === 0 && (
+                    <span>ASSISTANT - {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}</span>
+                  )}
                   {canCancel && (
                     <button
                       className="task-detail-panel__cancel-btn"
