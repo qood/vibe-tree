@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api, type TaskInstruction, type ChatMessage, type TreeNode, type InstructionEditStatus, type BranchLink, type GitHubCheck } from "../lib/api";
+import { api, type TaskInstruction, type ChatMessage, type TreeNode, type InstructionEditStatus, type BranchLink, type GitHubCheck, type GitHubLabel } from "../lib/api";
 import { wsClient } from "../lib/ws";
 import {
   extractInstructionEdit,
@@ -614,11 +614,19 @@ export function TaskDetailPanel({
           if (!pr) {
             return <div className="task-detail-panel__no-links">No PR linked</div>;
           }
-          const labels = pr.labels ? ((): string[] => { try { return JSON.parse(pr.labels!) } catch { return [] } })() : [];
+          const labels: GitHubLabel[] = pr.labels ? ((): GitHubLabel[] => { try { const parsed = JSON.parse(pr.labels!); return Array.isArray(parsed) ? parsed.map((l: string | GitHubLabel) => typeof l === 'string' ? { name: l, color: '374151' } : l) : [] } catch { return [] } })() : [];
           const reviewers = pr.reviewers ? ((): string[] => { try { return JSON.parse(pr.reviewers!) } catch { return [] } })() : [];
           const checks: GitHubCheck[] = pr.checks ? ((): GitHubCheck[] => { try { return JSON.parse(pr.checks!) } catch { return [] } })() : [];
           const passedChecks = checks.filter((c) => c.conclusion === "SUCCESS").length;
           const totalChecks = checks.length;
+          // Helper to get contrasting text color
+          const getTextColor = (bgColor: string) => {
+            const r = parseInt(bgColor.slice(0, 2), 16);
+            const g = parseInt(bgColor.slice(2, 4), 16);
+            const b = parseInt(bgColor.slice(4, 6), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#ffffff';
+          };
           return (
             <div className="task-detail-panel__link-item task-detail-panel__link-item--detailed">
               <div className="task-detail-panel__link-main">
@@ -661,13 +669,6 @@ export function TaskDetailPanel({
                 {pr.projectStatus && (
                   <span className="task-detail-panel__link-project">{pr.projectStatus}</span>
                 )}
-                {labels.length > 0 && (
-                  <span className="task-detail-panel__link-labels">
-                    {labels.map((l, i) => (
-                      <span key={i} className="task-detail-panel__link-label">{l}</span>
-                    ))}
-                  </span>
-                )}
                 <span className="task-detail-panel__link-reviewers">
                   {reviewers.length > 0 ? (
                     reviewers.map((r, i) => (
@@ -678,6 +679,19 @@ export function TaskDetailPanel({
                   )}
                 </span>
               </div>
+              {labels.length > 0 && (
+                <div className="task-detail-panel__pr-labels">
+                  {labels.map((l, i) => (
+                    <span
+                      key={i}
+                      className="task-detail-panel__pr-label"
+                      style={{ backgroundColor: `#${l.color}`, color: getTextColor(l.color) }}
+                    >
+                      {l.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })()}

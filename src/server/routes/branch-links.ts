@@ -57,13 +57,18 @@ interface GitHubCheck {
   detailsUrl: string | null;
 }
 
+interface GitHubLabel {
+  name: string;
+  color: string;
+}
+
 interface GitHubPRInfo {
   number: number;
   title: string;
   status: string;
   checksStatus: string;
   checks: GitHubCheck[];
-  labels: string[];
+  labels: GitHubLabel[];
   reviewers: string[];
   projectStatus?: string;
 }
@@ -126,7 +131,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): GitHubPRInfo | nul
       status: data.state?.toLowerCase() || "open",
       checksStatus,
       checks,
-      labels: (data.labels || []).map((l: { name: string }) => l.name),
+      labels: (data.labels || []).map((l: { name: string; color: string }) => ({ name: l.name, color: l.color })),
       reviewers,
       projectStatus,
     };

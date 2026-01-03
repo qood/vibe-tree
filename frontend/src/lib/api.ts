@@ -328,6 +328,11 @@ export interface GitHubCheck {
   detailsUrl: string | null;
 }
 
+export interface GitHubLabel {
+  name: string;
+  color: string;
+}
+
 export interface BranchLink {
   id: number;
   repoId: string;

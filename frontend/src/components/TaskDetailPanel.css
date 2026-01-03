@@ -1188,3 +1188,22 @@
 .task-detail-panel__ci-item--link:hover .task-detail-panel__ci-link-icon {
   color: #9ca3af;
 }
+
+/* PR Labels - separate row */
+.task-detail-panel__pr-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #374151;
+}
+
+.task-detail-panel__pr-label {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
