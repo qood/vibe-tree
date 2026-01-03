@@ -46,7 +46,7 @@ const NODE_WIDTH = 180;
 const NODE_HEIGHT = 40;
 const TENTATIVE_NODE_HEIGHT = 52;
 const HORIZONTAL_GAP = 32;
-const VERTICAL_GAP = 16;
+const VERTICAL_GAP = 28;
 const PADDING = 20;
 
 // Badge colors
