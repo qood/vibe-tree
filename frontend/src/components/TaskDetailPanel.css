@@ -289,7 +289,7 @@
   font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
-  text-transform: uppercase;
+
 }
 
 .task-detail-panel__add-link-btn {
@@ -514,7 +514,7 @@
   font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
-  text-transform: uppercase;
+
 }
 
 .task-detail-panel__edit-btn {
@@ -621,7 +621,7 @@
   font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
-  text-transform: uppercase;
+
 }
 
 .task-detail-panel__chat-header-actions {
@@ -758,7 +758,7 @@
   gap: 8px;
   font-size: 10px;
   font-weight: 600;
-  text-transform: uppercase;
+
   margin-bottom: 4px;
   opacity: 0.7;
   flex-wrap: nowrap;

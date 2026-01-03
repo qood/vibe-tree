@@ -90,7 +90,9 @@ export default function TreeDashboard() {
   const [worktreeCreateScript, setWorktreeCreateScript] = useState("");
   const [worktreePostCreateScript, setWorktreePostCreateScript] = useState("");
   // Settings modal category
-  const [settingsCategory, setSettingsCategory] = useState<"general" | "worktree" | "cleanup">("general");
+  const [settingsCategory, setSettingsCategory] = useState<"branch" | "worktree" | "cleanup">("branch");
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{ chatSessions: number; taskInstructions: number; branchLinks: number } | null>(null);
 
   // Warnings modal state
   const [showWarnings, setShowWarnings] = useState(false);
@@ -533,7 +535,7 @@ export default function TreeDashboard() {
     setShowSettings(true);
     setSettingsLoading(true);
     setSettingsDefaultBranch(selectedPin.baseBranch || "");
-    setSettingsCategory("general");
+    setSettingsCategory("branch");
     try {
       const [rule, wtSettings] = await Promise.all([
         api.getBranchNaming(snapshot.repoId),
@@ -596,7 +598,7 @@ export default function TreeDashboard() {
       <div className="project-list-page">
         <div className="project-list-header">
           <h1>Vibe Tree</h1>
-          <p>プロジェクトを選択してください</p>
+          <p>Select a project</p>
         </div>
         <div className="project-list">
           {repoPins.map((pin) => (
@@ -620,7 +622,7 @@ export default function TreeDashboard() {
           ))}
           {repoPins.length === 0 && !showAddNew && (
             <div className="project-list__empty">
-              プロジェクトがありません
+              No projects yet
             </div>
           )}
         </div>
@@ -628,20 +630,20 @@ export default function TreeDashboard() {
           <div className="add-project-form">
             <input
               type="text"
-              placeholder="ローカルパス（例: ~/projects/my-app）"
+              placeholder="Local path (e.g. ~/projects/my-app)"
               value={newLocalPath}
               onChange={(e) => setNewLocalPath(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddRepoPin()}
               autoFocus
             />
             <div className="add-project-form__buttons">
-              <button className="btn-primary" onClick={handleAddRepoPin}>追加</button>
-              <button className="btn-secondary" onClick={() => setShowAddNew(false)}>キャンセル</button>
+              <button className="btn-primary" onClick={handleAddRepoPin}>Add</button>
+              <button className="btn-secondary" onClick={() => setShowAddNew(false)}>Cancel</button>
             </div>
           </div>
         ) : (
           <button className="add-project-btn" onClick={() => setShowAddNew(true)}>
-            + 新しいプロジェクトを追加
+            + Add New Project
           </button>
         )}
         {error && <div className="project-list__error">{error}</div>}
@@ -834,22 +836,22 @@ export default function TreeDashboard() {
           <div className="modal-overlay" onClick={() => setDeletingPinId(null)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal__header">
-                <h2>プロジェクトを削除</h2>
+                <h2>Delete Project</h2>
               </div>
               <div className="modal__body">
                 <p style={{ margin: 0, color: "#9ca3af" }}>
-                  「{repoPins.find(p => p.id === deletingPinId)?.label || repoPins.find(p => p.id === deletingPinId)?.repoId}」を削除しますか？
+                  Delete "{repoPins.find(p => p.id === deletingPinId)?.label || repoPins.find(p => p.id === deletingPinId)?.repoId}"?
                 </p>
                 <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>
-                  ※ローカルのファイルは削除されません
+                  Local files will not be deleted
                 </p>
               </div>
               <div className="modal__footer">
                 <button className="btn-secondary" onClick={() => setDeletingPinId(null)}>
-                  キャンセル
+                  Cancel
                 </button>
                 <button className="btn-danger" onClick={handleConfirmDeletePin}>
-                  削除
+                  Delete
                 </button>
               </div>
             </div>
@@ -1012,7 +1014,7 @@ export default function TreeDashboard() {
                             setOriginalTreeSpecEdges(null);
                             setBranchGraphEditMode(false);
                           }}
-                          title="変更を破棄"
+                          title="Discard changes"
                         >
                           {discarding ? "Discarding..." : "Discard"}
                         </button>
@@ -1022,7 +1024,7 @@ export default function TreeDashboard() {
                             setOriginalTreeSpecEdges(null);
                             setBranchGraphEditMode(false);
                           }}
-                          title="編集モード終了"
+                          title="Exit edit mode"
                           disabled={discarding}
                         >
                           Done
@@ -1037,7 +1039,7 @@ export default function TreeDashboard() {
                             setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
                             setBranchGraphEditMode(true);
                           }}
-                          title="ブランチ構造を編集"
+                          title="Edit branch structure"
                         >
                           Edit
                         </button>
@@ -1214,10 +1216,10 @@ export default function TreeDashboard() {
             <div className="settings-modal__body">
               <div className="settings-modal__sidebar">
                 <button
-                  className={`settings-modal__nav-item ${settingsCategory === "general" ? "settings-modal__nav-item--active" : ""}`}
-                  onClick={() => setSettingsCategory("general")}
+                  className={`settings-modal__nav-item ${settingsCategory === "branch" ? "settings-modal__nav-item--active" : ""}`}
+                  onClick={() => setSettingsCategory("branch")}
                 >
-                  General
+                  Branch
                 </button>
                 <button
                   className={`settings-modal__nav-item ${settingsCategory === "worktree" ? "settings-modal__nav-item--active" : ""}`}
@@ -1241,10 +1243,10 @@ export default function TreeDashboard() {
                       <div className="modal__success">Settings saved!</div>
                     )}
 
-                    {/* General Settings */}
-                    {settingsCategory === "general" && (
+                    {/* Branch Settings */}
+                    {settingsCategory === "branch" && (
                       <>
-                        <h3>General</h3>
+                        <h3>Branch</h3>
                         <div className="settings-section">
                           <label>Default Branch</label>
                           <input
@@ -1253,7 +1255,7 @@ export default function TreeDashboard() {
                             onChange={(e) => setSettingsDefaultBranch(e.target.value)}
                             placeholder="develop"
                           />
-                          <small>Task Instruction と Chat は表示されません</small>
+                          <small>Task instructions and chat history will not be shown for this branch</small>
                         </div>
                         <div className="settings-section">
                           <label>Branch Naming Patterns</label>
@@ -1291,7 +1293,7 @@ export default function TreeDashboard() {
                             + Add Pattern
                           </button>
                           <small style={{ display: "block", marginTop: 8 }}>
-                            Use {"{issueId}"} and {"{taskSlug}"} as placeholders
+                            Placeholders: <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{issueId}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{taskSlug}"}</code>
                           </small>
                         </div>
                       </>
@@ -1302,17 +1304,17 @@ export default function TreeDashboard() {
                       <>
                         <h3>Worktree</h3>
                         <div className="settings-section">
-                          <label>Worktree Creation Script</label>
+                          <label>Worktree Creation Command</label>
                           <small style={{ display: "block", marginBottom: 8, color: "#9ca3af" }}>
-                            Custom script to create worktree. Use {"{worktreePath}"}, {"{branchName}"}, {"{localPath}"} as placeholders.
-                            <br />Leave empty for default: <code>git worktree add {"{worktreePath}"} {"{branchName}"}</code>
+                            Custom command to create worktree. Leave empty for default.
+                            <br />Placeholders: <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{worktreePath}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{branchName}"}</code> <code style={{ background: "#374151", padding: "2px 6px", borderRadius: 3, color: "#60a5fa" }}>{"{localPath}"}</code>
                           </small>
-                          <textarea
+                          <input
+                            type="text"
                             value={worktreeCreateScript}
                             onChange={(e) => setWorktreeCreateScript(e.target.value)}
                             placeholder="git worktree add {worktreePath} {branchName}"
-                            rows={3}
-                            style={{ width: "100%", fontFamily: "monospace", fontSize: 12, background: "#1f2937", border: "1px solid #374151", borderRadius: 4, padding: 8, color: "white", resize: "vertical" }}
+                            style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
                           />
                         </div>
                         <div className="settings-section">
@@ -1336,7 +1338,7 @@ export default function TreeDashboard() {
                       <>
                         <h3>Cleanup</h3>
                         <div className="settings-section">
-                          <label>Orphaned Data Cleanup</label>
+                          <label>Stale Data Cleanup</label>
                           <p style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 12px" }}>
                             Remove chat history and settings for branches that no longer exist in the repository.
                           </p>
@@ -1344,23 +1346,9 @@ export default function TreeDashboard() {
                             type="button"
                             className="btn-secondary"
                             style={{ background: "#7f1d1d", color: "#fca5a5" }}
-                            onClick={async () => {
-                              if (!selectedPin) return;
-                              if (!confirm("削除されたブランチのチャット履歴・設定をすべて削除します。よろしいですか？")) return;
-                              try {
-                                const result = await api.cleanupOrphanedBranchData(selectedPin.localPath);
-                                const total = result.cleaned.chatSessions + result.cleaned.taskInstructions + result.cleaned.branchLinks;
-                                if (total > 0) {
-                                  alert(`クリーンアップ完了:\n- チャットセッション: ${result.cleaned.chatSessions}\n- タスク設定: ${result.cleaned.taskInstructions}\n- ブランチリンク: ${result.cleaned.branchLinks}`);
-                                } else {
-                                  alert("削除対象のデータはありませんでした");
-                                }
-                              } catch (err) {
-                                alert("クリーンアップに失敗しました: " + (err as Error).message);
-                              }
-                            }}
+                            onClick={() => setShowCleanupConfirm(true)}
                           >
-                            Clean Up Orphaned Data
+                            Clean Up Stale Data
                           </button>
                         </div>
                       </>
@@ -1382,6 +1370,66 @@ export default function TreeDashboard() {
               >
                 {settingsLoading ? "Saving..." : "Save"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cleanup Confirm Modal */}
+      {showCleanupConfirm && (
+        <div className="modal-overlay" onClick={() => { setShowCleanupConfirm(false); setCleanupResult(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__header">
+              <h2>{cleanupResult ? "Cleanup Complete" : "Clean Up Stale Data"}</h2>
+            </div>
+            <div className="modal__body">
+              {cleanupResult ? (
+                <>
+                  <p style={{ margin: 0, color: "#9ca3af" }}>
+                    {cleanupResult.chatSessions + cleanupResult.taskInstructions + cleanupResult.branchLinks > 0 ? (
+                      <>
+                        Cleaned up:<br />
+                        - Chat sessions: {cleanupResult.chatSessions}<br />
+                        - Task settings: {cleanupResult.taskInstructions}<br />
+                        - Branch links: {cleanupResult.branchLinks}
+                      </>
+                    ) : (
+                      "No stale data found."
+                    )}
+                  </p>
+                </>
+              ) : (
+                <p style={{ margin: 0, color: "#9ca3af" }}>
+                  Remove chat history and settings for branches that no longer exist?
+                </p>
+              )}
+            </div>
+            <div className="modal__footer">
+              {cleanupResult ? (
+                <button className="btn-primary" onClick={() => { setShowCleanupConfirm(false); setCleanupResult(null); }}>
+                  OK
+                </button>
+              ) : (
+                <>
+                  <button className="btn-secondary" onClick={() => setShowCleanupConfirm(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-danger"
+                    onClick={async () => {
+                      if (!selectedPin) return;
+                      try {
+                        const result = await api.cleanupOrphanedBranchData(selectedPin.localPath);
+                        setCleanupResult(result.cleaned);
+                      } catch (err) {
+                        setCleanupResult({ chatSessions: 0, taskInstructions: 0, branchLinks: 0 });
+                      }
+                    }}
+                  >
+                    Clean Up
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1594,7 +1642,6 @@ export default function TreeDashboard() {
           font-size: 12px;
           font-weight: 600;
           color: #9ca3af;
-          text-transform: uppercase;
         }
         .sidebar__path {
           font-size: 11px;
@@ -2210,7 +2257,6 @@ export default function TreeDashboard() {
           border-radius: 4px;
           font-size: 11px;
           font-weight: 600;
-          text-transform: uppercase;
         }
         .status-badge--draft {
           background: #374151;
@@ -2378,7 +2424,6 @@ export default function TreeDashboard() {
           font-size: 12px;
           font-weight: 600;
           color: #9ca3af;
-          text-transform: uppercase;
         }
         .detail-section a {
           color: #0066cc;
@@ -2553,7 +2598,6 @@ export default function TreeDashboard() {
         .chat-message__role {
           font-size: 10px;
           font-weight: 600;
-          text-transform: uppercase;
           margin-bottom: 4px;
           opacity: 0.7;
         }
@@ -3402,7 +3446,6 @@ export default function TreeDashboard() {
         .warning-item__severity {
           font-size: 11px;
           font-weight: 600;
-          text-transform: uppercase;
           padding: 3px 8px;
           border-radius: 4px;
         }
@@ -3444,7 +3487,6 @@ export default function TreeDashboard() {
           font-size: 12px;
           font-weight: 600;
           color: #9ca3af;
-          text-transform: uppercase;
           margin-bottom: 8px;
         }
         .settings-section input[type="text"] {
