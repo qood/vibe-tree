@@ -476,13 +476,13 @@ export default function BranchGraph({
               height: "100%",
               display: "flex",
               flexDirection: "column",
-              justifyContent: "space-between",
+              justifyContent: "space-around",
               overflow: "hidden",
             }}
           >
-            {/* Line 1: Status labels */}
+            {/* Line 1: Status labels - right aligned */}
             {hasPR && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "nowrap" }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", justifyContent: "flex-end" }}>
                 {/* Review status */}
                 {node.pr?.reviewDecision === "APPROVED" && (
                   <span style={{
@@ -545,30 +545,32 @@ export default function BranchGraph({
                     whiteSpace: "nowrap",
                   }}>CI …</span>
                 )}
-                {/* PR indicator */}
+                {/* PR indicator - with border */}
                 <span style={{
                   fontSize: 11,
                   padding: "1px 6px",
                   borderRadius: 3,
-                  background: node.pr?.state === "MERGED" ? "#3b0764" : "#374151",
-                  color: node.pr?.state === "MERGED" ? "#c084fc" : "#9ca3af",
+                  background: node.pr?.state === "MERGED" ? "#3b0764" : "transparent",
+                  border: node.pr?.state === "MERGED" ? "none" : "1px solid #6b7280",
+                  color: node.pr?.state === "MERGED" ? "#c084fc" : "#d1d5db",
                   whiteSpace: "nowrap",
                 }}>PR</span>
               </div>
             )}
-            {/* Spacer for nodes without PR */}
-            {!hasPR && <div style={{ height: 16 }} />}
 
-            {/* Line 2: Branch name */}
+            {/* Line 2: Branch name - allow wrapping */}
             <div
               style={{
                 fontSize: isTentative ? 12 : 13,
                 fontFamily: isTentative ? "sans-serif" : "monospace",
                 fontWeight: isDefault ? "bold" : isTentative ? 500 : "normal",
                 color: isTentative ? "#c084fc" : isMerged ? "#9ca3af" : "#e5e7eb",
+                lineHeight: 1.2,
                 overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical" as const,
+                wordBreak: "break-all",
               }}
             >
               {displayText}
