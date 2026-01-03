@@ -155,7 +155,7 @@ export function getWorktrees(repoPath: string): WorktreeInfo[] {
 export function getPRs(repoPath: string): PRInfo[] {
   try {
     const output = execSync(
-      `cd "${repoPath}" && gh pr list --json number,title,state,url,headRefName,isDraft,labels,assignees,reviewDecision,statusCheckRollup,additions,deletions,changedFiles --limit 50`,
+      `cd "${repoPath}" && gh pr list --state all --json number,title,state,url,headRefName,isDraft,labels,assignees,reviewDecision,statusCheckRollup,additions,deletions,changedFiles --limit 50`,
       { encoding: "utf-8" }
     );
     const prs: GhPR[] = JSON.parse(output);

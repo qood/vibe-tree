@@ -74,6 +74,9 @@ export function TaskDetailPanel({
   // The working path is either the worktree path or localPath if checked out
   const workingPath = worktreePath || (checkedOut ? localPath : null);
 
+  // Check if PR is merged
+  const isMerged = branchLinks.some((l) => l.linkType === "pr" && l.status === "merged");
+
   // Planning mode can work without workingPath (uses localPath), Execution requires workingPath
   const effectivePath = workingPath || localPath; // For Planning mode, use localPath as fallback
 
@@ -763,10 +766,10 @@ export function TaskDetailPanel({
               Planning
             </button>
             <button
-              className={`task-detail-panel__mode-btn ${chatMode === "execution" ? "task-detail-panel__mode-btn--active" : ""} ${!workingPath ? "task-detail-panel__mode-btn--locked" : ""}`}
+              className={`task-detail-panel__mode-btn ${chatMode === "execution" ? "task-detail-panel__mode-btn--active" : ""} ${!workingPath || isMerged ? "task-detail-panel__mode-btn--locked" : ""}`}
               onClick={() => setChatMode("execution")}
-              disabled={!workingPath}
-              title={!workingPath ? "Checkout or create worktree to use Execution mode" : ""}
+              disabled={!workingPath || isMerged}
+              title={isMerged ? "PR is merged - Execution mode disabled" : !workingPath ? "Checkout or create worktree to use Execution mode" : ""}
             >
               Execution
             </button>
