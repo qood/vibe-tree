@@ -406,8 +406,8 @@ export default function BranchGraph({
       strokeColor = "#22c55e";
     } else if (hasPR) {
       if (node.pr?.state === "OPEN") {
-        fillColor = "#422006";
-        strokeColor = "#f59e0b";
+        fillColor = "#14532d";
+        strokeColor = "#22c55e";
       }
     }
 
@@ -533,7 +533,7 @@ export default function BranchGraph({
               width={24}
               height={14}
               rx={2}
-              fill={node.pr?.state === "MERGED" ? "#9c27b0" : node.pr?.state === "OPEN" ? "#2196f3" : "#9e9e9e"}
+              fill={node.pr?.state === "MERGED" ? "#9c27b0" : node.pr?.state === "OPEN" ? "#22c55e" : "#9e9e9e"}
             />
             <text
               x={x + NODE_WIDTH - 16}
