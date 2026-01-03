@@ -379,6 +379,7 @@ export default function BranchGraph({
     const isDefault = id === defaultBranch;
     const hasWorktree = !!node.worktree;
     const hasPR = !!node.pr;
+    const isMerged = node.pr?.state === "MERGED";
     const isDragging = dragState?.fromBranch === id;
     const isDropTarget = dropTarget === id && dragState && dragState.fromBranch !== id;
 
@@ -392,6 +393,11 @@ export default function BranchGraph({
       fillColor = "#2d1f3d";
       strokeColor = "#9c27b0";
       strokeDash = "4,4";
+    } else if (isMerged) {
+      // Merged PRs have muted purple appearance
+      fillColor = "#1a1625";
+      strokeColor = "#6b21a8";
+      strokeDash = "2,2";
     } else if (isDefault) {
       fillColor = "#1e3a5f";
       strokeColor = "#3b82f6";
@@ -399,10 +405,7 @@ export default function BranchGraph({
       fillColor = "#14532d";
       strokeColor = "#22c55e";
     } else if (hasPR) {
-      if (node.pr?.state === "MERGED") {
-        fillColor = "#2d1f3d";
-        strokeColor = "#9c27b0";
-      } else if (node.pr?.state === "OPEN") {
+      if (node.pr?.state === "OPEN") {
         fillColor = "#422006";
         strokeColor = "#f59e0b";
       }
@@ -431,7 +434,7 @@ export default function BranchGraph({
       <g
         key={id}
         style={{ cursor: isTentative ? "default" : "pointer" }}
-        opacity={isTentative ? 0.8 : isDragging ? 0.5 : 1}
+        opacity={isTentative ? 0.8 : isDragging ? 0.5 : isMerged ? 0.6 : 1}
         onMouseEnter={() => {
           if (dragState && dragState.fromBranch !== id && !isTentative) {
             setDropTarget(id);
@@ -481,13 +484,14 @@ export default function BranchGraph({
                 fontSize: isTentative ? 10 : 11,
                 fontFamily: isTentative ? "sans-serif" : "monospace",
                 fontWeight: isDefault ? "bold" : isTentative ? 500 : "normal",
-                color: isTentative ? "#c084fc" : "#e5e7eb",
+                color: isTentative ? "#c084fc" : isMerged ? "#9ca3af" : "#e5e7eb",
                 lineHeight: 1.3,
                 overflow: "hidden",
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical" as const,
                 wordBreak: "break-all",
+                textDecoration: isMerged ? "line-through" : "none",
               }}
             >
               {displayText}
