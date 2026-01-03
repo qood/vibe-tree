@@ -1196,7 +1196,7 @@ export function TaskDetailPanel({
             {(chatLoading || streamingContent !== null) && (
               <>
                 {streamingChunks.map((chunk, i) => (
-                  <div key={i} className="task-detail-panel__message task-detail-panel__message--assistant task-detail-panel__message--streaming">
+                  <div key={i} className="task-detail-panel__message task-detail-panel__message--assistant">
                     <div className="task-detail-panel__message-content">
                       <pre>{linkifyPreContent(chunk)}</pre>
                     </div>
