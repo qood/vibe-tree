@@ -482,26 +482,23 @@
   margin-bottom: 2px;
 }
 
+.planning-panel__task-item--has-issue {
+  background: #1e3a5f;
+  border-color: #3b82f6;
+}
+
 .planning-panel__task-issue-link {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  padding: 2px 4px;
-  background: #374151;
-  border-radius: 4px;
-  margin-left: 4px;
 }
 
 .planning-panel__task-issue-link img {
   width: 14px;
   height: 14px;
   filter: brightness(0) invert(1);
-  opacity: 0.8;
+  opacity: 0.7;
   transition: opacity 0.15s;
-}
-
-.planning-panel__task-issue-link:hover {
-  background: #4b5563;
 }
 
 .planning-panel__task-issue-link:hover img {

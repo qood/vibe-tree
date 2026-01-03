@@ -89,7 +89,7 @@ function DraggableTaskItem({
         setDragRef(node);
         setDropRef(node);
       }}
-      className={`planning-panel__task-item ${isOver ? "planning-panel__task-item--drop-target" : ""} ${isExpanded ? "planning-panel__task-item--expanded" : ""}`}
+      className={`planning-panel__task-item ${isOver ? "planning-panel__task-item--drop-target" : ""} ${isExpanded ? "planning-panel__task-item--expanded" : ""} ${task.issueUrl ? "planning-panel__task-item--has-issue" : ""}`}
       style={{ opacity: isDragging ? 0.5 : 1, marginLeft: depth * 16 }}
       onClick={handleTaskClick}
       {...(isEditingBranch ? {} : { ...attributes, ...listeners })}
