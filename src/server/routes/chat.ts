@@ -485,39 +485,13 @@ chatRouter.post("/send", async (c) => {
 
       for (const line of lines) {
         if (!line.trim()) continue;
-        try {
-          const json = JSON.parse(line);
-          let textUpdated = false;
-          if (json.type === "assistant" && json.message?.content) {
-            // Partial message - extract all text blocks
-            let fullText = "";
-            for (const block of json.message.content) {
-              if (block.type === "text" && block.text) {
-                fullText += block.text;
-              }
-            }
-            if (fullText && fullText !== accumulatedText) {
-              accumulatedText = fullText;
-              textUpdated = true;
-            }
-          } else if (json.type === "content_block_delta" && json.delta?.text) {
-            accumulatedText += json.delta.text;
-            textUpdated = true;
-          } else if (json.type === "result" && json.result) {
-            accumulatedText = json.result;
-            continue;
-          }
-          if (textUpdated) {
-            broadcast({
-              type: "chat.streaming.chunk",
-              repoId: session.repoId,
-              data: { sessionId: input.sessionId, accumulated: accumulatedText },
-            });
-          }
-        } catch {
-          // Fallback
-          accumulatedText += line;
-        }
+        // Accumulate all output
+        accumulatedText += line + "\n";
+        broadcast({
+          type: "chat.streaming.chunk",
+          repoId: session.repoId,
+          data: { sessionId: input.sessionId, accumulated: accumulatedText },
+        });
       }
     } else {
       // Planning mode: plain text output
