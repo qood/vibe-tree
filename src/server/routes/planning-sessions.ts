@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db, schema } from "../../db";
 import { randomUUID } from "crypto";
 import { z } from "zod";

@@ -486,13 +486,22 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  padding: 2px 4px;
+  background: #374151;
+  border-radius: 4px;
+  margin-left: 4px;
 }
 
 .planning-panel__task-issue-link img {
   width: 14px;
   height: 14px;
-  opacity: 0.6;
+  filter: brightness(0) invert(1);
+  opacity: 0.8;
   transition: opacity 0.15s;
+}
+
+.planning-panel__task-issue-link:hover {
+  background: #4b5563;
 }
 
 .planning-panel__task-issue-link:hover img {
