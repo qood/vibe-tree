@@ -147,6 +147,7 @@ projectRulesRouter.get("/worktree", async (c) => {
       repoId: query.repoId,
       createScript: "",
       postCreateScript: "",
+      postDeleteScript: "",
       checkoutPreference: "main",
     });
   }
@@ -157,6 +158,7 @@ projectRulesRouter.get("/worktree", async (c) => {
     repoId: rule.repoId,
     createScript: ruleData.createScript || "",
     postCreateScript: ruleData.postCreateScript || "",
+    postDeleteScript: ruleData.postDeleteScript || "",
     checkoutPreference: ruleData.checkoutPreference || "main",
   });
 });
@@ -170,6 +172,7 @@ projectRulesRouter.post("/worktree", async (c) => {
   const ruleJson = JSON.stringify({
     createScript: input.createScript,
     postCreateScript: input.postCreateScript,
+    postDeleteScript: input.postDeleteScript,
     checkoutPreference: input.checkoutPreference,
   });
 
@@ -218,6 +221,7 @@ projectRulesRouter.post("/worktree", async (c) => {
     repoId: input.repoId,
     createScript: input.createScript || "",
     postCreateScript: input.postCreateScript || "",
+    postDeleteScript: input.postDeleteScript || "",
     checkoutPreference: input.checkoutPreference || "main",
   };
 

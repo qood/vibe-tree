@@ -19,6 +19,7 @@ export type UpdateBranchNamingInput = z.infer<typeof updateBranchNamingSchema>;
 export const worktreeSettingsSchema = z.object({
   createScript: z.string().optional(),
   postCreateScript: z.string().optional(),
+  postDeleteScript: z.string().optional(),
   checkoutPreference: z.enum(["main", "first", "ask"]).optional(),
 });
 
@@ -26,6 +27,7 @@ export const updateWorktreeSettingsSchema = z.object({
   repoId: repoIdSchema,
   createScript: z.string().optional(),
   postCreateScript: z.string().optional(),
+  postDeleteScript: z.string().optional(),
   checkoutPreference: z.enum(["main", "first", "ask"]).optional(),
 });
 

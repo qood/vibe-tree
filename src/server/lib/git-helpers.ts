@@ -349,12 +349,10 @@ export function calculateWarnings(
   if (branchNaming?.patterns && branchNaming.patterns.length > 0) {
     for (const pattern of branchNaming.patterns) {
       try {
-        const regexStr = pattern
-          .replace(/\{issueId\}/g, "\\d+")
-          .replace(/\{taskSlug\}/g, "[a-z0-9-]+");
-        branchPatterns.push(new RegExp(`^${regexStr}$`));
+        // Use pattern directly as regex
+        branchPatterns.push(new RegExp(pattern));
       } catch {
-        // Ignore invalid patterns
+        // Ignore invalid regex patterns
       }
     }
   }

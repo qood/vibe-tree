@@ -22,6 +22,8 @@ export interface WorktreeSettings {
   // Script to run after worktree creation (in worktree directory)
   // Runs as a shell script (each line executed sequentially)
   postCreateScript?: string;
+  // Script to run after worktree deletion (in main repository directory)
+  postDeleteScript?: string;
   // Which worktree to use for checkout when multiple exist
   // "main" = always use main repo, "first" = use first worktree found, "ask" = show selection
   checkoutPreference?: "main" | "first" | "ask";

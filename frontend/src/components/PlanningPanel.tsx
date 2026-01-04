@@ -184,7 +184,8 @@ interface PlanningPanelProps {
   defaultBranch: string;
   onTasksChange?: (nodes: TaskNode[], edges: TaskEdge[]) => void;
   onSessionSelect?: (session: PlanningSession | null) => void;
-  onCollapseChange?: (collapsed: boolean) => void;
+  pendingPlanning?: { branchName: string; instruction: string | null } | null;
+  onPlanningStarted?: () => void;
 }
 
 export function PlanningPanel({
@@ -193,37 +194,29 @@ export function PlanningPanel({
   defaultBranch,
   onTasksChange,
   onSessionSelect,
-  onCollapseChange,
+  pendingPlanning,
+  onPlanningStarted,
 }: PlanningPanelProps) {
   const [sessions, setSessions] = useState<PlanningSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<PlanningSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("planningPanel.collapsed");
-    return saved === "true";
-  });
+
+  // Session type tabs
+  const [activeTab, setActiveTab] = useState<"refinement" | "planning" | "task">("refinement");
+
+  // Switch to Planning tab when pendingPlanning is set
+  useEffect(() => {
+    if (pendingPlanning) {
+      setActiveTab("planning");
+    }
+  }, [pendingPlanning]);
 
   // New session form
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBaseBranch, setNewBaseBranch] = useState(defaultBranch);
-
-  // Notify parent of initial collapse state
-  useEffect(() => {
-    onCollapseChange?.(isCollapsed);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Persist collapse state and notify parent
-  const toggleCollapse = useCallback(() => {
-    setIsCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem("planningPanel.collapsed", String(next));
-      onCollapseChange?.(next);
-      return next;
-    });
-  }, [onCollapseChange]);
 
   // External links for selected session
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
@@ -233,6 +226,9 @@ export function PlanningPanel({
   // Chat messages for selected session (used internally in useEffect)
   const [, setMessages] = useState<ChatMessage[]>([]);
   const [, setMessagesLoading] = useState(false);
+
+  // Instructions map for planning sessions (baseBranch -> instruction preview)
+  const [branchInstructions, setBranchInstructions] = useState<Map<string, string>>(new Map());
 
   // Drag and drop for task parent-child relationships
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -253,6 +249,25 @@ export function PlanningPanel({
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [repoId]);
+
+  // Load instructions for planning sessions' baseBranches
+  useEffect(() => {
+    if (!repoId || sessions.length === 0) return;
+    const planningSessions = sessions.filter(s => s.title.startsWith("Planning:"));
+    const branchNames = [...new Set(planningSessions.map(s => s.baseBranch))];
+
+    branchNames.forEach(async (branchName) => {
+      if (branchInstructions.has(branchName)) return;
+      try {
+        const instruction = await api.getTaskInstruction(repoId, branchName);
+        if (instruction?.instructionMd) {
+          setBranchInstructions(prev => new Map(prev).set(branchName, instruction.instructionMd));
+        }
+      } catch {
+        // Instruction may not exist for this branch
+      }
+    });
+  }, [repoId, sessions]);
 
   // WebSocket updates
   useEffect(() => {
@@ -383,6 +398,27 @@ export function PlanningPanel({
   const handleSelectSession = (session: PlanningSession) => {
     setSelectedSession(session);
     onSessionSelect?.(session);
+  };
+
+  // Start planning session from pending planning
+  const handleStartPlanningSession = async () => {
+    if (!pendingPlanning) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const session = await api.createPlanningSession(
+        repoId,
+        pendingPlanning.branchName,
+        `Planning: ${pendingPlanning.branchName}`
+      );
+      setSelectedSession(session);
+      onSessionSelect?.(session);
+      onPlanningStarted?.();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleUpdateTitle = async (title: string) => {
@@ -677,29 +713,37 @@ export function PlanningPanel({
   // Session list view
   if (!selectedSession) {
     return (
-      <div className={`planning-panel ${isCollapsed ? "planning-panel--collapsed" : ""}`}>
+      <div className="planning-panel">
         <div className="planning-panel__header">
-          <button
-            className="planning-panel__collapse-btn"
-            onClick={toggleCollapse}
-            title={isCollapsed ? "Expand" : "Collapse"}
-          >
-            {isCollapsed ? "▶" : "▼"}
-          </button>
-          <h3>Planning Sessions</h3>
-          {!isCollapsed && (
-            <button
-              className="planning-panel__new-btn"
-              onClick={() => setShowNewForm(true)}
-            >
-              + New
-            </button>
-          )}
+          <h3>Claude Code Sessions</h3>
         </div>
 
-        {!isCollapsed && error && <div className="planning-panel__error">{error}</div>}
+        {/* Tabs */}
+        <div className="planning-panel__tabs">
+          <button
+            className={`planning-panel__tab ${activeTab === "refinement" ? "planning-panel__tab--active" : ""}`}
+            onClick={() => setActiveTab("refinement")}
+          >
+            Refinement
+          </button>
+          <button
+            className={`planning-panel__tab ${activeTab === "planning" ? "planning-panel__tab--active" : ""}`}
+            onClick={() => setActiveTab("planning")}
+          >
+            Planning
+          </button>
+          <button
+            className={`planning-panel__tab ${activeTab === "task" ? "planning-panel__tab--active" : ""}`}
+            onClick={() => setActiveTab("task")}
+          >
+            Task
+          </button>
+        </div>
 
-        {!isCollapsed && showNewForm && (
+        {error && <div className="planning-panel__error">{error}</div>}
+
+        {/* Refinement Sessions Tab */}
+        {activeTab === "refinement" && showNewForm && (
           <div
             className="planning-panel__new-form"
             onKeyDown={(e) => {
@@ -733,14 +777,25 @@ export function PlanningPanel({
           </div>
         )}
 
-        {!isCollapsed && (
+        {/* Refinement Sessions List */}
+        {activeTab === "refinement" && (() => {
+          const refinementSessions = sessions.filter(s => !s.title.startsWith("Planning:"));
+          return (
           <div className="planning-panel__list">
-            {sessions.length === 0 ? (
+            {/* New Session Button */}
+            <button
+              className="planning-panel__session-add"
+              onClick={() => setShowNewForm(true)}
+            >
+              <span className="planning-panel__session-add-icon">+</span>
+              <span>New Session</span>
+            </button>
+            {refinementSessions.length === 0 ? (
               <div className="planning-panel__empty">
-                No planning sessions yet. Create one to start!
+                No refinement sessions yet
               </div>
             ) : (
-              sessions.map((session) => (
+              refinementSessions.map((session) => (
                 <div
                   key={session.id}
                   className={`planning-panel__session-item planning-panel__session-item--${session.status}`}
@@ -749,10 +804,10 @@ export function PlanningPanel({
                   <div className="planning-panel__session-title">
                     {session.title}
                   </div>
+                  <div className="planning-panel__session-base">
+                    {session.baseBranch}
+                  </div>
                   <div className="planning-panel__session-meta">
-                    <span className="planning-panel__session-base">
-                      {session.baseBranch}
-                    </span>
                     <span className={`planning-panel__session-status planning-panel__session-status--${session.status}`}>
                       {session.status}
                     </span>
@@ -775,6 +830,89 @@ export function PlanningPanel({
                 </div>
               ))
             )}
+          </div>
+          );
+        })()}
+
+        {/* Planning Sessions Tab */}
+        {activeTab === "planning" && (() => {
+          const planningSessions = sessions.filter(s => s.title.startsWith("Planning:"));
+          return (
+          <div className="planning-panel__list">
+            {pendingPlanning && (
+              <div className="planning-panel__pending-planning">
+                <div className="planning-panel__pending-title">
+                  Start Planning for: {pendingPlanning.branchName}
+                </div>
+                {pendingPlanning.instruction && (
+                  <div className="planning-panel__pending-instruction">
+                    {pendingPlanning.instruction}
+                  </div>
+                )}
+                <div className="planning-panel__pending-actions">
+                  <button
+                    className="planning-panel__pending-start"
+                    onClick={handleStartPlanningSession}
+                    disabled={creating}
+                  >
+                    {creating ? "Starting..." : "Start Session"}
+                  </button>
+                  <button
+                    className="planning-panel__pending-cancel"
+                    onClick={() => onPlanningStarted?.()}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {!pendingPlanning && planningSessions.length === 0 && (
+              <div className="planning-panel__empty planning-panel__empty--full">
+                Select a branch and click "Planning" to start
+              </div>
+            )}
+            {planningSessions.map((session) => {
+              const instruction = branchInstructions.get(session.baseBranch);
+              const instructionPreview = instruction
+                ? instruction.split('\n').slice(0, 2).join('\n')
+                : null;
+              return (
+              <div
+                key={session.id}
+                className="planning-panel__session-item planning-panel__session-item--planning"
+                onClick={() => handleSelectSession(session)}
+              >
+                <div className="planning-panel__planning-info">
+                  <div className="planning-panel__session-base">
+                    {session.baseBranch}
+                  </div>
+                  {instructionPreview && (
+                    <div className="planning-panel__planning-instruction">
+                      {instructionPreview}
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="planning-panel__session-delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteFromList(session.id);
+                  }}
+                  title="Delete"
+                >
+                  ×
+                </button>
+              </div>
+              );
+            })}
+          </div>
+          );
+        })()}
+
+        {/* Task Sessions Tab */}
+        {activeTab === "task" && (
+          <div className="planning-panel__empty">
+            Task sessions coming soon
           </div>
         )}
       </div>

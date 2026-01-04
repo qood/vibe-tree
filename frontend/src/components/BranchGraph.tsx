@@ -44,13 +44,13 @@ interface LayoutEdge {
   isTentative?: boolean;
 }
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 68; // Taller for multi-line layout (labels + branch name with wrap)
-const TENTATIVE_NODE_HEIGHT = 64;
-const HORIZONTAL_GAP = 40; // Gap between sibling nodes (horizontal)
-const VERTICAL_GAP = 70; // Gap between parent-child levels (vertical) - includes space for indicators
-const TOP_PADDING = 40; // Top padding for worktree labels
-const LEFT_PADDING = 20; // Left padding
+const NODE_WIDTH = 170;
+const NODE_HEIGHT = 70;
+const TENTATIVE_NODE_HEIGHT = 60;
+const HORIZONTAL_GAP = 28;
+const VERTICAL_GAP = 50;
+const TOP_PADDING = 30;
+const LEFT_PADDING = 16;
 
 
 export default function BranchGraph({
@@ -475,15 +475,16 @@ export default function BranchGraph({
           y={y + 4}
           width={NODE_WIDTH - 16}
           height={nodeHeight - 8}
-          style={{ pointerEvents: "none" }}
+          style={{ pointerEvents: "none", overflow: "visible" }}
         >
           <div
             style={{
-              width: "100%",
+              width: NODE_WIDTH - 16,
               height: "100%",
               display: "flex",
               flexDirection: "column",
-              justifyContent: "space-around",
+              justifyContent: hasPR ? "flex-start" : "center",
+              gap: 4,
               overflow: "hidden",
             }}
           >
@@ -493,8 +494,8 @@ export default function BranchGraph({
                 {/* Review status */}
                 {node.pr?.reviewDecision === "APPROVED" && (
                   <span style={{
-                    fontSize: 11,
-                    padding: "1px 6px",
+                    fontSize: 10,
+                    padding: "1px 5px",
                     borderRadius: 3,
                     background: "transparent",
                     border: "1px solid #22c55e",
@@ -504,8 +505,8 @@ export default function BranchGraph({
                 )}
                 {node.pr?.reviewDecision === "CHANGES_REQUESTED" && (
                   <span style={{
-                    fontSize: 11,
-                    padding: "1px 6px",
+                    fontSize: 10,
+                    padding: "1px 5px",
                     borderRadius: 3,
                     background: "transparent",
                     border: "1px solid #ef4444",
@@ -515,8 +516,8 @@ export default function BranchGraph({
                 )}
                 {node.pr?.reviewDecision === "REVIEW_REQUIRED" && (
                   <span style={{
-                    fontSize: 11,
-                    padding: "1px 6px",
+                    fontSize: 10,
+                    padding: "1px 5px",
                     borderRadius: 3,
                     background: "transparent",
                     border: "1px solid #f59e0b",
@@ -527,8 +528,8 @@ export default function BranchGraph({
                 {/* CI status */}
                 {node.pr?.checks === "SUCCESS" && (
                   <span style={{
-                    fontSize: 11,
-                    padding: "1px 6px",
+                    fontSize: 10,
+                    padding: "1px 5px",
                     borderRadius: 3,
                     background: "#14532d",
                     border: "1px solid #22c55e",
@@ -538,8 +539,8 @@ export default function BranchGraph({
                 )}
                 {node.pr?.checks === "FAILURE" && (
                   <span style={{
-                    fontSize: 11,
-                    padding: "1px 6px",
+                    fontSize: 10,
+                    padding: "1px 5px",
                     borderRadius: 3,
                     background: "#7f1d1d",
                     border: "1px solid #ef4444",
@@ -549,8 +550,8 @@ export default function BranchGraph({
                 )}
                 {node.pr?.checks === "PENDING" && (
                   <span style={{
-                    fontSize: 11,
-                    padding: "1px 6px",
+                    fontSize: 10,
+                    padding: "1px 5px",
                     borderRadius: 3,
                     background: "#78350f",
                     border: "1px solid #f59e0b",
@@ -560,8 +561,8 @@ export default function BranchGraph({
                 )}
                 {/* PR indicator - with background */}
                 <span style={{
-                  fontSize: 11,
-                  padding: "1px 6px",
+                  fontSize: 10,
+                  padding: "1px 5px",
                   borderRadius: 3,
                   background: node.pr?.state === "MERGED" ? "#3b0764" : "#374151",
                   border: node.pr?.state === "MERGED" ? "1px solid #9333ea" : "1px solid #4b5563",
@@ -574,16 +575,15 @@ export default function BranchGraph({
             {/* Line 2: Branch name - allow wrapping */}
             <div
               style={{
-                fontSize: isTentative ? 12 : 13,
+                width: "100%",
+                fontSize: isTentative ? 11 : 12,
                 fontFamily: isTentative ? "sans-serif" : "monospace",
                 fontWeight: isDefault ? "bold" : isTentative ? 500 : "normal",
                 color: isTentative ? "#c084fc" : isMerged ? "#9ca3af" : "#e5e7eb",
                 lineHeight: 1.3,
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical" as const,
                 wordBreak: "break-all",
+                overflow: "hidden",
+                textAlign: hasPR ? "left" : "center",
               }}
             >
               {displayText}
@@ -764,7 +764,7 @@ export default function BranchGraph({
           );
         })()}
 
-        {/* Add branch button */}
+        {/* Add branch button - positioned at bottom right of node */}
         {onBranchCreate && !isTentative && !isMerged && (
           <g
             style={{ cursor: "pointer" }}
@@ -774,21 +774,21 @@ export default function BranchGraph({
             }}
           >
             <rect
-              x={x + NODE_WIDTH - 24}
-              y={y + nodeHeight - 24}
-              width={20}
-              height={20}
+              x={x + NODE_WIDTH - 26}
+              y={y + nodeHeight - 22}
+              width={22}
+              height={18}
               rx={4}
               fill="#374151"
               stroke="#6b7280"
               strokeWidth={1}
             />
             <text
-              x={x + NODE_WIDTH - 14}
-              y={y + nodeHeight - 13}
+              x={x + NODE_WIDTH - 15}
+              y={y + nodeHeight - 12}
               textAnchor="middle"
               dominantBaseline="middle"
-              fontSize={16}
+              fontSize={14}
               fill="#9ca3af"
               fontWeight="bold"
             >
@@ -824,6 +824,7 @@ export default function BranchGraph({
           userSelect: dragState ? "none" : undefined,
         }}
       >
+
         {/* Render edges first (behind nodes) */}
         <g className="branch-graph__edges">
           {layoutEdges.map((edge, i) => renderEdge(edge, i))}

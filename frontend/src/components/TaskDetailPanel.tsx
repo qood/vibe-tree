@@ -170,6 +170,7 @@ interface TaskDetailPanelProps {
   parentBranch?: string;
   onClose: () => void;
   onWorktreeCreated?: () => void | Promise<void>;
+  onStartPlanning?: (branchName: string, instruction: string | null) => void;
 }
 
 export function TaskDetailPanel({
@@ -181,8 +182,13 @@ export function TaskDetailPanel({
   parentBranch,
   onClose,
   onWorktreeCreated,
+  onStartPlanning,
 }: TaskDetailPanelProps) {
   const isDefaultBranch = branchName === defaultBranch;
+
+  // Flag to disable chat section (code kept for reuse in Claude Code Sessions later)
+  const CHAT_ENABLED = false;
+
   const [instruction, setInstruction] = useState<TaskInstruction | null>(null);
   const [editingInstruction, setEditingInstruction] = useState(false);
   const [instructionDraft, setInstructionDraft] = useState("");
@@ -1194,25 +1200,38 @@ export function TaskDetailPanel({
       <div className="task-detail-panel__instruction-section">
         <div className="task-detail-panel__instruction-header">
           <h4>Task Instruction</h4>
-          {!editingInstruction ? (
-            <button
-              className="task-detail-panel__edit-btn"
-              onClick={() => {
-                setInstructionDraft(instruction?.instructionMd || "");
-                setEditingInstruction(true);
-              }}
-            >
-              Edit
-            </button>
-          ) : (
-            <div className="task-detail-panel__instruction-actions">
-              <button onClick={handleSaveInstruction}>Save</button>
-              <button onClick={() => {
-                setEditingInstruction(false);
-                setInstructionDraft(instruction?.instructionMd || "");
-              }}>Cancel</button>
-            </div>
-          )}
+          <div className="task-detail-panel__instruction-actions">
+            {!editingInstruction ? (
+              <>
+                <button
+                  className="task-detail-panel__planning-btn"
+                  onClick={() => {
+                    onStartPlanning?.(branchName, instruction?.instructionMd || null);
+                  }}
+                  title="Start Planning Session"
+                >
+                  Planning
+                </button>
+                <button
+                  className="task-detail-panel__edit-btn"
+                  onClick={() => {
+                    setInstructionDraft(instruction?.instructionMd || "");
+                    setEditingInstruction(true);
+                  }}
+                >
+                  Edit
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={handleSaveInstruction}>Save</button>
+                <button onClick={() => {
+                  setEditingInstruction(false);
+                  setInstructionDraft(instruction?.instructionMd || "");
+                }}>Cancel</button>
+              </>
+            )}
+          </div>
         </div>
         <div
           className="task-detail-panel__instruction-content"
@@ -1228,17 +1247,19 @@ export function TaskDetailPanel({
         </div>
       </div>
 
-      {/* Resize Handle */}
-      <div
-        className={`task-detail-panel__resize-handle ${isResizing ? "task-detail-panel__resize-handle--active" : ""}`}
-        onMouseDown={handleResizeStart}
-        onDoubleClick={() => setInstructionHeight(DEFAULT_INSTRUCTION_HEIGHT)}
-      >
-        <div className="task-detail-panel__resize-bar" />
-      </div>
+      {/* Resize Handle - Hidden since chat section is disabled */}
+      {CHAT_ENABLED && (
+        <div
+          className={`task-detail-panel__resize-handle ${isResizing ? "task-detail-panel__resize-handle--active" : ""}`}
+          onMouseDown={handleResizeStart}
+          onDoubleClick={() => setInstructionHeight(DEFAULT_INSTRUCTION_HEIGHT)}
+        >
+          <div className="task-detail-panel__resize-bar" />
+        </div>
+      )}
 
-      {/* Chat Section - Always show */}
-      <div className="task-detail-panel__chat-section">
+      {/* Chat Section - Hidden for now, will be moved to Claude Code Sessions */}
+      {CHAT_ENABLED && <div className="task-detail-panel__chat-section">
         <div className="task-detail-panel__chat-header">
           <h4>Chat</h4>
           <div className="task-detail-panel__chat-header-actions">
@@ -1522,7 +1543,7 @@ export function TaskDetailPanel({
               </button>
             )}
           </div>
-        </div>
+        </div>}
 
       {/* Delete Confirmation Modal */}
       {deletingLinkId !== null && (

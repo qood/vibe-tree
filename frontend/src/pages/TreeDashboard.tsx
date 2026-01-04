@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFolder, faGear } from "@fortawesome/free-solid-svg-icons";
 import {
   api,
   type Plan,
@@ -51,7 +53,7 @@ export default function TreeDashboard() {
   const [selectedPlanningSession, setSelectedPlanningSession] = useState<PlanningSession | null>(null);
   const [tentativeNodes, setTentativeNodes] = useState<TaskNode[]>([]);
   const [tentativeEdges, setTentativeEdges] = useState<TaskEdge[]>([]);
-  const [planningPanelCollapsed, setPlanningPanelCollapsed] = useState(false);
+  const [pendingPlanning, setPendingPlanning] = useState<{ branchName: string; instruction: string | null } | null>(null);
 
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false);
@@ -89,6 +91,7 @@ export default function TreeDashboard() {
   // Worktree settings
   const [worktreeCreateScript, setWorktreeCreateScript] = useState("");
   const [worktreePostCreateScript, setWorktreePostCreateScript] = useState("");
+  const [worktreePostDeleteScript, setWorktreePostDeleteScript] = useState("");
   // Settings modal category
   const [settingsCategory, setSettingsCategory] = useState<"branch" | "worktree" | "cleanup">("branch");
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
@@ -97,6 +100,15 @@ export default function TreeDashboard() {
   // Warnings modal state
   const [showWarnings, setShowWarnings] = useState(false);
   const [warningFilter, setWarningFilter] = useState<string | null>(null);
+
+  // Bottom panel resize state
+  const DEFAULT_BOTTOM_HEIGHT = 500;
+  const MIN_BOTTOM_HEIGHT = 350;
+  const MAX_BOTTOM_HEIGHT = 800;
+  const [bottomHeight, setBottomHeight] = useState(DEFAULT_BOTTOM_HEIGHT);
+  const [isResizingBottom, setIsResizingBottom] = useState(false);
+  const resizeStartY = useRef(0);
+  const resizeStartHeight = useRef(0);
 
   // D&D sensors (reserved for future drag-and-drop)
   void useSensors(
@@ -227,6 +239,40 @@ export default function TreeDashboard() {
       unsubBranchLink();
     };
   }, [snapshot?.repoId, selectedPin, handleScan]);
+
+  // Bottom panel resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingBottom(true);
+    resizeStartY.current = e.clientY;
+    resizeStartHeight.current = bottomHeight;
+  }, [bottomHeight]);
+
+  useEffect(() => {
+    if (!isResizingBottom) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Moving up increases height (subtract delta)
+      const delta = resizeStartY.current - e.clientY;
+      const newHeight = Math.min(
+        MAX_BOTTOM_HEIGHT,
+        Math.max(MIN_BOTTOM_HEIGHT, resizeStartHeight.current + delta)
+      );
+      setBottomHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingBottom(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingBottom]);
 
   // Planning session handlers
   const handlePlanningSessionSelect = useCallback((session: PlanningSession | null) => {
@@ -545,12 +591,14 @@ export default function TreeDashboard() {
       setSettingsPatterns(rule.patterns || []);
       setWorktreeCreateScript(wtSettings.createScript || "");
       setWorktreePostCreateScript(wtSettings.postCreateScript || "");
+      setWorktreePostDeleteScript(wtSettings.postDeleteScript || "");
     } catch {
       // No rule exists yet
       setSettingsRule({ patterns: [] });
       setSettingsPatterns([]);
       setWorktreeCreateScript("");
       setWorktreePostCreateScript("");
+      setWorktreePostDeleteScript("");
     } finally {
       setSettingsLoading(false);
     }
@@ -575,6 +623,7 @@ export default function TreeDashboard() {
         repoId: snapshot.repoId,
         createScript: worktreeCreateScript,
         postCreateScript: worktreePostCreateScript,
+        postDeleteScript: worktreePostDeleteScript,
       });
 
       // Save default branch (empty string clears it)
@@ -881,33 +930,6 @@ export default function TreeDashboard() {
           <div className="sidebar__path">{selectedPin?.localPath}</div>
         </div>
 
-        {/* Actions */}
-        {snapshot && (
-          <div className="sidebar__section">
-            <button
-              className="sidebar__btn"
-              onClick={handleOpenSettings}
-            >
-              Settings
-            </button>
-          </div>
-        )}
-
-        {/* Plan Info */}
-        {plan && (
-          <div className="sidebar__section">
-            <h3>Plan</h3>
-            <div className="sidebar__plan">
-              <strong>{plan.title}</strong>
-              {plan.githubIssueUrl && (
-                <a href={plan.githubIssueUrl} target="_blank" rel="noopener noreferrer">
-                  View Issue
-                </a>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Worktrees */}
         {snapshot && snapshot.worktrees.length > 0 && (
           <div className="sidebar__section">
@@ -958,9 +980,42 @@ export default function TreeDashboard() {
           </div>
         )}
 
-        {/* Warnings */}
-        {snapshot && snapshot.warnings.length > 0 && (
+        {/* Menu */}
+        <div className="sidebar__menu">
+          <button className="sidebar__menu-item sidebar__menu-item--active">
+            <FontAwesomeIcon icon={faFolder} className="sidebar__menu-icon" />
+            <span>Workspace</span>
+          </button>
+          <button
+            className="sidebar__menu-item"
+            onClick={handleOpenSettings}
+          >
+            <FontAwesomeIcon icon={faGear} className="sidebar__menu-icon" />
+            <span>Settings</span>
+          </button>
+        </div>
+
+        {/* Plan Info */}
+        {plan && (
           <div className="sidebar__section">
+            <h3>Plan</h3>
+            <div className="sidebar__plan">
+              <strong>{plan.title}</strong>
+              {plan.githubIssueUrl && (
+                <a href={plan.githubIssueUrl} target="_blank" rel="noopener noreferrer">
+                  View Issue
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Spacer to push warnings to bottom */}
+        <div className="sidebar__spacer" />
+
+        {/* Warnings - always at bottom */}
+        {snapshot && snapshot.warnings.length > 0 && (
+          <div className="sidebar__section sidebar__section--bottom">
             <button
               className="sidebar__warnings-btn"
               onClick={() => setShowWarnings(true)}
@@ -981,196 +1036,217 @@ export default function TreeDashboard() {
         {/* Tree View */}
         {snapshot && (
           <div className="tree-view">
-            {/* Left: Graph */}
-            <div className="tree-view__graph">
-              <div className="panel panel--graph">
-                <div className="panel__header">
-                  <h3>Branch Graph</h3>
-                  <div className="panel__header-actions">
-                    {branchGraphEditMode ? (
-                      <>
-                        <button
-                          className="btn-icon btn-icon--danger"
-                          disabled={discarding}
-                          onClick={async () => {
-                            // Discard: restore original edges
-                            if (selectedPin && snapshot?.repoId && originalTreeSpecEdges !== null) {
-                              setDiscarding(true);
-                              try {
-                                await api.updateTreeSpec({
-                                  repoId: snapshot.repoId,
-                                  baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
-                                  nodes: snapshot.treeSpec?.specJson.nodes ?? [],
-                                  edges: originalTreeSpecEdges,
-                                });
-                                const newSnapshot = await api.scan(selectedPin.localPath);
-                                setSnapshot(newSnapshot);
-                              } catch (err) {
-                                console.error("Failed to discard:", err);
-                              } finally {
-                                setDiscarding(false);
+            {/* Top: Graph + Details */}
+            <div className="tree-view__top">
+              {/* Left: Graph */}
+              <div className="tree-view__graph">
+                <div className="panel panel--graph">
+                  <div className="panel__header">
+                    <h3>Branch Graph</h3>
+                    <div className="panel__header-actions">
+                      {branchGraphEditMode ? (
+                        <>
+                          <button
+                            className="btn-icon btn-icon--danger"
+                            disabled={discarding}
+                            onClick={async () => {
+                              // Discard: restore original edges
+                              if (selectedPin && snapshot?.repoId && originalTreeSpecEdges !== null) {
+                                setDiscarding(true);
+                                try {
+                                  await api.updateTreeSpec({
+                                    repoId: snapshot.repoId,
+                                    baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                                    nodes: snapshot.treeSpec?.specJson.nodes ?? [],
+                                    edges: originalTreeSpecEdges,
+                                  });
+                                  const newSnapshot = await api.scan(selectedPin.localPath);
+                                  setSnapshot(newSnapshot);
+                                } catch (err) {
+                                  console.error("Failed to discard:", err);
+                                } finally {
+                                  setDiscarding(false);
+                                }
                               }
-                            }
-                            setOriginalTreeSpecEdges(null);
-                            setBranchGraphEditMode(false);
-                          }}
-                          title="Discard changes"
-                        >
-                          {discarding ? "Discarding..." : "Discard"}
-                        </button>
-                        <button
-                          className="btn-icon btn-icon--active"
-                          onClick={() => {
-                            setOriginalTreeSpecEdges(null);
-                            setBranchGraphEditMode(false);
-                          }}
-                          title="Exit edit mode"
-                          disabled={discarding}
-                        >
-                          Done
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="btn-icon"
-                          onClick={() => {
-                            // Save current edges before entering edit mode
-                            setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
-                            setBranchGraphEditMode(true);
-                          }}
-                          title="Edit branch structure"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn-icon"
-                          onClick={() => selectedPin && handleFetch(selectedPin.localPath)}
-                          disabled={fetching}
-                          title="Fetch from remote"
-                        >
-                          {fetching ? "Fetching..." : "Fetch"}
-                        </button>
-                      </>
-                    )}
-                    <span className="panel__count">{snapshot.nodes.length} branches</span>
+                              setOriginalTreeSpecEdges(null);
+                              setBranchGraphEditMode(false);
+                            }}
+                            title="Discard changes"
+                          >
+                            {discarding ? "Discarding..." : "Discard"}
+                          </button>
+                          <button
+                            className="btn-icon btn-icon--active"
+                            onClick={() => {
+                              setOriginalTreeSpecEdges(null);
+                              setBranchGraphEditMode(false);
+                            }}
+                            title="Exit edit mode"
+                            disabled={discarding}
+                          >
+                            Done
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            className="btn-icon"
+                            onClick={() => {
+                              // Save current edges before entering edit mode
+                              setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
+                              setBranchGraphEditMode(true);
+                            }}
+                            title="Edit branch structure"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn-icon"
+                            onClick={() => selectedPin && handleFetch(selectedPin.localPath)}
+                            disabled={fetching}
+                            title="Fetch from remote"
+                          >
+                            {fetching ? "Fetching..." : "Fetch"}
+                          </button>
+                        </>
+                      )}
+                      <span className="panel__count">{snapshot.nodes.length} branches</span>
+                    </div>
                   </div>
-                </div>
-                <div className="graph-container">
-                  <BranchGraph
-                    nodes={snapshot.nodes}
-                    edges={snapshot.edges}
-                    defaultBranch={snapshot.defaultBranch}
-                    selectedBranch={selectedNode?.branchName ?? null}
-                    onSelectBranch={(branchName) => {
-                      const node = snapshot.nodes.find((n) => n.branchName === branchName);
-                      setSelectedNode(node ?? null);
-                    }}
-                    tentativeNodes={tentativeNodes}
-                    tentativeEdges={tentativeEdges}
-                    editMode={branchGraphEditMode}
-                    onEdgeCreate={async (parentBranch, childBranch) => {
-                      // Create a new edge from parent to child (reparent operation)
-                      // This will be saved in tree_specs as a designed edge
-                      if (!snapshot?.repoId || !selectedPin) return;
+                  <div className="graph-container">
+                    <BranchGraph
+                      nodes={snapshot.nodes}
+                      edges={snapshot.edges}
+                      defaultBranch={snapshot.defaultBranch}
+                      selectedBranch={selectedNode?.branchName ?? null}
+                      onSelectBranch={(branchName) => {
+                        const node = snapshot.nodes.find((n) => n.branchName === branchName);
+                        setSelectedNode(node ?? null);
+                      }}
+                      tentativeNodes={tentativeNodes}
+                      tentativeEdges={tentativeEdges}
+                      editMode={branchGraphEditMode}
+                      onEdgeCreate={async (parentBranch, childBranch) => {
+                        // Create a new edge from parent to child (reparent operation)
+                        // This will be saved in tree_specs as a designed edge
+                        if (!snapshot?.repoId || !selectedPin) return;
 
-                      try {
-                        // Get current tree spec edges (using branch names directly)
-                        const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
+                        try {
+                          // Get current tree spec edges (using branch names directly)
+                          const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
 
-                        // Check if this exact edge already exists
-                        const edgeExists = currentEdges.some(
-                          (e) => e.parent === parentBranch && e.child === childBranch
-                        ) || snapshot.edges.some(
-                          (e) => e.parent === parentBranch && e.child === childBranch
-                        );
+                          // Check if this exact edge already exists
+                          const edgeExists = currentEdges.some(
+                            (e) => e.parent === parentBranch && e.child === childBranch
+                          ) || snapshot.edges.some(
+                            (e) => e.parent === parentBranch && e.child === childBranch
+                          );
 
-                        if (edgeExists) {
-                          console.log("Edge already exists");
-                          return;
+                          if (edgeExists) {
+                            console.log("Edge already exists");
+                            return;
+                          }
+
+                          // Remove any existing edges where childBranch is the child (reparent)
+                          // This ensures a branch can only have one parent
+                          const filteredEdges = currentEdges.filter(
+                            (e) => e.child !== childBranch
+                          );
+
+                          // Add the new edge using branch names directly
+                          const newEdges = [
+                            ...filteredEdges,
+                            { parent: parentBranch, child: childBranch },
+                          ];
+
+                          // Keep existing nodes (don't add phantom nodes for branches)
+                          const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
+
+                          // Save tree spec
+                          const updatedSpec = await api.updateTreeSpec({
+                            repoId: snapshot.repoId,
+                            baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                            nodes: currentNodes,
+                            edges: newEdges,
+                          });
+
+                          setSnapshot((prev) =>
+                            prev ? { ...prev, treeSpec: updatedSpec } : prev
+                          );
+
+                          // Rescan to update edges display
+                          const newSnapshot = await api.scan(selectedPin.localPath);
+                          setSnapshot(newSnapshot);
+                        } catch (err) {
+                          console.error("Failed to create edge:", err);
+                          setError((err as Error).message);
                         }
-
-                        // Remove any existing edges where childBranch is the child (reparent)
-                        // This ensures a branch can only have one parent
-                        const filteredEdges = currentEdges.filter(
-                          (e) => e.child !== childBranch
-                        );
-
-                        // Add the new edge using branch names directly
-                        const newEdges = [
-                          ...filteredEdges,
-                          { parent: parentBranch, child: childBranch },
-                        ];
-
-                        // Keep existing nodes (don't add phantom nodes for branches)
-                        const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
-
-                        // Save tree spec
-                        const updatedSpec = await api.updateTreeSpec({
-                          repoId: snapshot.repoId,
-                          baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
-                          nodes: currentNodes,
-                          edges: newEdges,
-                        });
-
-                        setSnapshot((prev) =>
-                          prev ? { ...prev, treeSpec: updatedSpec } : prev
-                        );
-
-                        // Rescan to update edges display
-                        const newSnapshot = await api.scan(selectedPin.localPath);
-                        setSnapshot(newSnapshot);
-                      } catch (err) {
-                        console.error("Failed to create edge:", err);
-                        setError((err as Error).message);
-                      }
-                    }}
-                    tentativeBaseBranch={selectedPlanningSession?.baseBranch}
-                    onBranchCreate={(baseBranch) => {
-                      setCreateBranchBase(baseBranch);
-                      setCreateBranchName("");
-                    }}
-                  />
+                      }}
+                      tentativeBaseBranch={selectedPlanningSession?.baseBranch}
+                      onBranchCreate={(baseBranch) => {
+                        setCreateBranchBase(baseBranch);
+                        setCreateBranchName("");
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Planning Panel - Multi-session */}
-              <div className={`panel panel--planning ${planningPanelCollapsed ? "panel--planning-collapsed" : ""}`}>
+              {/* Right: Details */}
+              <div className="tree-view__details">
+                {selectedNode && selectedPin ? (
+                  <TaskDetailPanel
+                    key={selectedNode.branchName}
+                    repoId={snapshot.repoId}
+                    localPath={selectedPin.localPath}
+                    branchName={selectedNode.branchName}
+                    node={selectedNode}
+                    defaultBranch={snapshot.defaultBranch}
+                    parentBranch={snapshot.edges.find((e) => e.child === selectedNode.branchName)?.parent}
+                    onClose={() => setSelectedNode(null)}
+                    onWorktreeCreated={() => handleScan(selectedPin.localPath)}
+                    onStartPlanning={(branchName, instruction) => {
+                      setPendingPlanning({ branchName, instruction });
+                    }}
+                  />
+                ) : (
+                  <div className="panel">
+                    <div className="panel__header">
+                      <h3>Select a branch</h3>
+                    </div>
+                    <p style={{ padding: "16px", color: "#666" }}>
+                      Click on a branch to see details.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Resize Handle between top and bottom */}
+            <div
+              className={`tree-view__resize-handle ${isResizingBottom ? "tree-view__resize-handle--active" : ""}`}
+              onMouseDown={handleResizeStart}
+              onDoubleClick={() => setBottomHeight(DEFAULT_BOTTOM_HEIGHT)}
+            >
+              <div className="tree-view__resize-bar" />
+            </div>
+
+            {/* Bottom: Claude Code Sessions */}
+            <div
+              className="tree-view__bottom"
+              style={{ flex: `0 0 ${bottomHeight}px` }}
+            >
+              <div className="sessions-container">
                 <PlanningPanel
                   repoId={snapshot.repoId}
                   branches={snapshot.branches}
                   defaultBranch={snapshot.defaultBranch}
                   onTasksChange={handlePlanningTasksChange}
                   onSessionSelect={handlePlanningSessionSelect}
-                  onCollapseChange={setPlanningPanelCollapsed}
+                  pendingPlanning={pendingPlanning}
+                  onPlanningStarted={() => setPendingPlanning(null)}
                 />
-              </div>{/* panel--planning */}
-            </div>
-
-            {/* Right: Details */}
-            <div className="tree-view__details">
-              {selectedNode && selectedPin ? (
-                <TaskDetailPanel
-                  key={selectedNode.branchName}
-                  repoId={snapshot.repoId}
-                  localPath={selectedPin.localPath}
-                  branchName={selectedNode.branchName}
-                  node={selectedNode}
-                  defaultBranch={snapshot.defaultBranch}
-                  parentBranch={snapshot.edges.find((e) => e.child === selectedNode.branchName)?.parent}
-                  onClose={() => setSelectedNode(null)}
-                  onWorktreeCreated={() => handleScan(selectedPin.localPath)}
-                />
-              ) : (
-                <div className="panel">
-                  <div className="panel__header">
-                    <h3>Select a branch</h3>
-                  </div>
-                  <p style={{ padding: "16px", color: "#666" }}>
-                    Click on a branch to see details.
-                  </p>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         )}
@@ -1259,6 +1335,7 @@ export default function TreeDashboard() {
                         </div>
                         <div className="settings-section">
                           <label>Branch Naming Patterns</label>
+                          <p style={{ marginBottom: 8, color: "#9ca3af" }}>Regular expressions are supported</p>
                           {settingsPatterns.map((pattern, index) => (
                             <div key={index} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                               <input
@@ -1292,9 +1369,6 @@ export default function TreeDashboard() {
                           >
                             + Add Pattern
                           </button>
-                          <p style={{ marginTop: 8, color: "#9ca3af" }}>
-                            Regular expressions are supported
-                          </p>
                         </div>
                       </>
                     )}
@@ -1326,6 +1400,19 @@ export default function TreeDashboard() {
                             value={worktreePostCreateScript}
                             onChange={(e) => setWorktreePostCreateScript(e.target.value)}
                             placeholder="bun install"
+                            rows={4}
+                            style={{ width: "100%", fontFamily: "monospace", fontSize: 12, background: "#1f2937", border: "1px solid #374151", borderRadius: 4, padding: 8, color: "white", resize: "vertical" }}
+                          />
+                        </div>
+                        <div className="settings-section">
+                          <label>Post-Delete Script</label>
+                          <p style={{ marginBottom: 8, color: "#9ca3af" }}>
+                            Script to run after deleting a worktree (runs in main repository directory)
+                          </p>
+                          <textarea
+                            value={worktreePostDeleteScript}
+                            onChange={(e) => setWorktreePostDeleteScript(e.target.value)}
+                            placeholder="echo 'Worktree deleted'"
                             rows={4}
                             style={{ width: "100%", fontFamily: "monospace", fontSize: 12, background: "#1f2937", border: "1px solid #374151", borderRadius: 4, padding: 8, color: "white", resize: "vertical" }}
                           />
@@ -1643,6 +1730,12 @@ export default function TreeDashboard() {
           font-weight: 600;
           color: #9ca3af;
         }
+        .sidebar__section--bottom {
+          border-bottom: none;
+        }
+        .sidebar__spacer {
+          flex: 1;
+        }
         .sidebar__path {
           font-size: 11px;
           color: #6b7280;
@@ -1679,6 +1772,36 @@ export default function TreeDashboard() {
         .sidebar__btn--primary:disabled {
           background: #4b5563;
           border-color: #4b5563;
+        }
+        .sidebar__menu {
+          padding: 8px 12px;
+          border-bottom: 1px solid #374151;
+        }
+        .sidebar__menu-item {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          color: #9ca3af;
+          cursor: pointer;
+          font-size: 14px;
+          text-align: left;
+          transition: all 0.15s;
+        }
+        .sidebar__menu-item:hover {
+          background: #1f2937;
+          color: #e5e7eb;
+        }
+        .sidebar__menu-item--active {
+          background: #1f2937;
+          color: #60a5fa;
+        }
+        .sidebar__menu-icon {
+          font-size: 16px;
         }
         .sidebar__plan {
           font-size: 13px;
@@ -1911,17 +2034,24 @@ export default function TreeDashboard() {
           border-width: 4px;
         }
 
-        /* Tree view layout */
+        /* Tree view layout - top/bottom split */
         .tree-view {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          height: calc(100vh - 40px);
+        }
+        .tree-view__top {
+          flex: 1;
           display: grid;
           grid-template-columns: 1fr 360px;
-          gap: 20px;
-          height: calc(100vh - 40px);
+          gap: 16px;
+          min-height: 0;
+          overflow: hidden;
         }
         .tree-view__graph {
           display: flex;
           flex-direction: column;
-          gap: 16px;
           overflow: hidden;
         }
         .tree-view__details {
@@ -1929,6 +2059,34 @@ export default function TreeDashboard() {
           flex-direction: column;
           gap: 16px;
           overflow-y: auto;
+        }
+        .tree-view__bottom {
+          min-height: 350px;
+          overflow: hidden;
+        }
+        .tree-view__resize-handle {
+          flex: 0 0 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: ns-resize;
+          margin: -8px 0;
+          z-index: 10;
+        }
+        .tree-view__resize-bar {
+          width: 60px;
+          height: 4px;
+          background: #4b5563;
+          border-radius: 2px;
+          transition: background 0.15s;
+        }
+        .tree-view__resize-handle:hover .tree-view__resize-bar,
+        .tree-view__resize-handle--active .tree-view__resize-bar {
+          background: #3b82f6;
+        }
+        .sessions-container {
+          height: 100%;
+          overflow: hidden;
         }
 
         /* Graph container */
@@ -3484,10 +3642,15 @@ export default function TreeDashboard() {
         }
         .settings-section label {
           display: block;
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 600;
           color: #9ca3af;
           margin-bottom: 8px;
+        }
+        .settings-section p {
+          font-size: 12px;
+          margin: 0;
+          color: #6b7280;
         }
         .settings-section input[type="text"] {
           width: 100%;

@@ -18,6 +18,7 @@ export interface BranchNamingRule {
 export interface WorktreeSettings {
   createScript?: string;
   postCreateScript?: string;
+  postDeleteScript?: string;
   checkoutPreference?: "main" | "first" | "ask";
 }
 
@@ -404,6 +405,7 @@ export const api = {
     repoId: string;
     createScript?: string;
     postCreateScript?: string;
+    postDeleteScript?: string;
     checkoutPreference?: "main" | "first" | "ask";
   }) =>
     fetchJson<WorktreeSettings>(`${API_BASE}/project-rules/worktree`, {

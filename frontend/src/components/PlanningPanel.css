@@ -60,6 +60,57 @@
   background: #2563eb;
 }
 
+/* Tabs */
+.planning-panel__tabs {
+  display: flex;
+  gap: 0;
+  background: #111827;
+  border-bottom: 1px solid #374151;
+}
+
+.planning-panel__tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.planning-panel__tab:hover {
+  color: #e5e7eb;
+  background: #1f2937;
+}
+
+.planning-panel__tab--active {
+  color: #60a5fa;
+  border-bottom-color: #3b82f6;
+  border-radius: 0;
+}
+
+.planning-panel__tab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 8px;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.planning-panel__tab-new:hover {
+  background: #2563eb;
+}
+
 .planning-panel--collapsed {
   height: auto;
 }
@@ -184,19 +235,113 @@
 .planning-panel__list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.planning-panel__session-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  background: transparent;
+  border: 1px dashed #374151;
+  border-radius: 6px;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.planning-panel__session-add:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.planning-panel__session-add-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* Pending Planning - same size as session items */
+.planning-panel__pending-planning {
+  padding: 12px;
+  background: #0f172a;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+}
+
+.planning-panel__pending-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e5e7eb;
+  margin-bottom: 4px;
+}
+
+.planning-panel__pending-instruction {
+  font-size: 11px;
+  font-family: monospace;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.planning-panel__pending-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.planning-panel__pending-start {
+  padding: 4px 10px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.planning-panel__pending-start:hover {
+  background: #2563eb;
+}
+
+.planning-panel__pending-cancel {
+  padding: 4px 10px;
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.planning-panel__pending-cancel:hover {
+  color: #e5e7eb;
+  border-color: #4b5563;
 }
 
 .planning-panel__empty {
-  padding: 32px 16px;
+  padding: 16px;
   text-align: center;
   color: #6b7280;
-  font-size: 14px;
+  font-size: 13px;
+}
+
+.planning-panel__empty--full {
+  grid-column: 1 / -1;
+  padding: 48px 16px;
 }
 
 .planning-panel__session-item {
   padding: 12px;
-  margin-bottom: 8px;
   background: #0f172a;
   border: 1px solid #374151;
   border-radius: 6px;
@@ -218,26 +363,66 @@
   opacity: 0.5;
 }
 
+.planning-panel__session-item--planning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.planning-panel__session-item--planning .planning-panel__session-base {
+  margin-bottom: 0;
+}
+
+.planning-panel__planning-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.planning-panel__planning-instruction {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 4px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
 .planning-panel__session-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: #e5e7eb;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .planning-panel__session-meta {
   display: flex;
-  gap: 12px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: 11px;
   color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .planning-panel__session-base {
   color: #a78bfa;
+  font-family: monospace;
+  font-size: 11px;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.planning-panel__session-tasks {
+  flex-shrink: 0;
 }
 
 .planning-panel__session-status {
-
+  flex-shrink: 0;
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 3px;

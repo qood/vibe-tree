@@ -24,7 +24,7 @@ async function getWorktreeSettings(repoId: string): Promise<WorktreeSettings> {
     );
 
   if (!rules[0]) {
-    return { createScript: "", postCreateScript: "", checkoutPreference: "main" };
+    return { createScript: "", postCreateScript: "", postDeleteScript: "", checkoutPreference: "main" };
   }
 
   return JSON.parse(rules[0].ruleJson) as WorktreeSettings;
@@ -42,6 +42,23 @@ function runPostCreateScript(worktreePath: string, script: string): void {
       if (stderr) console.error(`[Worktree] stderr:`, stderr);
     } else {
       console.log(`[Worktree] Post-create script completed successfully`);
+      if (stdout) console.log(`[Worktree] stdout:`, stdout);
+    }
+  });
+}
+
+// Helper to run post-deletion script (async, fire-and-forget for UI responsiveness)
+function runPostDeleteScript(localPath: string, script: string): void {
+  if (!script || !script.trim()) return;
+
+  console.log(`[Worktree] Running post-delete script in ${localPath}`);
+
+  exec(`cd "${localPath}" && ${script}`, { shell: "/bin/bash" }, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`[Worktree] Post-delete script failed:`, error.message);
+      if (stderr) console.error(`[Worktree] stderr:`, stderr);
+    } else {
+      console.log(`[Worktree] Post-delete script completed successfully`);
       if (stdout) console.log(`[Worktree] stdout:`, stdout);
     }
   });
@@ -1427,6 +1444,13 @@ branchRouter.post("/delete-worktree", async (c) => {
       throw new BadRequestError("Cannot delete worktree: working tree is dirty. Please clean up first.");
     }
     throw new BadRequestError(`Failed to delete worktree: ${message}`);
+  }
+
+  // Run post-delete script if configured
+  const repoId = getRepoId(localPath);
+  const wtSettings = await getWorktreeSettings(repoId);
+  if (wtSettings.postDeleteScript) {
+    runPostDeleteScript(localPath, wtSettings.postDeleteScript);
   }
 
   return c.json({
