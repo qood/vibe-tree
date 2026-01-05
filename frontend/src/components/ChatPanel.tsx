@@ -25,6 +25,10 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     try {
       const msgs = await api.getChatMessages(sessionId);
       setMessages(msgs);
+      // If last message is from user, AI is still generating response
+      if (msgs.length > 0 && msgs[msgs.length - 1].role === "user") {
+        setLoading(true);
+      }
     } catch (err) {
       console.error("Failed to load messages:", err);
     }
