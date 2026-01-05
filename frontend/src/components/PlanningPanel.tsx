@@ -231,6 +231,12 @@ export function PlanningPanel({
   // Instructions map for planning sessions (baseBranch -> instruction preview)
   const [branchInstructions, setBranchInstructions] = useState<Map<string, string>>(new Map());
 
+  // Task instruction editing for Planning sessions
+  const [currentInstruction, setCurrentInstruction] = useState("");
+  const [instructionLoading, setInstructionLoading] = useState(false);
+  const [instructionSaving, setInstructionSaving] = useState(false);
+  const [instructionDirty, setInstructionDirty] = useState(false);
+
   // Session notifications (unread counts, thinking state)
   const chatSessionIds = sessions
     .filter((s) => s.chatSessionId)
@@ -383,6 +389,29 @@ export function PlanningPanel({
       onTasksChange?.(selectedSession.nodes, selectedSession.edges);
     }
   }, [selectedSession?.nodes, selectedSession?.edges]);
+
+  // Load task instruction for Planning sessions
+  useEffect(() => {
+    if (!selectedSession || !repoId) {
+      setCurrentInstruction("");
+      setInstructionDirty(false);
+      return;
+    }
+    const isPlanningSession = selectedSession.title.startsWith("Planning:");
+    if (!isPlanningSession) {
+      setCurrentInstruction("");
+      setInstructionDirty(false);
+      return;
+    }
+    setInstructionLoading(true);
+    api.getTaskInstruction(repoId, selectedSession.baseBranch)
+      .then((instruction) => {
+        setCurrentInstruction(instruction?.instructionMd || "");
+        setInstructionDirty(false);
+      })
+      .catch(console.error)
+      .finally(() => setInstructionLoading(false));
+  }, [selectedSession?.id, repoId]);
 
   const handleCreateSession = async () => {
     if (!newBaseBranch.trim()) return;
@@ -544,6 +573,23 @@ export function PlanningPanel({
       setExternalLinks((prev) => prev.filter((l) => l.id !== id));
     } catch (err) {
       console.error("Failed to remove link:", err);
+    }
+  };
+
+  // Save task instruction
+  const handleSaveInstruction = async () => {
+    if (!selectedSession || !repoId || instructionSaving) return;
+    setInstructionSaving(true);
+    try {
+      await api.updateTaskInstruction(repoId, selectedSession.baseBranch, currentInstruction);
+      setInstructionDirty(false);
+      // Update the cached instruction for the list view
+      setBranchInstructions((prev) => new Map(prev).set(selectedSession.baseBranch, currentInstruction));
+    } catch (err) {
+      console.error("Failed to save instruction:", err);
+      setError("Failed to save instruction");
+    } finally {
+      setInstructionSaving(false);
     }
   };
 
@@ -1137,6 +1183,43 @@ export function PlanningPanel({
                 <div className="planning-panel__tasks-empty">
                   Chat with AI to suggest tasks
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Task Instruction - only for Planning sessions */}
+          {isPlanningSession && (
+            <div className="planning-panel__instruction">
+              <div className="planning-panel__instruction-header">
+                <h4>Task Instruction</h4>
+                {instructionDirty && (
+                  <span className="planning-panel__instruction-dirty">未保存</span>
+                )}
+              </div>
+              {instructionLoading ? (
+                <div className="planning-panel__instruction-loading">Loading...</div>
+              ) : (
+                <>
+                  <textarea
+                    className="planning-panel__instruction-textarea"
+                    value={currentInstruction}
+                    onChange={(e) => {
+                      setCurrentInstruction(e.target.value);
+                      setInstructionDirty(true);
+                    }}
+                    placeholder="タスクの詳細な指示を記載..."
+                    disabled={selectedSession.status !== "draft"}
+                  />
+                  {selectedSession.status === "draft" && (
+                    <button
+                      className="planning-panel__instruction-save"
+                      onClick={handleSaveInstruction}
+                      disabled={!instructionDirty || instructionSaving}
+                    >
+                      {instructionSaving ? "Saving..." : "Save"}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
