@@ -1193,7 +1193,7 @@ export function PlanningPanel({
               <div className="planning-panel__instruction-header">
                 <h4>Task Instruction</h4>
                 {instructionDirty && (
-                  <span className="planning-panel__instruction-dirty">未保存</span>
+                  <span className="planning-panel__instruction-dirty">unsaved</span>
                 )}
               </div>
               {instructionLoading ? (
@@ -1207,7 +1207,7 @@ export function PlanningPanel({
                       setCurrentInstruction(e.target.value);
                       setInstructionDirty(true);
                     }}
-                    placeholder="タスクの詳細な指示を記載..."
+                    placeholder="Enter detailed task instructions..."
                     disabled={selectedSession.status !== "draft"}
                   />
                   {selectedSession.status === "draft" && (
