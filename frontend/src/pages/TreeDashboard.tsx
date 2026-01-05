@@ -1208,6 +1208,11 @@ export default function TreeDashboard() {
                     onStartPlanning={(branchName, instruction) => {
                       setPendingPlanning({ branchName, instruction });
                     }}
+                    activePlanningBranch={
+                      selectedPlanningSession?.title.startsWith("Planning:")
+                        ? selectedPlanningSession.baseBranch
+                        : null
+                    }
                   />
                 ) : (
                   <div className="panel">

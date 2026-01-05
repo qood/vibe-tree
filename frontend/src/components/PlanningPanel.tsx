@@ -1076,6 +1076,21 @@ export function PlanningPanel({
               onTaskSuggested={handleTaskSuggested}
               existingTaskLabels={selectedSession.nodes.map((n) => n.title)}
               disabled={selectedSession.status !== "draft"}
+              currentInstruction={isPlanningSession ? currentInstruction : undefined}
+              onInstructionUpdated={isPlanningSession ? async (newContent) => {
+                // Update local state
+                setCurrentInstruction(newContent);
+                setInstructionDirty(false);
+                // Save to API
+                try {
+                  await api.updateTaskInstruction(repoId, selectedSession.baseBranch, newContent);
+                  // Update cached instruction for list view
+                  setBranchInstructions((prev) => new Map(prev).set(selectedSession.baseBranch, newContent));
+                } catch (err) {
+                  console.error("Failed to save instruction:", err);
+                  setError("Failed to save instruction");
+                }
+              } : undefined}
             />
           )}
         </div>

@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api, type ChatMessage } from "../lib/api";
 import { extractTaskSuggestions, removeTaskTags, type TaskSuggestion } from "../lib/task-parser";
+import {
+  extractInstructionEdit,
+  removeInstructionEditTags,
+  computeSimpleDiff,
+} from "../lib/instruction-parser";
 import { wsClient } from "../lib/ws";
 import githubIcon from "../assets/github.svg";
 
@@ -9,14 +14,25 @@ interface ChatPanelProps {
   onTaskSuggested?: (task: TaskSuggestion) => void;
   existingTaskLabels?: string[];
   disabled?: boolean;
+  currentInstruction?: string;
+  onInstructionUpdated?: (newContent: string) => void;
 }
 
-export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [], disabled = false }: ChatPanelProps) {
+export function ChatPanel({
+  sessionId,
+  onTaskSuggested,
+  existingTaskLabels = [],
+  disabled = false,
+  currentInstruction = "",
+  onInstructionUpdated,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addedTasks, setAddedTasks] = useState<Set<string>>(new Set());
+  // Track accepted instruction edits by message ID
+  const [acceptedInstructions, setAcceptedInstructions] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -118,17 +134,104 @@ export function ChatPanel({ sessionId, onTaskSuggested, existingTaskLabels = [],
     onTaskSuggested?.(task);
   };
 
+  const handleAcceptInstruction = (msgId: number, newContent: string) => {
+    if (acceptedInstructions.has(msgId)) return;
+    setAcceptedInstructions((prev) => new Set(prev).add(msgId));
+    onInstructionUpdated?.(newContent);
+  };
+
   const renderMessage = (msg: ChatMessage) => {
     if (msg.role !== "assistant") {
       return <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{msg.content}</p>;
     }
 
     const suggestions = extractTaskSuggestions(msg.content);
-    const cleanContent = removeTaskTags(msg.content);
+    const instructionEdit = extractInstructionEdit(msg.content);
+    let cleanContent = removeTaskTags(msg.content);
+    if (instructionEdit) {
+      cleanContent = removeInstructionEditTags(cleanContent);
+    }
+
+    const isInstructionAccepted = acceptedInstructions.has(msg.id);
 
     return (
       <>
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{cleanContent}</p>
+
+        {/* Instruction Edit Proposal */}
+        {instructionEdit && (
+          <div style={{
+            marginTop: 12,
+            border: "1px solid #374151",
+            background: "#1f2937",
+            borderRadius: 6,
+            overflow: "hidden",
+          }}>
+            <div style={{
+              padding: "8px 12px",
+              background: "#0f172a",
+              borderBottom: "1px solid #374151",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>
+                Task Instruction の変更提案
+              </span>
+              {isInstructionAccepted && (
+                <span style={{ fontSize: 11, padding: "2px 8px", background: "#14532d", color: "#4ade80", borderRadius: 3 }}>
+                  Accepted
+                </span>
+              )}
+            </div>
+            <div style={{ padding: 12, fontSize: 12, fontFamily: "monospace" }}>
+              {computeSimpleDiff(currentInstruction, instructionEdit.newContent).map((line, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: "1px 4px",
+                    background: line.type === "added" ? "rgba(34, 197, 94, 0.15)" :
+                               line.type === "removed" ? "rgba(239, 68, 68, 0.15)" : "transparent",
+                    color: line.type === "added" ? "#4ade80" :
+                           line.type === "removed" ? "#f87171" : "#9ca3af",
+                  }}
+                >
+                  <span style={{ display: "inline-block", width: 16, opacity: 0.6 }}>
+                    {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
+                  </span>
+                  {line.content || " "}
+                </div>
+              ))}
+            </div>
+            {!isInstructionAccepted && (
+              <div style={{
+                padding: "8px 12px",
+                borderTop: "1px solid #374151",
+                display: "flex",
+                gap: 8,
+                justifyContent: "flex-end",
+              }}>
+                <button
+                  onClick={() => handleAcceptInstruction(msg.id, instructionEdit.newContent)}
+                  style={{
+                    padding: "4px 12px",
+                    background: "#22c55e",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Accept
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Task Suggestions */}
         {suggestions.length > 0 && (
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             {suggestions.map((task, i) => {

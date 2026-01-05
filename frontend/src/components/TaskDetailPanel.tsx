@@ -171,6 +171,7 @@ interface TaskDetailPanelProps {
   onClose: () => void;
   onWorktreeCreated?: () => void | Promise<void>;
   onStartPlanning?: (branchName: string, instruction: string | null) => void;
+  activePlanningBranch?: string | null; // Hide instruction section when this matches branchName
 }
 
 export function TaskDetailPanel({
@@ -183,6 +184,7 @@ export function TaskDetailPanel({
   onClose,
   onWorktreeCreated,
   onStartPlanning,
+  activePlanningBranch,
 }: TaskDetailPanelProps) {
   const isDefaultBranch = branchName === defaultBranch;
 
@@ -1196,56 +1198,58 @@ export function TaskDetailPanel({
         })()}
       </div>
 
-      {/* Instruction Section */}
-      <div className="task-detail-panel__instruction-section">
-        <div className="task-detail-panel__instruction-header">
-          <h4>Task Instruction</h4>
-          <div className="task-detail-panel__instruction-actions">
-            {!editingInstruction ? (
-              <>
-                <button
-                  className="task-detail-panel__planning-btn"
-                  onClick={() => {
-                    onStartPlanning?.(branchName, instruction?.instructionMd || null);
-                  }}
-                  title="Start Planning Session"
-                >
-                  Planning
-                </button>
-                <button
-                  className="task-detail-panel__edit-btn"
-                  onClick={() => {
+      {/* Instruction Section - hidden when Planning session is open for this branch */}
+      {activePlanningBranch !== branchName && (
+        <div className="task-detail-panel__instruction-section">
+          <div className="task-detail-panel__instruction-header">
+            <h4>Task Instruction</h4>
+            <div className="task-detail-panel__instruction-actions">
+              {!editingInstruction ? (
+                <>
+                  <button
+                    className="task-detail-panel__planning-btn"
+                    onClick={() => {
+                      onStartPlanning?.(branchName, instruction?.instructionMd || null);
+                    }}
+                    title="Start Planning Session"
+                  >
+                    Planning
+                  </button>
+                  <button
+                    className="task-detail-panel__edit-btn"
+                    onClick={() => {
+                      setInstructionDraft(instruction?.instructionMd || "");
+                      setEditingInstruction(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={handleSaveInstruction}>Save</button>
+                  <button onClick={() => {
+                    setEditingInstruction(false);
                     setInstructionDraft(instruction?.instructionMd || "");
-                    setEditingInstruction(true);
-                  }}
-                >
-                  Edit
-                </button>
-              </>
-            ) : (
-              <>
-                <button onClick={handleSaveInstruction}>Save</button>
-                <button onClick={() => {
-                  setEditingInstruction(false);
-                  setInstructionDraft(instruction?.instructionMd || "");
-                }}>Cancel</button>
-              </>
-            )}
+                  }}>Cancel</button>
+                </>
+              )}
+            </div>
+          </div>
+          <div
+            className="task-detail-panel__instruction-content"
+            style={{ height: instructionHeight }}
+          >
+            <textarea
+              className="task-detail-panel__instruction-textarea"
+              value={editingInstruction ? instructionDraft : (instruction?.instructionMd || "")}
+              onChange={(e) => setInstructionDraft(e.target.value)}
+              readOnly={!editingInstruction}
+              placeholder="No instructions yet..."
+            />
           </div>
         </div>
-        <div
-          className="task-detail-panel__instruction-content"
-          style={{ height: instructionHeight }}
-        >
-          <textarea
-            className="task-detail-panel__instruction-textarea"
-            value={editingInstruction ? instructionDraft : (instruction?.instructionMd || "")}
-            onChange={(e) => setInstructionDraft(e.target.value)}
-            readOnly={!editingInstruction}
-            placeholder="No instructions yet..."
-          />
-        </div>
-      </div>
+      )}
 
       {/* Resize Handle - Hidden since chat section is disabled */}
       {CHAT_ENABLED && (
