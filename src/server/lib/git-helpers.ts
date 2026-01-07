@@ -216,36 +216,61 @@ export function findBestParent(
   }
 
   // 2. If no naming match, try to find parent by git ancestry
-  // Check if any branch is a direct ancestor (linear relationship)
+  // The key insight: if branch B was created from branch A, then:
+  //   - The tip of A is an ancestor of B
+  //   - The commit count from A to B should be minimal compared to other branches
   if (repoPath) {
     try {
-      // Get the current branch's first commit after divergence from each candidate
       let closestParent = defaultBranch;
       let minDistance = Infinity;
+
+      // First, get the commit count from default branch to this branch
+      try {
+        const defaultCount = parseInt(
+          execSync(
+            `cd "${repoPath}" && git rev-list --count "${defaultBranch}..${branchName}" 2>/dev/null || echo "999999"`,
+            { encoding: "utf-8" }
+          ).trim(),
+          10
+        );
+        if (!isNaN(defaultCount) && defaultCount < minDistance) {
+          minDistance = defaultCount;
+          closestParent = defaultBranch;
+        }
+      } catch {
+        // Ignore
+      }
 
       for (const candidate of allBranches) {
         if (candidate === branchName) continue;
         if (candidate === defaultBranch) continue;
 
         try {
-          // Check if candidate is an ancestor of branchName
-          const result = execSync(
-            `cd "${repoPath}" && git merge-base --is-ancestor "${candidate}" "${branchName}" && echo "yes" || echo "no"`,
+          // Check if candidate's tip commit is an ancestor of branchName
+          // Using git merge-base: if merge-base(A, B) == A, then A is ancestor of B
+          const mergeBase = execSync(
+            `cd "${repoPath}" && git merge-base "${candidate}" "${branchName}" 2>/dev/null`,
             { encoding: "utf-8" }
           ).trim();
 
-          if (result === "yes") {
+          const candidateTip = execSync(
+            `cd "${repoPath}" && git rev-parse "${candidate}" 2>/dev/null`,
+            { encoding: "utf-8" }
+          ).trim();
+
+          if (mergeBase === candidateTip) {
+            // candidate is an ancestor of branchName
             // Count commits between candidate and branchName
             const count = parseInt(
               execSync(
-                `cd "${repoPath}" && git rev-list --count "${candidate}..${branchName}"`,
+                `cd "${repoPath}" && git rev-list --count "${candidate}..${branchName}" 2>/dev/null`,
                 { encoding: "utf-8" }
               ).trim(),
               10
             );
 
-            // Find the candidate with the smallest distance (most recent common ancestor)
-            if (count > 0 && count < minDistance) {
+            // Find the candidate with the smallest distance (closest ancestor)
+            if (!isNaN(count) && count > 0 && count < minDistance) {
               minDistance = count;
               closestParent = candidate;
             }
@@ -255,7 +280,8 @@ export function findBestParent(
         }
       }
 
-      if (minDistance < Infinity) {
+      // Only return medium confidence if we found a non-default ancestor
+      if (closestParent !== defaultBranch && minDistance < Infinity) {
         return { parent: closestParent, confidence: "medium" };
       }
     } catch {

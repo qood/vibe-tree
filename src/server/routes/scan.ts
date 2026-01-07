@@ -151,16 +151,38 @@ scanRouter.post("/", async (c) => {
       const childBranch = taskToBranch.get(edge.to) ?? edge.to;
 
       if (parentBranch && childBranch) {
+        // Skip edges that contradict git ancestry (child is ancestor of parent in git)
+        try {
+          const mergeBase = execSync(
+            `cd "${localPath}" && git merge-base "${childBranch}" "${parentBranch}" 2>/dev/null`,
+            { encoding: "utf-8" }
+          ).trim();
+          const childTip = execSync(
+            `cd "${localPath}" && git rev-parse "${childBranch}" 2>/dev/null`,
+            { encoding: "utf-8" }
+          ).trim();
+          if (mergeBase === childTip) {
+            // Child is ancestor of parent - skip this backwards edge
+            continue;
+          }
+        } catch {
+          // If git commands fail, allow the edge
+        }
+
         // Check if this child already has an edge
         const existingIndex = edges.findIndex((e) => e.child === childBranch);
         if (existingIndex >= 0) {
-          // Replace with planning session edge (higher priority)
-          edges[existingIndex] = {
-            parent: parentBranch,
-            child: childBranch,
-            confidence: "high" as const,
-            isDesigned: true,
-          };
+          const existingEdge = edges[existingIndex];
+          // Only replace if git didn't detect a confident relationship (medium = git ancestry detected)
+          // Planning session edges should not override git-detected linear relationships
+          if (existingEdge.confidence !== "medium") {
+            edges[existingIndex] = {
+              parent: parentBranch,
+              child: childBranch,
+              confidence: "high" as const,
+              isDesigned: true,
+            };
+          }
         } else {
           // Add new edge
           edges.push({
@@ -191,13 +213,16 @@ scanRouter.post("/", async (c) => {
         // This is a root task - connect to base branch
         const existingIndex = edges.findIndex((e) => e.child === node.branchName);
         if (existingIndex >= 0) {
-          // Replace existing edge with planning session edge (higher priority)
-          edges[existingIndex] = {
-            parent: session.baseBranch,
-            child: node.branchName,
-            confidence: "high" as const,
-            isDesigned: true,
-          };
+          const existingEdge = edges[existingIndex];
+          // Don't override git-detected linear relationships
+          if (existingEdge.confidence !== "medium") {
+            edges[existingIndex] = {
+              parent: session.baseBranch,
+              child: node.branchName,
+              confidence: "high" as const,
+              isDesigned: true,
+            };
+          }
         } else {
           edges.push({
             parent: session.baseBranch,
@@ -210,18 +235,40 @@ scanRouter.post("/", async (c) => {
     }
   }
 
-  // 8.5. Merge treeSpec edges LAST (manual edits take highest priority)
+  // 8.5. Merge treeSpec edges LAST (manual edits take highest priority, but not over git ancestry)
   if (treeSpec) {
     for (const designedEdge of treeSpec.specJson.edges as Array<{ parent: string; child: string }>) {
+      // Skip edges that contradict git ancestry (child is ancestor of parent in git)
+      try {
+        const mergeBase = execSync(
+          `cd "${localPath}" && git merge-base "${designedEdge.child}" "${designedEdge.parent}" 2>/dev/null`,
+          { encoding: "utf-8" }
+        ).trim();
+        const childTip = execSync(
+          `cd "${localPath}" && git rev-parse "${designedEdge.child}" 2>/dev/null`,
+          { encoding: "utf-8" }
+        ).trim();
+        // If child is ancestor of parent, this edge is backwards - skip it
+        if (mergeBase === childTip) {
+          continue;
+        }
+      } catch {
+        // If git commands fail, allow the edge
+      }
+
       // Find and replace existing edge for this child
       const existingIndex = edges.findIndex((e) => e.child === designedEdge.child);
       if (existingIndex >= 0) {
-        edges[existingIndex] = {
-          parent: designedEdge.parent,
-          child: designedEdge.child,
-          confidence: "high" as const,
-          isDesigned: true,
-        };
+        const existingEdge = edges[existingIndex];
+        // Don't override git-detected linear relationships
+        if (existingEdge.confidence !== "medium") {
+          edges[existingIndex] = {
+            parent: designedEdge.parent,
+            child: designedEdge.child,
+            confidence: "high" as const,
+            isDesigned: true,
+          };
+        }
       } else {
         edges.push({
           parent: designedEdge.parent,

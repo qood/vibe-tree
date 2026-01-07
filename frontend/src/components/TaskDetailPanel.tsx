@@ -256,6 +256,7 @@ export function TaskDetailPanel({
   const [syncing, setSyncing] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
+  const [checkingPR, setCheckingPR] = useState(false);
 
   // Deletable branch check (no commits + not on remote)
   const [isDeletable, setIsDeletable] = useState(false);
@@ -297,13 +298,14 @@ export function TaskDetailPanel({
 
         // Auto-link PR from node.pr if not already linked
         const hasPRLink = links.some((l) => l.linkType === "pr");
-        if (!hasPRLink && node?.pr?.url) {
+        if (!hasPRLink && node?.pr?.url && node.pr.number) {
           try {
             const newLink = await api.createBranchLink({
               repoId,
               branchName,
               linkType: "pr",
               url: node.pr.url,
+              number: node.pr.number,
             });
             links = [...links, newLink];
             setBranchLinks(links);
@@ -312,17 +314,18 @@ export function TaskDetailPanel({
           }
         }
 
-        // Auto-refresh all links from GitHub when panel opens
+        // Auto-refresh all links from GitHub when panel opens (non-blocking)
         for (const link of links) {
           if (link.number) {
-            try {
-              const refreshed = await api.refreshBranchLink(link.id);
-              setBranchLinks((prev) =>
-                prev.map((l) => (l.id === refreshed.id ? refreshed : l))
-              );
-            } catch (err) {
-              console.error(`Failed to refresh link ${link.id}:`, err);
-            }
+            api.refreshBranchLink(link.id)
+              .then((refreshed) => {
+                setBranchLinks((prev) =>
+                  prev.map((l) => (l.id === refreshed.id ? refreshed : l))
+                );
+              })
+              .catch((err) => {
+                console.error(`Failed to refresh link ${link.id}:`, err);
+              });
           }
         }
       } catch (err) {
@@ -330,7 +333,7 @@ export function TaskDetailPanel({
       }
     };
     loadBranchLinks();
-  }, [repoId, branchName, node?.pr?.url]);
+  }, [repoId, branchName, node?.pr?.url, node?.pr?.number]);
 
   // Check if branch is deletable (no commits + not on remote)
   useEffect(() => {
@@ -821,24 +824,18 @@ export function TaskDetailPanel({
     }
   }, [chatSessionId, clearingChat, repoId, effectivePath, branchName]);
 
-  if (loading && !isDefaultBranch) {
-    return (
-      <div className="task-detail-panel">
-        <div className="task-detail-panel__header">
-          <h3>{branchName}</h3>
-          <button onClick={onClose} className="task-detail-panel__close">x</button>
-        </div>
-        <div className="task-detail-panel__loading">Loading...</div>
-      </div>
-    );
-  }
+  // Check if any loading is happening
+  const isRefetching = loading || checkingPR;
 
   // Default branch: show simplified view without Planning/Execution
   if (isDefaultBranch) {
     return (
       <div className="task-detail-panel">
         <div className="task-detail-panel__header">
-          <h3>{branchName}</h3>
+          <h3>
+            {branchName}
+            {isRefetching && <span className="task-detail-panel__spinner" title="Refreshing..." />}
+          </h3>
           <button onClick={onClose} className="task-detail-panel__close">x</button>
         </div>
 
@@ -901,7 +898,10 @@ export function TaskDetailPanel({
       )}
 
       <div className="task-detail-panel__header">
-        <h3>{branchName}</h3>
+        <h3>
+          {branchName}
+          {isRefetching && <span className="task-detail-panel__spinner" title="Refreshing..." />}
+        </h3>
         <button onClick={onClose} className="task-detail-panel__close">x</button>
       </div>
 
@@ -1124,7 +1124,28 @@ export function TaskDetailPanel({
         {(() => {
           const pr = branchLinks.find((l) => l.linkType === "pr");
           if (!pr) {
-            return <div className="task-detail-panel__no-links">No PR linked</div>;
+            return (
+              <div className="task-detail-panel__no-links" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span>No PR linked</span>
+                <button
+                  className="task-detail-panel__refresh-btn"
+                  onClick={async () => {
+                    setCheckingPR(true);
+                    try {
+                      // Trigger rescan to check for new PRs
+                      await onWorktreeCreated?.();
+                    } finally {
+                      setCheckingPR(false);
+                    }
+                  }}
+                  disabled={checkingPR}
+                  title="Check for PR"
+                  style={{ padding: "2px 6px", fontSize: 12 }}
+                >
+                  {checkingPR ? "..." : "↻"}
+                </button>
+              </div>
+            );
           }
           const labels: GitHubLabel[] = pr.labels ? ((): GitHubLabel[] => { try { const parsed = JSON.parse(pr.labels!); return Array.isArray(parsed) ? parsed.map((l: string | GitHubLabel) => typeof l === 'string' ? { name: l, color: '374151' } : l) : [] } catch { return [] } })() : [];
           const reviewers = pr.reviewers ? ((): string[] => { try { return JSON.parse(pr.reviewers!) } catch { return [] } })() : [];
