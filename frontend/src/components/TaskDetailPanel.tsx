@@ -292,8 +292,26 @@ export function TaskDetailPanel({
   useEffect(() => {
     const loadBranchLinks = async () => {
       try {
-        const links = await api.getBranchLinks(repoId, branchName);
+        let links = await api.getBranchLinks(repoId, branchName);
         setBranchLinks(links);
+
+        // Auto-link PR from node.pr if not already linked
+        const hasPRLink = links.some((l) => l.linkType === "pr");
+        if (!hasPRLink && node?.pr?.url) {
+          try {
+            const newLink = await api.createBranchLink({
+              repoId,
+              branchName,
+              linkType: "pr",
+              url: node.pr.url,
+            });
+            links = [...links, newLink];
+            setBranchLinks(links);
+          } catch (err) {
+            console.error("Failed to auto-link PR:", err);
+          }
+        }
+
         // Auto-refresh all links from GitHub when panel opens
         for (const link of links) {
           if (link.number) {
@@ -312,7 +330,7 @@ export function TaskDetailPanel({
       }
     };
     loadBranchLinks();
-  }, [repoId, branchName]);
+  }, [repoId, branchName, node?.pr?.url]);
 
   // Check if branch is deletable (no commits + not on remote)
   useEffect(() => {

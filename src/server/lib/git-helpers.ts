@@ -189,11 +189,13 @@ export function getPRs(repoPath: string): PRInfo[] {
 export function findBestParent(
   branchName: string,
   allBranches: string[],
-  defaultBranch: string
+  defaultBranch: string,
+  repoPath?: string
 ): { parent: string; confidence: "high" | "medium" | "low" } {
   let bestMatch = defaultBranch;
   let bestMatchLength = 0;
 
+  // 1. First try naming convention (highest confidence)
   for (const candidate of allBranches) {
     if (candidate === branchName) continue;
     if (candidate === defaultBranch) continue;
@@ -209,8 +211,59 @@ export function findBestParent(
     }
   }
 
-  const confidence = bestMatchLength > 0 ? "high" : "low";
-  return { parent: bestMatch, confidence };
+  if (bestMatchLength > 0) {
+    return { parent: bestMatch, confidence: "high" };
+  }
+
+  // 2. If no naming match, try to find parent by git ancestry
+  // Check if any branch is a direct ancestor (linear relationship)
+  if (repoPath) {
+    try {
+      // Get the current branch's first commit after divergence from each candidate
+      let closestParent = defaultBranch;
+      let minDistance = Infinity;
+
+      for (const candidate of allBranches) {
+        if (candidate === branchName) continue;
+        if (candidate === defaultBranch) continue;
+
+        try {
+          // Check if candidate is an ancestor of branchName
+          const result = execSync(
+            `cd "${repoPath}" && git merge-base --is-ancestor "${candidate}" "${branchName}" && echo "yes" || echo "no"`,
+            { encoding: "utf-8" }
+          ).trim();
+
+          if (result === "yes") {
+            // Count commits between candidate and branchName
+            const count = parseInt(
+              execSync(
+                `cd "${repoPath}" && git rev-list --count "${candidate}..${branchName}"`,
+                { encoding: "utf-8" }
+              ).trim(),
+              10
+            );
+
+            // Find the candidate with the smallest distance (most recent common ancestor)
+            if (count > 0 && count < minDistance) {
+              minDistance = count;
+              closestParent = candidate;
+            }
+          }
+        } catch {
+          // Ignore errors for individual branches
+        }
+      }
+
+      if (minDistance < Infinity) {
+        return { parent: closestParent, confidence: "medium" };
+      }
+    } catch {
+      // If git commands fail, fall back to default
+    }
+  }
+
+  return { parent: bestMatch, confidence: "low" };
 }
 
 export function buildTree(
@@ -252,7 +305,7 @@ export function buildTree(
     nodes.push(node);
 
     if (baseBranch && branch.name !== defaultBranch) {
-      const { parent, confidence } = findBestParent(branch.name, branchNames, defaultBranch);
+      const { parent, confidence } = findBestParent(branch.name, branchNames, defaultBranch, repoPath);
       edges.push({
         parent,
         child: branch.name,
