@@ -78,7 +78,6 @@ export default function TreeDashboard() {
 
   // Fetch state
   const [fetching, setFetching] = useState(false);
-  const [discarding, setDiscarding] = useState(false);
   const [originalTreeSpecEdges, setOriginalTreeSpecEdges] = useState<TreeSpecEdge[] | null>(null);
 
   // Settings modal state
@@ -354,17 +353,44 @@ export default function TreeDashboard() {
         { parent: createBranchBase, child: newBranchName },
       ];
 
-      // Update tree spec
-      await api.updateTreeSpec({
+      // Optimistic update: Add new branch node and edge immediately
+      const newNode = {
+        branchName: newBranchName,
+        aheadBehind: { ahead: 0, behind: 0 },
+      };
+      const newDisplayEdge = {
+        parent: createBranchBase,
+        child: newBranchName,
+        confidence: "high" as const,
+        isDesigned: true,
+      };
+
+      setSnapshot((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          nodes: [...prev.nodes, newNode],
+          edges: [...prev.edges, newDisplayEdge],
+          treeSpec: prev.treeSpec ? {
+            ...prev.treeSpec,
+            specJson: { nodes: currentNodes, edges: newEdges },
+            updatedAt: new Date().toISOString(),
+          } : prev.treeSpec,
+        };
+      });
+
+      // Update tree spec in background
+      api.updateTreeSpec({
         repoId: snapshot.repoId,
         baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
         nodes: currentNodes,
         edges: newEdges,
+      }).catch((err) => {
+        console.error("Failed to update tree spec:", err);
       });
 
-      // Rescan to update the graph
-      const newSnapshot = await api.scan(selectedPin.localPath);
-      setSnapshot(newSnapshot);
+      // Background rescan to get full node info (worktree, PR, etc.)
+      api.scan(selectedPin.localPath).then(setSnapshot).catch(() => {});
 
       // Close dialog
       setCreateBranchBase(null);
@@ -1048,32 +1074,53 @@ export default function TreeDashboard() {
                         <>
                           <button
                             className="btn-icon btn-icon--danger"
-                            disabled={discarding}
-                            onClick={async () => {
-                              // Discard: restore original edges
+                            onClick={() => {
+                              // Discard: restore original edges (optimistic)
                               if (selectedPin && snapshot?.repoId && originalTreeSpecEdges !== null) {
-                                setDiscarding(true);
-                                try {
-                                  await api.updateTreeSpec({
-                                    repoId: snapshot.repoId,
-                                    baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
-                                    nodes: snapshot.treeSpec?.specJson.nodes ?? [],
-                                    edges: originalTreeSpecEdges,
-                                  });
-                                  const newSnapshot = await api.scan(selectedPin.localPath);
-                                  setSnapshot(newSnapshot);
-                                } catch (err) {
+                                // Optimistic update: restore edges immediately
+                                setSnapshot((prev) => {
+                                  if (!prev) return prev;
+                                  // Rebuild edges: remove designed edges that weren't in original, add back original designed edges
+                                  const nonDesignedEdges = prev.edges.filter((e) => !e.isDesigned);
+                                  const originalDesignedEdges = originalTreeSpecEdges.map((e) => ({
+                                    parent: e.parent,
+                                    child: e.child,
+                                    confidence: "high" as const,
+                                    isDesigned: true,
+                                  }));
+                                  return {
+                                    ...prev,
+                                    edges: [...nonDesignedEdges, ...originalDesignedEdges],
+                                    treeSpec: prev.treeSpec ? {
+                                      ...prev.treeSpec,
+                                      specJson: {
+                                        nodes: prev.treeSpec.specJson.nodes,
+                                        edges: originalTreeSpecEdges,
+                                      },
+                                      updatedAt: new Date().toISOString(),
+                                    } : prev.treeSpec,
+                                  };
+                                });
+
+                                // Save to server in background
+                                api.updateTreeSpec({
+                                  repoId: snapshot.repoId,
+                                  baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                                  nodes: snapshot.treeSpec?.specJson.nodes ?? [],
+                                  edges: originalTreeSpecEdges,
+                                }).then(() => {
+                                  // Background rescan to ensure consistency
+                                  api.scan(selectedPin.localPath).then(setSnapshot).catch(() => {});
+                                }).catch((err) => {
                                   console.error("Failed to discard:", err);
-                                } finally {
-                                  setDiscarding(false);
-                                }
+                                });
                               }
                               setOriginalTreeSpecEdges(null);
                               setBranchGraphEditMode(false);
                             }}
                             title="Discard changes"
                           >
-                            {discarding ? "Discarding..." : "Discard"}
+                            Discard
                           </button>
                           <button
                             className="btn-icon btn-icon--active"
@@ -1082,7 +1129,6 @@ export default function TreeDashboard() {
                               setBranchGraphEditMode(false);
                             }}
                             title="Exit edit mode"
-                            disabled={discarding}
                           >
                             Done
                           </button>
@@ -1131,56 +1177,80 @@ export default function TreeDashboard() {
                         // This will be saved in tree_specs as a designed edge
                         if (!snapshot?.repoId || !selectedPin) return;
 
-                        try {
-                          // Get current tree spec edges (using branch names directly)
-                          const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
+                        // Get current tree spec edges (using branch names directly)
+                        const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
 
-                          // Check if this exact edge already exists
-                          const edgeExists = currentEdges.some(
-                            (e) => e.parent === parentBranch && e.child === childBranch
-                          ) || snapshot.edges.some(
-                            (e) => e.parent === parentBranch && e.child === childBranch
-                          );
+                        // Check if this exact edge already exists
+                        const edgeExists = currentEdges.some(
+                          (e) => e.parent === parentBranch && e.child === childBranch
+                        ) || snapshot.edges.some(
+                          (e) => e.parent === parentBranch && e.child === childBranch
+                        );
 
-                          if (edgeExists) {
-                            console.log("Edge already exists");
-                            return;
-                          }
+                        if (edgeExists) {
+                          console.log("Edge already exists");
+                          return;
+                        }
 
-                          // Remove any existing edges where childBranch is the child (reparent)
-                          // This ensures a branch can only have one parent
-                          const filteredEdges = currentEdges.filter(
-                            (e) => e.child !== childBranch
-                          );
+                        // Remove any existing edges where childBranch is the child (reparent)
+                        // This ensures a branch can only have one parent
+                        const filteredEdges = currentEdges.filter(
+                          (e) => e.child !== childBranch
+                        );
 
-                          // Add the new edge using branch names directly
-                          const newEdges = [
-                            ...filteredEdges,
-                            { parent: parentBranch, child: childBranch },
-                          ];
+                        // Add the new edge using branch names directly
+                        const newTreeSpecEdges = [
+                          ...filteredEdges,
+                          { parent: parentBranch, child: childBranch },
+                        ];
 
-                          // Keep existing nodes (don't add phantom nodes for branches)
-                          const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
-
-                          // Save tree spec
-                          const updatedSpec = await api.updateTreeSpec({
-                            repoId: snapshot.repoId,
-                            baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
-                            nodes: currentNodes,
-                            edges: newEdges,
+                        // Optimistic update: Update UI immediately
+                        const newDisplayEdges = snapshot.edges
+                          .filter((e) => e.child !== childBranch)
+                          .concat({
+                            parent: parentBranch,
+                            child: childBranch,
+                            confidence: "high" as const,
+                            isDesigned: true,
                           });
 
-                          setSnapshot((prev) =>
-                            prev ? { ...prev, treeSpec: updatedSpec } : prev
-                          );
+                        const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
+                        const optimisticTreeSpec = {
+                          ...snapshot.treeSpec,
+                          id: snapshot.treeSpec?.id ?? 0,
+                          repoId: snapshot.repoId,
+                          baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                          status: snapshot.treeSpec?.status ?? "draft" as const,
+                          specJson: {
+                            nodes: currentNodes,
+                            edges: newTreeSpecEdges,
+                          },
+                          createdAt: snapshot.treeSpec?.createdAt ?? new Date().toISOString(),
+                          updatedAt: new Date().toISOString(),
+                        };
 
-                          // Rescan to update edges display
-                          const newSnapshot = await api.scan(selectedPin.localPath);
-                          setSnapshot(newSnapshot);
-                        } catch (err) {
-                          console.error("Failed to create edge:", err);
+                        setSnapshot((prev) =>
+                          prev ? {
+                            ...prev,
+                            edges: newDisplayEdges,
+                            treeSpec: optimisticTreeSpec,
+                          } : prev
+                        );
+
+                        // Save to server in background (don't await)
+                        api.updateTreeSpec({
+                          repoId: snapshot.repoId,
+                          baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                          nodes: currentNodes,
+                          edges: newTreeSpecEdges,
+                        }).catch((err) => {
+                          console.error("Failed to save edge:", err);
                           setError((err as Error).message);
-                        }
+                          // Revert on error - trigger rescan
+                          if (selectedPin) {
+                            api.scan(selectedPin.localPath).then(setSnapshot);
+                          }
+                        });
                       }}
                       tentativeBaseBranch={selectedPlanningSession?.baseBranch}
                       onBranchCreate={(baseBranch) => {
@@ -2107,7 +2177,7 @@ export default function TreeDashboard() {
           overflow: auto;
           background: #1f2937;
           border-radius: 4px;
-          min-height: 300px;
+          min-height: 150px;
         }
         .branch-graph {
           min-width: fit-content;

@@ -324,10 +324,11 @@ export default function BranchGraph({
     // Add tentative edges
     layoutEdges.push(...tentativeLayoutEdges);
 
-    // Calculate canvas size
+    // Calculate canvas size (add extra space for badges below nodes)
+    const BADGE_HEIGHT = 20; // Space for badges below nodes
     const maxX = Math.max(...layoutNodes.map((n) => n.x), 0) + NODE_WIDTH + LEFT_PADDING;
     const maxY = Math.max(
-      ...layoutNodes.map((n) => n.y + (n.isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT)),
+      ...layoutNodes.map((n) => n.y + (n.isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT) + BADGE_HEIGHT),
       0
     ) + TOP_PADDING;
 
@@ -655,112 +656,53 @@ export default function BranchGraph({
         })()}
 
 
-        {/* Ahead/Behind indicator below node */}
-        {node.aheadBehind && (node.aheadBehind.ahead > 0 || node.aheadBehind.behind > 0) && (
-          <g>
-            {node.aheadBehind.ahead > 0 && (
-              <>
-                <rect
-                  x={x + NODE_WIDTH / 2 - 24}
-                  y={y + nodeHeight + 4}
-                  width={22}
-                  height={14}
-                  rx={3}
-                  fill="#4caf50"
-                />
-                <text
-                  x={x + NODE_WIDTH / 2 - 13}
-                  y={y + nodeHeight + 12}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={9}
-                  fill="white"
-                  fontWeight="bold"
-                >
-                  +{node.aheadBehind.ahead}
-                </text>
-              </>
-            )}
-            {node.aheadBehind.behind > 0 && (
-              <>
-                <rect
-                  x={x + NODE_WIDTH / 2 + 2}
-                  y={y + nodeHeight + 4}
-                  width={22}
-                  height={14}
-                  rx={3}
-                  fill="#f44336"
-                />
-                <text
-                  x={x + NODE_WIDTH / 2 + 13}
-                  y={y + nodeHeight + 12}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={9}
-                  fill="white"
-                  fontWeight="bold"
-                >
-                  -{node.aheadBehind.behind}
-                </text>
-              </>
-            )}
-          </g>
-        )}
-
-        {/* Remote ahead/behind indicator (vs origin) - shown below local indicators */}
-        {node.remoteAheadBehind && (node.remoteAheadBehind.ahead > 0 || node.remoteAheadBehind.behind > 0) && (() => {
-          // Position below local indicators if they exist
-          const hasLocalIndicator = node.aheadBehind && (node.aheadBehind.ahead > 0 || node.aheadBehind.behind > 0);
-          const remoteY = y + nodeHeight + (hasLocalIndicator ? 22 : 4);
+        {/* All badges in a single horizontal row below the node */}
+        {(() => {
+          const badges: Array<{ label: string; color: string }> = [];
+          // Local ahead/behind (vs parent branch)
+          if (node.aheadBehind?.ahead && node.aheadBehind.ahead > 0) {
+            badges.push({ label: `+${node.aheadBehind.ahead}`, color: "#4caf50" });
+          }
+          if (node.aheadBehind?.behind && node.aheadBehind.behind > 0) {
+            badges.push({ label: `-${node.aheadBehind.behind}`, color: "#f44336" });
+          }
+          // Remote ahead/behind (vs origin)
+          if (node.remoteAheadBehind?.ahead && node.remoteAheadBehind.ahead > 0) {
+            badges.push({ label: `↑${node.remoteAheadBehind.ahead}`, color: "#3b82f6" });
+          }
+          if (node.remoteAheadBehind?.behind && node.remoteAheadBehind.behind > 0) {
+            badges.push({ label: `↓${node.remoteAheadBehind.behind}`, color: "#f59e0b" });
+          }
+          if (badges.length === 0) return null;
+          const badgeWidth = 22;
+          const badgeGap = 2;
+          const startX = x + 4; // Left-aligned
           return (
-          <g>
-            {node.remoteAheadBehind.ahead > 0 && (
-              <>
-                <rect
-                  x={x + NODE_WIDTH / 2 - 24}
-                  y={remoteY}
-                  width={22}
-                  height={14}
-                  rx={3}
-                  fill="#3b82f6"
-                />
-                <text
-                  x={x + NODE_WIDTH / 2 - 13}
-                  y={remoteY + 8}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={9}
-                  fill="white"
-                  fontWeight="bold"
-                >
-                  ↑{node.remoteAheadBehind.ahead}
-                </text>
-              </>
-            )}
-            {node.remoteAheadBehind.behind > 0 && (
-              <>
-                <rect
-                  x={x + NODE_WIDTH / 2 + 2}
-                  y={remoteY}
-                  width={22}
-                  height={14}
-                  rx={3}
-                  fill="#f59e0b"
-                />
-                <text
-                  x={x + NODE_WIDTH / 2 + 13}
-                  y={remoteY + 8}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={9}
-                  fill="white"
-                  fontWeight="bold"
-                >
-                  ↓{node.remoteAheadBehind.behind}
-                </text>
-              </>
-            )}
-          </g>
+            <g>
+              {badges.map((badge, i) => (
+                <g key={i}>
+                  <rect
+                    x={startX + i * (badgeWidth + badgeGap)}
+                    y={y + nodeHeight + 3}
+                    width={badgeWidth}
+                    height={14}
+                    rx={3}
+                    fill={badge.color}
+                  />
+                  <text
+                    x={startX + i * (badgeWidth + badgeGap) + badgeWidth / 2}
+                    y={y + nodeHeight + 11}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={9}
+                    fill="white"
+                    fontWeight="bold"
+                  >
+                    {badge.label}
+                  </text>
+                </g>
+              ))}
+            </g>
           );
         })()}
 
