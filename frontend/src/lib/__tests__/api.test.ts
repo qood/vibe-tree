@@ -3,7 +3,7 @@ import { api } from "../api";
 
 // Mock fetch
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+global.fetch = mockFetch as unknown as typeof fetch;
 
 describe("api", () => {
   beforeEach(() => {
@@ -23,9 +23,11 @@ describe("api", () => {
 
       const result = await api.health();
       expect(result).toEqual({ status: "ok" });
-      expect(mockFetch).toHaveBeenCalledWith("/api/health", {
-        headers: { "Content-Type": "application/json" },
-      });
+      // RPC client uses different fetch options
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/health",
+        expect.objectContaining({ method: "GET" }),
+      );
     });
   });
 
@@ -70,9 +72,11 @@ describe("api", () => {
 
       const result = await api.getRepo("owner", "repo");
       expect(result).toEqual(repo);
-      expect(mockFetch).toHaveBeenCalledWith("/api/repos/owner/repo", {
-        headers: { "Content-Type": "application/json" },
-      });
+      // RPC client uses different fetch options
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/repos/owner/repo",
+        expect.objectContaining({ method: "GET" }),
+      );
     });
   });
 

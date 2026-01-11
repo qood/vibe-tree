@@ -22,10 +22,8 @@ interface RepoInfo {
   defaultBranch: string;
 }
 
-export const reposRouter = new Hono();
-
 // GET /api/repos - List repos from GitHub
-reposRouter.get("/", async (c) => {
+const listRepos = new Hono().get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? "30");
 
   try {
@@ -56,12 +54,18 @@ reposRouter.get("/", async (c) => {
     return c.json(repos);
   } catch (error) {
     console.error("Failed to fetch repos from gh:", error);
-    return c.json([]);
+    return c.json(
+      {
+        error: "Failed to fetch repositories from GitHub CLI",
+        code: "GH_FETCH_ERROR",
+      },
+      500,
+    );
   }
 });
 
 // GET /api/repos/:owner/:name - Get single repo info
-reposRouter.get("/:owner/:name", async (c) => {
+const getRepo = new Hono().get("/:owner/:name", async (c) => {
   const owner = c.req.param("owner");
   const name = c.req.param("name");
   const fullName = `${owner}/${name}`;
@@ -89,3 +93,6 @@ reposRouter.get("/:owner/:name", async (c) => {
     throw new NotFoundError("Repo");
   }
 });
+
+// Export chained router for RPC type inference
+export const reposRouter = new Hono().route("/", listRepos).route("/", getRepo);

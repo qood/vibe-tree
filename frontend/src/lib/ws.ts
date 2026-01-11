@@ -1,8 +1,173 @@
-type WSMessage = {
-  type: string;
-  repoId?: string;
-  data?: unknown;
+import type {
+  ScanSnapshot,
+  ChatMessage,
+  Plan,
+  AgentOutputData,
+  PlanningSession,
+  BranchLink,
+  ExternalLink,
+  TaskInstruction,
+} from "./api";
+
+// Discriminated union for WebSocket messages
+// This provides type safety when handling different message types
+
+// Scan messages
+type ScanUpdatedMessage = { type: "scan.updated"; repoId: string; data: ScanSnapshot };
+
+// Chat messages
+type ChatStreamingStartMessage = {
+  type: "chat.streaming.start";
+  repoId: string;
+  data: { sessionId: string; runId: number };
 };
+type ChatStreamingChunkMessage = {
+  type: "chat.streaming.chunk";
+  repoId: string;
+  data: { sessionId: string; runId: number; chunk: ChatStreamingChunk };
+};
+type ChatStreamingEndMessage = {
+  type: "chat.streaming.end";
+  repoId: string;
+  data: { sessionId: string; runId: number; success: boolean; error?: string };
+};
+type ChatMessageMessage = { type: "chat.message"; repoId: string; data: ChatMessage };
+
+// Agent messages
+type AgentStartedMessage = {
+  type: "agent.started";
+  repoId: string;
+  data: { sessionId: string; pid: number };
+};
+type AgentOutputMessage = { type: "agent.output"; repoId: string; data: AgentOutputData };
+type AgentFinishedMessage = {
+  type: "agent.finished";
+  repoId: string;
+  data: { sessionId: string; exitCode: number };
+};
+type AgentStoppedMessage = { type: "agent.stopped"; repoId: string; data: { sessionId: string } };
+
+// Plan messages
+type PlanUpdatedMessage = { type: "plan.updated"; repoId: string; data: Plan };
+
+// Planning session messages
+type PlanningCreatedMessage = {
+  type: "planning.created";
+  repoId: string;
+  planningSessionId: string;
+  data: PlanningSession;
+};
+type PlanningUpdatedMessage = {
+  type: "planning.updated";
+  repoId: string;
+  planningSessionId: string;
+  data: PlanningSession;
+};
+type PlanningConfirmedMessage = {
+  type: "planning.confirmed";
+  repoId: string;
+  planningSessionId: string;
+  data: PlanningSession;
+};
+type PlanningDiscardedMessage = {
+  type: "planning.discarded";
+  repoId: string;
+  planningSessionId: string;
+  data: PlanningSession;
+};
+type BranchesChangedMessage = { type: "branches.changed"; repoId: string; data?: undefined };
+
+// Branch link messages
+type BranchLinkCreatedMessage = { type: "branchLink.created"; repoId: string; data: BranchLink };
+type BranchLinkUpdatedMessage = { type: "branchLink.updated"; repoId: string; data: BranchLink };
+type BranchLinkDeletedMessage = {
+  type: "branchLink.deleted";
+  repoId: string;
+  data: { id: number; branchName: string };
+};
+
+// External link messages
+type ExternalLinkCreatedMessage = {
+  type: "external-link.created";
+  planningSessionId: string;
+  data: ExternalLink;
+};
+type ExternalLinkUpdatedMessage = {
+  type: "external-link.updated";
+  planningSessionId: string;
+  data: ExternalLink;
+};
+type ExternalLinkDeletedMessage = {
+  type: "external-link.deleted";
+  planningSessionId: string;
+  data: { id: number };
+};
+
+// Task instruction messages
+type TaskInstructionUpdatedMessage = {
+  type: "taskInstruction.updated";
+  repoId: string;
+  data: TaskInstruction;
+};
+type TaskInstructionCreatedMessage = {
+  type: "taskInstruction.created";
+  repoId: string;
+  data: TaskInstruction;
+};
+
+// Project rules messages
+type ProjectRulesUpdatedMessage = {
+  type: "projectRules.updated";
+  repoId: string;
+  data: { ruleType: string };
+};
+
+// Instructions messages
+type InstructionsLoggedMessage = {
+  type: "instructions.logged";
+  repoId: string;
+  data: { id: number };
+};
+
+// Fallback for unknown message types
+type UnknownMessage = { type: string; repoId?: string; planningSessionId?: string; data?: unknown };
+
+// Union of all message types
+export type WSMessage =
+  | ScanUpdatedMessage
+  | ChatStreamingStartMessage
+  | ChatStreamingChunkMessage
+  | ChatStreamingEndMessage
+  | ChatMessageMessage
+  | AgentStartedMessage
+  | AgentOutputMessage
+  | AgentFinishedMessage
+  | AgentStoppedMessage
+  | PlanUpdatedMessage
+  | PlanningCreatedMessage
+  | PlanningUpdatedMessage
+  | PlanningConfirmedMessage
+  | PlanningDiscardedMessage
+  | BranchesChangedMessage
+  | BranchLinkCreatedMessage
+  | BranchLinkUpdatedMessage
+  | BranchLinkDeletedMessage
+  | ExternalLinkCreatedMessage
+  | ExternalLinkUpdatedMessage
+  | ExternalLinkDeletedMessage
+  | TaskInstructionUpdatedMessage
+  | TaskInstructionCreatedMessage
+  | ProjectRulesUpdatedMessage
+  | InstructionsLoggedMessage
+  | UnknownMessage;
+
+// Chat streaming chunk type
+export interface ChatStreamingChunk {
+  type: "thinking" | "text" | "tool_use" | "tool_result";
+  content?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+}
 
 type MessageHandler = (message: WSMessage) => void;
 
