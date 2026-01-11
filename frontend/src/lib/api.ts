@@ -905,4 +905,10 @@ export const api = {
     fetchJson<BranchLink>(`${API_BASE}/branch-links/${id}/refresh`, {
       method: "POST",
     }),
+
+  // System
+  selectDirectory: () =>
+    fetchJson<{ cancelled: boolean; path: string | null }>(`${API_BASE}/system/select-directory`, {
+      method: "POST",
+    }),
 };
