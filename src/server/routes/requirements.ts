@@ -148,9 +148,7 @@ requirementsRouter.delete("/:id", async (c) => {
     throw new NotFoundError(`Note not found: ${id}`);
   }
 
-  await db
-    .delete(schema.requirementsNotes)
-    .where(eq(schema.requirementsNotes.id, id));
+  await db.delete(schema.requirementsNotes).where(eq(schema.requirementsNotes.id, id));
 
   return c.json({ success: true });
 });

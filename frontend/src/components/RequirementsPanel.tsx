@@ -158,10 +158,7 @@ export function RequirementsPanel({
       <div className="requirements-panel__content">
         {/* Plan Section */}
         <section className="req-section">
-          <button
-            className="req-section__toggle"
-            onClick={() => toggleSection("plan")}
-          >
+          <button className="req-section__toggle" onClick={() => toggleSection("plan")}>
             <span className="req-section__icon">{sectionsOpen.plan ? "▼" : "▶"}</span>
             <span className="req-section__title">Plan / PRD</span>
             {planDirty && <span className="req-section__badge">未保存</span>}
@@ -201,9 +198,7 @@ export function RequirementsPanel({
                   </div>
                 </>
               ) : (
-                <div className="req-empty">
-                  Planを作成してください（サイドバーの「New Plan」）
-                </div>
+                <div className="req-empty">Planを作成してください（サイドバーの「New Plan」）</div>
               )}
             </div>
           )}
@@ -211,10 +206,7 @@ export function RequirementsPanel({
 
         {/* Links Section */}
         <section className="req-section">
-          <button
-            className="req-section__toggle"
-            onClick={() => toggleSection("links")}
-          >
+          <button className="req-section__toggle" onClick={() => toggleSection("links")}>
             <span className="req-section__icon">{sectionsOpen.links ? "▼" : "▶"}</span>
             <span className="req-section__title">Links</span>
             <span className="req-section__count">{allLinks.length}</span>
@@ -261,19 +253,14 @@ export function RequirementsPanel({
                   Add Link
                 </button>
               </div>
-              <p className="req-hint">
-                💡 リンクはGitHub Issue作成時に自動で含まれます
-              </p>
+              <p className="req-hint">💡 リンクはGitHub Issue作成時に自動で含まれます</p>
             </div>
           )}
         </section>
 
         {/* Quick Tasks Section */}
         <section className="req-section">
-          <button
-            className="req-section__toggle"
-            onClick={() => toggleSection("tasks")}
-          >
+          <button className="req-section__toggle" onClick={() => toggleSection("tasks")}>
             <span className="req-section__icon">{sectionsOpen.tasks ? "▼" : "▶"}</span>
             <span className="req-section__title">Quick Tasks → Backlog</span>
           </button>
@@ -308,10 +295,7 @@ export function RequirementsPanel({
 
         {/* Notes Section (collapsed by default) */}
         <section className="req-section">
-          <button
-            className="req-section__toggle"
-            onClick={() => toggleSection("notes")}
-          >
+          <button className="req-section__toggle" onClick={() => toggleSection("notes")}>
             <span className="req-section__icon">{sectionsOpen.notes ? "▼" : "▶"}</span>
             <span className="req-section__title">Memo / Notes</span>
             <span className="req-section__count">

@@ -22,16 +22,19 @@ export default function SettingsPage() {
 
   // Load pins
   useEffect(() => {
-    api.getRepoPins().then((pins) => {
-      setRepoPins(pins);
-      // Auto-select if repoId is provided
-      if (repoIdParam) {
-        const pin = pins.find((p) => p.repoId === repoIdParam);
-        if (pin) {
-          setSelectedPinId(pin.id);
+    api
+      .getRepoPins()
+      .then((pins) => {
+        setRepoPins(pins);
+        // Auto-select if repoId is provided
+        if (repoIdParam) {
+          const pin = pins.find((p) => p.repoId === repoIdParam);
+          if (pin) {
+            setSelectedPinId(pin.id);
+          }
         }
-      }
-    }).catch(console.error);
+      })
+      .catch(console.error);
   }, [repoIdParam]);
 
   // Load settings when pin is selected
@@ -108,32 +111,77 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ padding: "20px", maxWidth: "600px", margin: "0 auto", minHeight: "100vh", background: "#0f172a" }}>
+    <div
+      style={{
+        padding: "20px",
+        maxWidth: "600px",
+        margin: "0 auto",
+        minHeight: "100vh",
+        background: "#0f172a",
+      }}
+    >
       <h1 style={{ color: "#e5e7eb", marginBottom: "20px" }}>Settings</h1>
 
       <div style={{ marginBottom: "20px" }}>
-        <Link to="/" style={{ color: "#60a5fa" }}>← Back</Link>
+        <Link to="/" style={{ color: "#60a5fa" }}>
+          ← Back
+        </Link>
       </div>
 
       {error && (
-        <div style={{ background: "#7f1d1d", color: "#f87171", padding: "10px", marginBottom: "20px", borderRadius: "4px" }}>
+        <div
+          style={{
+            background: "#7f1d1d",
+            color: "#f87171",
+            padding: "10px",
+            marginBottom: "20px",
+            borderRadius: "4px",
+          }}
+        >
           {error}
         </div>
       )}
 
       {saved && (
-        <div style={{ background: "#14532d", color: "#4ade80", padding: "10px", marginBottom: "20px", borderRadius: "4px" }}>
+        <div
+          style={{
+            background: "#14532d",
+            color: "#4ade80",
+            padding: "10px",
+            marginBottom: "20px",
+            borderRadius: "4px",
+          }}
+        >
           Saved!
         </div>
       )}
 
       {/* Project Selection */}
-      <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
-        <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>PROJECT</label>
+      <div
+        style={{
+          marginBottom: "20px",
+          padding: "15px",
+          background: "#1f2937",
+          borderRadius: "8px",
+          border: "1px solid #374151",
+        }}
+      >
+        <label
+          style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}
+        >
+          PROJECT
+        </label>
         <select
           value={selectedPinId || ""}
           onChange={(e) => setSelectedPinId(e.target.value ? parseInt(e.target.value) : null)}
-          style={{ width: "100%", padding: "8px", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px" }}
+          style={{
+            width: "100%",
+            padding: "8px",
+            background: "#111827",
+            color: "#e5e7eb",
+            border: "1px solid #374151",
+            borderRadius: "4px",
+          }}
         >
           <option value="">-- Select --</option>
           {repoPins.map((p) => (
@@ -147,23 +195,58 @@ export default function SettingsPage() {
       {selectedPin && (
         <>
           {/* Default Branch */}
-          <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
-            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>DEFAULT BRANCH</label>
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "15px",
+              background: "#1f2937",
+              borderRadius: "8px",
+              border: "1px solid #374151",
+            }}
+          >
+            <label
+              style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}
+            >
+              DEFAULT BRANCH
+            </label>
             <input
               type="text"
               value={defaultBranch}
               onChange={(e) => setDefaultBranch(e.target.value)}
               placeholder="develop"
-              style={{ width: "100%", padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
+              style={{
+                width: "100%",
+                padding: "8px",
+                fontFamily: "monospace",
+                background: "#111827",
+                color: "#e5e7eb",
+                border: "1px solid #374151",
+                borderRadius: "4px",
+                boxSizing: "border-box",
+              }}
             />
-            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}>
+            <small
+              style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}
+            >
               Task Instruction と Chat は表示されません
             </small>
           </div>
 
           {/* Branch Naming Patterns */}
-          <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
-            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>BRANCH NAMING PATTERNS</label>
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "15px",
+              background: "#1f2937",
+              borderRadius: "8px",
+              border: "1px solid #374151",
+            }}
+          >
+            <label
+              style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}
+            >
+              BRANCH NAMING PATTERNS
+            </label>
             {patterns.map((p, i) => (
               <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
                 <input
@@ -175,11 +258,27 @@ export default function SettingsPage() {
                     setPatterns(newPatterns);
                   }}
                   placeholder="feat_{issueId}_{taskSlug}"
-                  style={{ flex: 1, padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
+                  style={{
+                    flex: 1,
+                    padding: "8px",
+                    fontFamily: "monospace",
+                    background: "#111827",
+                    color: "#e5e7eb",
+                    border: "1px solid #374151",
+                    borderRadius: "4px",
+                    boxSizing: "border-box",
+                  }}
                 />
                 <button
                   onClick={() => setPatterns(patterns.filter((_, j) => j !== i))}
-                  style={{ padding: "8px 12px", background: "#7f1d1d", color: "#f87171", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                  style={{
+                    padding: "8px 12px",
+                    background: "#7f1d1d",
+                    color: "#f87171",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                  }}
                 >
                   ×
                 </button>
@@ -187,37 +286,95 @@ export default function SettingsPage() {
             ))}
             <button
               onClick={() => setPatterns([...patterns, ""])}
-              style={{ padding: "6px 12px", background: "#374151", color: "#9ca3af", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }}
+              style={{
+                padding: "6px 12px",
+                background: "#374151",
+                color: "#9ca3af",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "12px",
+              }}
             >
               + Add Pattern
             </button>
           </div>
 
           {/* Worktree Custom Commands */}
-          <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
-            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>WORKTREE CREATE COMMAND</label>
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "15px",
+              background: "#1f2937",
+              borderRadius: "8px",
+              border: "1px solid #374151",
+            }}
+          >
+            <label
+              style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}
+            >
+              WORKTREE CREATE COMMAND
+            </label>
             <input
               type="text"
               value={worktreeSettings.worktreeCreateCommand || ""}
-              onChange={(e) => setWorktreeSettings({ ...worktreeSettings, worktreeCreateCommand: e.target.value })}
+              onChange={(e) =>
+                setWorktreeSettings({ ...worktreeSettings, worktreeCreateCommand: e.target.value })
+              }
               placeholder="e.g., npm install"
-              style={{ width: "100%", padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
+              style={{
+                width: "100%",
+                padding: "8px",
+                fontFamily: "monospace",
+                background: "#111827",
+                color: "#e5e7eb",
+                border: "1px solid #374151",
+                borderRadius: "4px",
+                boxSizing: "border-box",
+              }}
             />
-            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}>
+            <small
+              style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}
+            >
               Placeholders: {"{repo}"}, {"{branch}"}, {"{path}"}
             </small>
           </div>
 
-          <div style={{ marginBottom: "20px", padding: "15px", background: "#1f2937", borderRadius: "8px", border: "1px solid #374151" }}>
-            <label style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}>WORKTREE DELETE COMMAND</label>
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "15px",
+              background: "#1f2937",
+              borderRadius: "8px",
+              border: "1px solid #374151",
+            }}
+          >
+            <label
+              style={{ color: "#9ca3af", fontSize: "12px", display: "block", marginBottom: "8px" }}
+            >
+              WORKTREE DELETE COMMAND
+            </label>
             <input
               type="text"
               value={worktreeSettings.worktreeDeleteCommand || ""}
-              onChange={(e) => setWorktreeSettings({ ...worktreeSettings, worktreeDeleteCommand: e.target.value })}
+              onChange={(e) =>
+                setWorktreeSettings({ ...worktreeSettings, worktreeDeleteCommand: e.target.value })
+              }
               placeholder="e.g., cleanup-script.sh {branch}"
-              style={{ width: "100%", padding: "8px", fontFamily: "monospace", background: "#111827", color: "#e5e7eb", border: "1px solid #374151", borderRadius: "4px", boxSizing: "border-box" }}
+              style={{
+                width: "100%",
+                padding: "8px",
+                fontFamily: "monospace",
+                background: "#111827",
+                color: "#e5e7eb",
+                border: "1px solid #374151",
+                borderRadius: "4px",
+                boxSizing: "border-box",
+              }}
             />
-            <small style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}>
+            <small
+              style={{ color: "#6b7280", fontSize: "11px", marginTop: "4px", display: "block" }}
+            >
               Placeholders: {"{repo}"}, {"{branch}"}, {"{path}"}
             </small>
           </div>

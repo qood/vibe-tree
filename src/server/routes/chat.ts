@@ -16,12 +16,7 @@ import {
   validateOrThrow,
 } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
-import type {
-  ChatSession,
-  ChatMessage,
-  ChatSummary,
-  BranchNamingRule,
-} from "../../shared/types";
+import type { ChatSession, ChatMessage, ChatSummary, BranchNamingRule } from "../../shared/types";
 
 export const chatRouter = new Hono();
 
@@ -84,8 +79,8 @@ chatRouter.post("/sessions", async (c) => {
       and(
         eq(schema.chatSessions.repoId, input.repoId),
         eq(schema.chatSessions.branchName, branchName),
-        eq(schema.chatSessions.status, "active")
-      )
+        eq(schema.chatSessions.status, "active"),
+      ),
     );
 
   if (existing[0]) {
@@ -147,8 +142,8 @@ chatRouter.post("/sessions/planning", async (c) => {
       and(
         eq(schema.chatSessions.repoId, input.repoId),
         eq(schema.chatSessions.worktreePath, planningWorktreePath),
-        eq(schema.chatSessions.status, "active")
-      )
+        eq(schema.chatSessions.status, "active"),
+      ),
     );
 
   if (existing[0]) {
@@ -245,12 +240,7 @@ chatRouter.get("/running", async (c) => {
   const runningRuns = await db
     .select()
     .from(schema.agentRuns)
-    .where(
-      and(
-        eq(schema.agentRuns.sessionId, sessionId),
-        eq(schema.agentRuns.status, "running")
-      )
-    )
+    .where(and(eq(schema.agentRuns.sessionId, sessionId), eq(schema.agentRuns.status, "running")))
     .limit(1);
 
   return c.json({ isRunning: runningRuns.length > 0 });
@@ -268,12 +258,7 @@ chatRouter.post("/cancel", async (c) => {
   const runningRuns = await db
     .select()
     .from(schema.agentRuns)
-    .where(
-      and(
-        eq(schema.agentRuns.sessionId, sessionId),
-        eq(schema.agentRuns.status, "running")
-      )
-    )
+    .where(and(eq(schema.agentRuns.sessionId, sessionId), eq(schema.agentRuns.status, "running")))
     .limit(1);
 
   const run = runningRuns[0];
@@ -520,7 +505,11 @@ chatRouter.post("/send", async (c) => {
                   },
                 });
               } else if (block.type === "tool_use") {
-                streamingChunks.push({ type: "tool_use", toolName: block.name, toolInput: block.input });
+                streamingChunks.push({
+                  type: "tool_use",
+                  toolName: block.name,
+                  toolInput: block.input,
+                });
                 broadcast({
                   type: "chat.streaming.chunk",
                   repoId: session.repoId,
@@ -532,7 +521,8 @@ chatRouter.post("/send", async (c) => {
                   },
                 });
               } else if (block.type === "tool_result") {
-                const resultContent = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+                const resultContent =
+                  typeof block.content === "string" ? block.content : JSON.stringify(block.content);
                 streamingChunks.push({ type: "tool_result", content: resultContent });
                 broadcast({
                   type: "chat.streaming.chunk",
@@ -743,8 +733,8 @@ chatRouter.post("/summarize", async (c) => {
     .where(
       and(
         eq(schema.chatMessages.sessionId, input.sessionId),
-        gt(schema.chatMessages.id, coveredUntil)
-      )
+        gt(schema.chatMessages.id, coveredUntil),
+      ),
     )
     .orderBy(asc(schema.chatMessages.createdAt));
 
@@ -753,9 +743,7 @@ chatRouter.post("/summarize", async (c) => {
   }
 
   // Build summary prompt
-  const conversationText = messages
-    .map((m) => `[${m.role}]: ${m.content}`)
-    .join("\n\n");
+  const conversationText = messages.map((m) => `[${m.role}]: ${m.content}`).join("\n\n");
 
   const summaryPrompt = `Please summarize the following conversation. Focus on:
 1. Key decisions made
@@ -906,7 +894,7 @@ const INSTRUCTION_REVIEW_SYSTEM_PROMPT = `あなたはタスクインストラ�
 async function buildPrompt(
   session: typeof schema.chatSessions.$inferSelect,
   userMessage: string,
-  context?: string
+  context?: string,
 ): Promise<string> {
   const parts: string[] = [];
 
@@ -939,13 +927,11 @@ async function buildPrompt(
       and(
         eq(schema.projectRules.repoId, session.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
-  const branchNaming = rules[0]
-    ? (JSON.parse(rules[0].ruleJson) as BranchNamingRule)
-    : null;
+  const branchNaming = rules[0] ? (JSON.parse(rules[0].ruleJson) as BranchNamingRule) : null;
 
   if (isClaudeCodeSession) {
     if (isInstructionReviewSession) {
@@ -1024,17 +1010,20 @@ ${gitStatus || "Clean working directory"}
         .from(schema.externalLinks)
         .where(eq(schema.externalLinks.planningSessionId, planningSession[0].id));
 
-      console.log(`[Chat] Found ${links.length} external links for planning session ${planningSession[0].id}`);
+      console.log(
+        `[Chat] Found ${links.length} external links for planning session ${planningSession[0].id}`,
+      );
 
       if (links.length > 0) {
         const linksContext = links.map((link) => {
-          const typeLabel = {
-            notion: "Notion",
-            figma: "Figma",
-            github_issue: "GitHub Issue",
-            github_pr: "GitHub PR",
-            url: "URL",
-          }[link.linkType] || link.linkType;
+          const typeLabel =
+            {
+              notion: "Notion",
+              figma: "Figma",
+              github_issue: "GitHub Issue",
+              github_pr: "GitHub PR",
+              url: "URL",
+            }[link.linkType] || link.linkType;
 
           if (link.contentCache) {
             return `### ${link.title || typeLabel}\nSource: ${link.url}\n\n${link.contentCache}`;
@@ -1057,10 +1046,7 @@ ${linksContext.join("\n\n---\n\n")}
 
   // 4. Plan if available
   if (session.planId) {
-    const plans = await db
-      .select()
-      .from(schema.plans)
-      .where(eq(schema.plans.id, session.planId));
+    const plans = await db.select().from(schema.plans).where(eq(schema.plans.id, session.planId));
 
     if (plans[0]) {
       parts.push(`## Current Plan: ${plans[0].title}
@@ -1160,7 +1146,10 @@ Planningモードでは**ファイルの作成・編集・コード実行はで�
           .limit(1);
 
         if (treeSpecs[0]) {
-          const specJson = JSON.parse(treeSpecs[0].specJson) as { nodes: unknown[]; edges: { parent: string; child: string }[] };
+          const specJson = JSON.parse(treeSpecs[0].specJson) as {
+            nodes: unknown[];
+            edges: { parent: string; child: string }[];
+          };
           // Find edge where child is the current branch
           const edge = specJson.edges.find((e) => e.child === session.branchName);
           if (edge) {
@@ -1264,7 +1253,10 @@ interface GitHubLabel {
   color: string;
 }
 
-function fetchGitHubPRInfo(repoId: string, prNumber: number): {
+function fetchGitHubPRInfo(
+  repoId: string,
+  prNumber: number,
+): {
   title: string;
   status: string;
   checksStatus: string;
@@ -1276,7 +1268,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
   try {
     const result = execSync(
       `gh pr view ${prNumber} --repo "${repoId}" --json number,title,state,statusCheckRollup,labels,reviewRequests,reviews,projectItems`,
-      { encoding: "utf-8", timeout: 10000 }
+      { encoding: "utf-8", timeout: 10000 },
     ).trim();
     const data = JSON.parse(result);
 
@@ -1294,10 +1286,10 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
         });
       }
       const checks = Array.from(checksMap.values());
-      const hasFailure = checks.some((c) =>
-        c.conclusion === "FAILURE" || c.conclusion === "ERROR"
+      const hasFailure = checks.some((c) => c.conclusion === "FAILURE" || c.conclusion === "ERROR");
+      const allSuccess = checks.every(
+        (c) => c.conclusion === "SUCCESS" || c.conclusion === "SKIPPED",
       );
-      const allSuccess = checks.every((c) => c.conclusion === "SUCCESS" || c.conclusion === "SKIPPED");
       if (hasFailure) checksStatus = "failure";
       else if (allSuccess) checksStatus = "success";
     }
@@ -1332,7 +1324,10 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
       status: data.state?.toLowerCase() || "open",
       checksStatus,
       checks,
-      labels: (data.labels || []).map((l: { name: string; color: string }) => ({ name: l.name, color: l.color })),
+      labels: (data.labels || []).map((l: { name: string; color: string }) => ({
+        name: l.name,
+        color: l.color,
+      })),
       reviewers,
       ...(projectStatus !== undefined && { projectStatus }),
     };
@@ -1347,7 +1342,7 @@ async function savePrLink(
   repoId: string,
   branchName: string,
   prUrl: string,
-  prNumber: number
+  prNumber: number,
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -1359,8 +1354,8 @@ async function savePrLink(
       and(
         eq(schema.branchLinks.repoId, repoId),
         eq(schema.branchLinks.branchName, branchName),
-        eq(schema.branchLinks.url, prUrl)
-      )
+        eq(schema.branchLinks.url, prUrl),
+      ),
     )
     .limit(1);
 
@@ -1394,8 +1389,8 @@ async function savePrLink(
         and(
           eq(schema.branchLinks.repoId, repoId),
           eq(schema.branchLinks.branchName, branchName),
-          eq(schema.branchLinks.url, prUrl)
-        )
+          eq(schema.branchLinks.url, prUrl),
+        ),
       )
       .limit(1);
 

@@ -5,10 +5,9 @@ import { execSync } from "child_process";
  */
 export function branchExists(repoPath: string, branch: string): boolean {
   try {
-    const output = execSync(
-      `cd "${repoPath}" && git branch --list "${branch}"`,
-      { encoding: "utf-8" }
-    ).trim();
+    const output = execSync(`cd "${repoPath}" && git branch --list "${branch}"`, {
+      encoding: "utf-8",
+    }).trim();
     return output.length > 0;
   } catch {
     return false;
@@ -20,10 +19,9 @@ export function branchExists(repoPath: string, branch: string): boolean {
  */
 export function worktreeExists(repoPath: string, branch: string): boolean {
   try {
-    const output = execSync(
-      `cd "${repoPath}" && git worktree list --porcelain`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`cd "${repoPath}" && git worktree list --porcelain`, {
+      encoding: "utf-8",
+    });
     // Parse worktree list output to find matching branch
     const lines = output.split("\n");
     for (const line of lines) {
@@ -45,10 +43,9 @@ export function worktreeExists(repoPath: string, branch: string): boolean {
  */
 export function getWorktreePath(repoPath: string, branch: string): string | null {
   try {
-    const output = execSync(
-      `cd "${repoPath}" && git worktree list --porcelain`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`cd "${repoPath}" && git worktree list --porcelain`, {
+      encoding: "utf-8",
+    });
     const lines = output.split("\n");
     let currentPath: string | null = null;
 
@@ -77,7 +74,7 @@ export function getDefaultBranch(repoPath: string): string {
   try {
     const output = execSync(
       `cd "${repoPath}" && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     const match = output.match(/refs\/remotes\/origin\/(.+)$/);
     if (match && match[1]) {
@@ -91,7 +88,7 @@ export function getDefaultBranch(repoPath: string): string {
   try {
     const output = execSync(
       `cd "${repoPath}" && gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     if (output) {
       return output;
@@ -121,10 +118,9 @@ export function removeWorktree(repoPath: string, branch: string): boolean {
 
   try {
     // Use --force to handle dirty worktrees
-    execSync(
-      `cd "${repoPath}" && git worktree remove "${worktreePath}" --force`,
-      { encoding: "utf-8" }
-    );
+    execSync(`cd "${repoPath}" && git worktree remove "${worktreePath}" --force`, {
+      encoding: "utf-8",
+    });
     return true;
   } catch {
     return false;

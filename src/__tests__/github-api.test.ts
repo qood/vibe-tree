@@ -1,12 +1,4 @@
-import {
-  describe,
-  test,
-  expect,
-  beforeEach,
-  afterEach,
-  spyOn,
-  mock,
-} from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, spyOn, mock } from "bun:test";
 import * as childProcess from "child_process";
 import type { PRInfo } from "../shared/types";
 import { fetchPRsGraphQL } from "../server/lib/github-api";
@@ -62,9 +54,7 @@ function createMockPR(data: {
       nodes: [
         {
           commit: {
-            statusCheckRollup: data.statusCheckState
-              ? { state: data.statusCheckState }
-              : null,
+            statusCheckRollup: data.statusCheckState ? { state: data.statusCheckState } : null,
           },
         },
       ],
@@ -134,8 +124,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       const result: PRInfo[] = await fetchPRsGraphQL("owner/repo");
@@ -161,8 +151,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       const result = await fetchPRsGraphQL("owner/repo");
@@ -195,8 +185,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       const result: PRInfo[] = await fetchPRsGraphQL("owner/repo");
@@ -234,8 +224,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       const result: PRInfo[] = await fetchPRsGraphQL("owner/repo");
@@ -252,8 +242,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       await fetchPRsGraphQL("owner/repo");
@@ -288,9 +278,7 @@ describe("fetchPRsGraphQL", () => {
       const result = await fetchPRsGraphQL("owner/repo");
 
       expect(result).toEqual([]);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "GitHub token not available"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("GitHub token not available");
     });
 
     test("returns empty array for invalid repoId (no slash)", async () => {
@@ -299,10 +287,7 @@ describe("fetchPRsGraphQL", () => {
       const result = await fetchPRsGraphQL("invalidrepo");
 
       expect(result).toEqual([]);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Invalid repoId format:",
-        "invalidrepo"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Invalid repoId format:", "invalidrepo");
     });
 
     test("returns empty array for invalid repoId (too many slashes)", async () => {
@@ -329,34 +314,25 @@ describe("fetchPRsGraphQL", () => {
           new Response("Unauthorized", {
             status: 401,
             statusText: "Unauthorized",
-          })
-        )
+          }),
+        ),
       );
 
       const result = await fetchPRsGraphQL("owner/repo");
 
       expect(result).toEqual([]);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "GitHub API error:",
-        401,
-        "Unauthorized"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("GitHub API error:", 401, "Unauthorized");
     });
 
     test("returns empty array on network error", async () => {
       execSyncSpy.mockImplementation(() => "ghp_test_token\n");
 
-      fetchMock.mockImplementation(() =>
-        Promise.reject(new Error("Network error"))
-      );
+      fetchMock.mockImplementation(() => Promise.reject(new Error("Network error")));
 
       const result = await fetchPRsGraphQL("owner/repo");
 
       expect(result).toEqual([]);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "fetchPRsGraphQL error:",
-        expect.any(Error)
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("fetchPRsGraphQL error:", expect.any(Error));
     });
 
     test("returns empty array on GraphQL error", async () => {
@@ -371,8 +347,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       const result = await fetchPRsGraphQL("owner/repo");
@@ -394,8 +370,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       const result = await fetchPRsGraphQL("owner/repo");
@@ -414,8 +390,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       // First call - should call execSync
@@ -437,8 +413,8 @@ describe("fetchPRsGraphQL", () => {
           new Response(JSON.stringify(mockResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          })
-        )
+          }),
+        ),
       );
 
       // First call

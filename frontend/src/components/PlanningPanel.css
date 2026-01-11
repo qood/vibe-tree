@@ -6,7 +6,9 @@
   border: 1px solid #374151;
   border-radius: 8px;
   overflow: hidden;
-  transition: height 0.2s ease, flex 0.2s ease;
+  transition:
+    height 0.2s ease,
+    flex 0.2s ease;
 }
 
 .planning-panel--loading {
@@ -27,7 +29,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .planning-panel__header {
@@ -254,7 +258,9 @@
   color: #6b7280;
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .planning-panel__session-add:hover {
@@ -453,7 +459,9 @@
   border-radius: 3px;
   font-size: 14px;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .planning-panel__session-delete:hover {
@@ -511,7 +519,6 @@
   font-size: 11px;
   font-weight: 500;
   color: #6b7280;
-
 }
 
 .planning-panel__tasks h4 {
@@ -519,7 +526,6 @@
   font-size: 13px;
   font-weight: 500;
   color: #9ca3af;
-
 }
 
 .planning-panel__links-list {
@@ -539,7 +545,9 @@
   border: 1px solid #374151;
   border-radius: 6px;
   text-decoration: none;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .planning-panel__link-icon img {
@@ -576,8 +584,12 @@
 }
 
 @keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .planning-panel__link-icon .planning-panel__link-remove-overlay {
@@ -612,7 +624,9 @@
   font-size: 16px;
   color: #6b7280;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .planning-panel__link-add-icon:hover {
@@ -876,7 +890,9 @@
   cursor: grab;
   touch-action: none;
   user-select: none;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
 .planning-panel__task-item--drop-target {
@@ -986,8 +1002,15 @@
 }
 
 @keyframes thinking-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
 }
 
 /* Session list item unread dot */

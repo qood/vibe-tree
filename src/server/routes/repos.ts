@@ -35,7 +35,7 @@ reposRouter.get("/", async (c) => {
       () => {
         const output = execSync(
           `gh repo list --json name,nameWithOwner,url,description,isPrivate,defaultBranchRef --limit ${limit}`,
-          { encoding: "utf-8" }
+          { encoding: "utf-8" },
         );
 
         const ghRepos: GhRepo[] = JSON.parse(output);
@@ -50,7 +50,7 @@ reposRouter.get("/", async (c) => {
           defaultBranch: r.defaultBranchRef?.name ?? "main",
         }));
       },
-      5 * 60 * 1000 // 5 minutes TTL
+      5 * 60 * 1000, // 5 minutes TTL
     );
 
     return c.json(repos);
@@ -69,7 +69,7 @@ reposRouter.get("/:owner/:name", async (c) => {
   try {
     const output = execSync(
       `gh repo view ${fullName} --json name,nameWithOwner,url,description,isPrivate,defaultBranchRef`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
 
     const r: GhRepo = JSON.parse(output);

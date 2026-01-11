@@ -21,26 +21,18 @@ const GITHUB_CACHE_TTL = 60_000;
 
 async function fetchGitHubIssueInfoCached(
   repoId: string,
-  issueNumber: number
+  issueNumber: number,
 ): Promise<BranchLinkIssueInfo | null> {
   const cacheKey = `github:issue:${repoId}:${issueNumber}`;
-  return getCachedOrFetch(
-    cacheKey,
-    () => fetchIssueGraphQL(repoId, issueNumber),
-    GITHUB_CACHE_TTL
-  );
+  return getCachedOrFetch(cacheKey, () => fetchIssueGraphQL(repoId, issueNumber), GITHUB_CACHE_TTL);
 }
 
 async function fetchGitHubPRInfoCached(
   repoId: string,
-  prNumber: number
+  prNumber: number,
 ): Promise<BranchLinkPRInfo | null> {
   const cacheKey = `github:pr:${repoId}:${prNumber}`;
-  return getCachedOrFetch(
-    cacheKey,
-    () => fetchPRGraphQL(repoId, prNumber),
-    GITHUB_CACHE_TTL
-  );
+  return getCachedOrFetch(cacheKey, () => fetchPRGraphQL(repoId, prNumber), GITHUB_CACHE_TTL);
 }
 
 // Validation schemas
@@ -77,8 +69,8 @@ branchLinksRouter.get("/", async (c) => {
     .where(
       and(
         eq(schema.branchLinks.repoId, query.repoId),
-        eq(schema.branchLinks.branchName, query.branchName)
-      )
+        eq(schema.branchLinks.branchName, query.branchName),
+      ),
     )
     .orderBy(desc(schema.branchLinks.createdAt));
 
@@ -103,10 +95,10 @@ branchLinksRouter.post("/", async (c) => {
             and(
               eq(schema.branchLinks.repoId, input.repoId),
               eq(schema.branchLinks.branchName, input.branchName),
-              eq(schema.branchLinks.url, input.url)
-            )
+              eq(schema.branchLinks.url, input.url),
+            ),
           )
-          .limit(1)
+          .limit(1),
       )
     : db
         .select()
@@ -115,8 +107,8 @@ branchLinksRouter.post("/", async (c) => {
           and(
             eq(schema.branchLinks.repoId, input.repoId),
             eq(schema.branchLinks.branchName, input.branchName),
-            eq(schema.branchLinks.url, input.url)
-          )
+            eq(schema.branchLinks.url, input.url),
+          ),
         )
         .limit(1));
 
@@ -131,7 +123,7 @@ branchLinksRouter.post("/", async (c) => {
               status: input.status ?? existing.status,
               updatedAt: now,
             })
-            .where(eq(schema.branchLinks.id, existing.id))
+            .where(eq(schema.branchLinks.id, existing.id)),
         )
       : db
           .update(schema.branchLinks)
@@ -171,7 +163,7 @@ branchLinksRouter.post("/", async (c) => {
     if (input.linkType === "issue") {
       const issueInfo = perf
         ? await perf.measureGitHubAsync("fetch-issue", () =>
-            fetchGitHubIssueInfoCached(input.repoId, input.number!)
+            fetchGitHubIssueInfoCached(input.repoId, input.number!),
           )
         : await fetchGitHubIssueInfoCached(input.repoId, input.number);
       if (issueInfo) {
@@ -183,7 +175,7 @@ branchLinksRouter.post("/", async (c) => {
     } else if (input.linkType === "pr") {
       const prInfo = perf
         ? await perf.measureGitHubAsync("fetch-pr", () =>
-            fetchGitHubPRInfoCached(input.repoId, input.number!)
+            fetchGitHubPRInfoCached(input.repoId, input.number!),
           )
         : await fetchGitHubPRInfoCached(input.repoId, input.number);
       if (prInfo) {
@@ -220,7 +212,7 @@ branchLinksRouter.post("/", async (c) => {
             createdAt: now,
             updatedAt: now,
           })
-          .returning()
+          .returning(),
       )
     : db
         .insert(schema.branchLinks)
@@ -288,10 +280,7 @@ branchLinksRouter.patch("/:id", async (c) => {
     })
     .where(eq(schema.branchLinks.id, id));
 
-  const [updated] = await db
-    .select()
-    .from(schema.branchLinks)
-    .where(eq(schema.branchLinks.id, id));
+  const [updated] = await db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id));
 
   broadcast({
     type: "branchLink.updated",
@@ -343,17 +332,9 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
 
   const [existing] = await (perf
     ? perf.measureDb("fetch-existing", () =>
-        db
-          .select()
-          .from(schema.branchLinks)
-          .where(eq(schema.branchLinks.id, id))
-          .limit(1)
+        db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id)).limit(1),
       )
-    : db
-        .select()
-        .from(schema.branchLinks)
-        .where(eq(schema.branchLinks.id, id))
-        .limit(1));
+    : db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id)).limit(1));
 
   if (!existing) {
     throw new NotFoundError("Branch link not found");
@@ -386,7 +367,7 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
   if (existing.linkType === "issue") {
     const issueInfo = perf
       ? await perf.measureGitHubAsync("refresh-issue", () =>
-          fetchGitHubIssueInfoCached(existing.repoId, existing.number!)
+          fetchGitHubIssueInfoCached(existing.repoId, existing.number!),
         )
       : await fetchGitHubIssueInfoCached(existing.repoId, existing.number);
     if (issueInfo) {
@@ -398,7 +379,7 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
   } else if (existing.linkType === "pr") {
     const prInfo = perf
       ? await perf.measureGitHubAsync("refresh-pr", () =>
-          fetchGitHubPRInfoCached(existing.repoId, existing.number!)
+          fetchGitHubPRInfoCached(existing.repoId, existing.number!),
         )
       : await fetchGitHubPRInfoCached(existing.repoId, existing.number);
     if (prInfo) {
@@ -428,7 +409,7 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
             projectStatus,
             updatedAt: now,
           })
-          .where(eq(schema.branchLinks.id, id))
+          .where(eq(schema.branchLinks.id, id)),
       )
     : db
         .update(schema.branchLinks)
@@ -445,10 +426,7 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
         })
         .where(eq(schema.branchLinks.id, id)));
 
-  const [updated] = await db
-    .select()
-    .from(schema.branchLinks)
-    .where(eq(schema.branchLinks.id, id));
+  const [updated] = await db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id));
 
   broadcast({
     type: "branchLink.updated",

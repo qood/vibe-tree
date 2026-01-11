@@ -7,11 +7,7 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { expandTilde, getRepoId } from "../utils";
 import { broadcast } from "../ws";
-import {
-  aiStartSchema,
-  aiStopSchema,
-  validateOrThrow,
-} from "../../shared/validation";
+import { aiStartSchema, aiStopSchema, validateOrThrow } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import type { BranchNamingRule, Plan, AgentSession } from "../../shared/types";
 
@@ -61,15 +57,12 @@ async function generatePrompt(
   repoId: string,
   localPath: string,
   planId?: number,
-  branch?: string
+  branch?: string,
 ): Promise<string> {
   // Get plan if specified
   let plan: Plan | null = null;
   if (planId) {
-    const plans = await db
-      .select()
-      .from(schema.plans)
-      .where(eq(schema.plans.id, planId));
+    const plans = await db.select().from(schema.plans).where(eq(schema.plans.id, planId));
     if (plans[0]) {
       plan = {
         id: plans[0].id,
@@ -92,14 +85,12 @@ async function generatePrompt(
       and(
         eq(schema.projectRules.repoId, repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   const ruleRecord = rules[0];
-  const branchNaming = ruleRecord
-    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
-    : null;
+  const branchNaming = ruleRecord ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule) : null;
 
   // Get current branch
   let currentBranch = branch ?? "";
@@ -152,7 +143,9 @@ async function generatePrompt(
   }
 
   parts.push(`\n## Instructions`);
-  parts.push(`Continue working on this project. Follow the branch naming convention if creating new branches.`);
+  parts.push(
+    `Continue working on this project. Follow the branch naming convention if creating new branches.`,
+  );
 
   return parts.join("\n");
 }
@@ -163,7 +156,7 @@ async function logInstruction(
   planId: number | null,
   localPath: string,
   kind: "director_suggestion" | "user_instruction" | "system_note",
-  contentMd: string
+  contentMd: string,
 ) {
   await db.insert(schema.instructionsLog).values({
     repoId,
@@ -179,7 +172,7 @@ async function logInstruction(
 async function updateSessionStatus(
   sessionId: string,
   status: "running" | "stopped" | "exited",
-  exitCode?: number
+  exitCode?: number,
 ) {
   const now = new Date().toISOString();
   await db
@@ -230,9 +223,10 @@ aiRouter.post("/start", async (c) => {
   let branch: string | null = input.branch ?? null;
   if (!branch) {
     try {
-      branch = execSync(`cd "${localPath}" && git branch --show-current`, {
-        encoding: "utf-8",
-      }).trim() || null;
+      branch =
+        execSync(`cd "${localPath}" && git branch --show-current`, {
+          encoding: "utf-8",
+        }).trim() || null;
     } catch {
       branch = null;
     }
@@ -306,7 +300,7 @@ aiRouter.post("/start", async (c) => {
     input.planId ?? null,
     localPath,
     "system_note",
-    `Claude agent started (session: ${sessionId})`
+    `Claude agent started (session: ${sessionId})`,
   );
 
   // Broadcast start event
@@ -363,7 +357,7 @@ aiRouter.post("/start", async (c) => {
         input.planId ?? null,
         localPath,
         "system_note",
-        `Claude agent finished with exit code ${code} (session: ${sessionId})`
+        `Claude agent finished with exit code ${code} (session: ${sessionId})`,
       );
 
       // Broadcast finish event
@@ -391,13 +385,19 @@ aiRouter.post("/start", async (c) => {
         input.planId ?? null,
         localPath,
         "system_note",
-        `Claude agent error: ${err.message} (session: ${sessionId})`
+        `Claude agent error: ${err.message} (session: ${sessionId})`,
       );
 
       broadcast({
         type: "agent.finished",
         repoId,
-        data: { sessionId, pid, exitCode: -1, error: err.message, finishedAt: new Date().toISOString() },
+        data: {
+          sessionId,
+          pid,
+          exitCode: -1,
+          error: err.message,
+          finishedAt: new Date().toISOString(),
+        },
       });
     }
   });
@@ -460,7 +460,7 @@ aiRouter.post("/stop", async (c) => {
     null,
     targetAgent.session.worktreePath,
     "system_note",
-    `Claude agent stopped from UI (session: ${targetSessionId})`
+    `Claude agent stopped from UI (session: ${targetSessionId})`,
   );
 
   // Broadcast stop event
@@ -496,10 +496,7 @@ aiRouter.get("/sessions", async (c) => {
       .where(eq(schema.agentSessions.repoId, repoId))
       .orderBy(schema.agentSessions.startedAt);
   } else {
-    sessions = await db
-      .select()
-      .from(schema.agentSessions)
-      .orderBy(schema.agentSessions.startedAt);
+    sessions = await db.select().from(schema.agentSessions).orderBy(schema.agentSessions.startedAt);
   }
 
   return c.json({ sessions });

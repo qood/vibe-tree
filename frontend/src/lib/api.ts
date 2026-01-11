@@ -384,13 +384,12 @@ export const api = {
 
   // Repos (fetched from gh CLI)
   getRepos: () => fetchJson<Repo[]>(`${API_BASE}/repos`),
-  getRepo: (owner: string, name: string) =>
-    fetchJson<Repo>(`${API_BASE}/repos/${owner}/${name}`),
+  getRepo: (owner: string, name: string) => fetchJson<Repo>(`${API_BASE}/repos/${owner}/${name}`),
 
   // Branch Naming
   getBranchNaming: (repoId: string) =>
     fetchJson<BranchNamingRule & { id: number; repoId: string }>(
-      `${API_BASE}/project-rules/branch-naming?repoId=${encodeURIComponent(repoId)}`
+      `${API_BASE}/project-rules/branch-naming?repoId=${encodeURIComponent(repoId)}`,
     ),
   updateBranchNaming: (data: { repoId: string; patterns: string[] }) =>
     fetchJson<BranchNamingRule>(`${API_BASE}/project-rules/branch-naming`, {
@@ -401,7 +400,7 @@ export const api = {
   // Worktree Settings
   getWorktreeSettings: (repoId: string) =>
     fetchJson<WorktreeSettings & { id: number | null; repoId: string }>(
-      `${API_BASE}/project-rules/worktree?repoId=${encodeURIComponent(repoId)}`
+      `${API_BASE}/project-rules/worktree?repoId=${encodeURIComponent(repoId)}`,
     ),
   updateWorktreeSettings: (data: {
     repoId: string;
@@ -443,16 +442,14 @@ export const api = {
       body: JSON.stringify({ localPath }),
     }),
   fetch: (localPath: string) =>
-    fetchJson<{ success: boolean; branchStatus: Record<string, { ahead: number; behind: number }> }>(`${API_BASE}/scan/fetch`, {
+    fetchJson<{
+      success: boolean;
+      branchStatus: Record<string, { ahead: number; behind: number }>;
+    }>(`${API_BASE}/scan/fetch`, {
       method: "POST",
       body: JSON.stringify({ localPath }),
     }),
-  getRestartPrompt: (
-    repoId: string,
-    localPath: string,
-    planId?: number,
-    worktreePath?: string
-  ) => {
+  getRestartPrompt: (repoId: string, localPath: string, planId?: number, worktreePath?: string) => {
     const params = new URLSearchParams({
       repoId,
       localPath,
@@ -460,7 +457,7 @@ export const api = {
     if (planId) params.set("planId", String(planId));
     if (worktreePath) params.set("worktreePath", worktreePath);
     return fetchJson<{ cdCommand: string; restartPromptMd: string }>(
-      `${API_BASE}/scan/restart-prompt?${params}`
+      `${API_BASE}/scan/restart-prompt?${params}`,
     );
   },
 
@@ -503,7 +500,7 @@ export const api = {
     }),
   getInstructionLogs: (repoId: string) =>
     fetchJson<InstructionLog[]>(
-      `${API_BASE}/instructions/logs?repoId=${encodeURIComponent(repoId)}`
+      `${API_BASE}/instructions/logs?repoId=${encodeURIComponent(repoId)}`,
     ),
 
   // Repo Pins
@@ -539,8 +536,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pid }),
     }),
-  aiStatus: () =>
-    fetchJson<{ agents: AgentSession[] }>(`${API_BASE}/ai/status`),
+  aiStatus: () => fetchJson<{ agents: AgentSession[] }>(`${API_BASE}/ai/status`),
   aiSessions: (repoId?: string) => {
     const params = repoId ? `?repoId=${encodeURIComponent(repoId)}` : "";
     return fetchJson<{ sessions: AgentSession[] }>(`${API_BASE}/ai/sessions${params}`);
@@ -553,7 +549,7 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ localPath, branchName, baseBranch }),
-      }
+      },
     ),
   createTree: (
     repoId: string,
@@ -566,7 +562,7 @@ export const api = {
       title?: string;
       description?: string;
     }>,
-    options?: { createPrs?: boolean; baseBranch?: string }
+    options?: { createPrs?: boolean; baseBranch?: string },
   ) =>
     fetchJson<{
       success: boolean;
@@ -612,26 +608,38 @@ export const api = {
       body: JSON.stringify({ sessionId }),
     }),
   getChatMessages: (sessionId: string) =>
-    fetchJson<ChatMessage[]>(`${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`),
+    fetchJson<ChatMessage[]>(
+      `${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`,
+    ),
   checkChatRunning: (sessionId: string) =>
-    fetchJson<{ isRunning: boolean }>(`${API_BASE}/chat/running?sessionId=${encodeURIComponent(sessionId)}`),
+    fetchJson<{ isRunning: boolean }>(
+      `${API_BASE}/chat/running?sessionId=${encodeURIComponent(sessionId)}`,
+    ),
   cancelChat: (sessionId: string) =>
     fetchJson<{ success: boolean }>(`${API_BASE}/chat/cancel`, {
       method: "POST",
       body: JSON.stringify({ sessionId }),
     }),
-  sendChatMessage: (sessionId: string, userMessage: string, context?: string, chatMode?: ChatMode) =>
-    fetchJson<{ userMessage: ChatMessage; runId: number; status: string }>(`${API_BASE}/chat/send`, {
-      method: "POST",
-      body: JSON.stringify({ sessionId, userMessage, context, chatMode }),
-    }),
+  sendChatMessage: (
+    sessionId: string,
+    userMessage: string,
+    context?: string,
+    chatMode?: ChatMode,
+  ) =>
+    fetchJson<{ userMessage: ChatMessage; runId: number; status: string }>(
+      `${API_BASE}/chat/send`,
+      {
+        method: "POST",
+        body: JSON.stringify({ sessionId, userMessage, context, chatMode }),
+      },
+    ),
   updateInstructionEditStatus: (messageId: number, status: InstructionEditStatus) =>
     fetchJson<{ success: boolean; status: InstructionEditStatus }>(
       `${API_BASE}/chat/messages/${messageId}/instruction-status`,
       {
         method: "PATCH",
         body: JSON.stringify({ status }),
-      }
+      },
     ),
   summarizeChat: (sessionId: string) =>
     fetchJson<ChatSummary | { message: string }>(`${API_BASE}/chat/summarize`, {
@@ -656,7 +664,7 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ cols, rows }),
-      }
+      },
     ),
   stopTerminalSession: (sessionId: string) =>
     fetchJson<{ id: string; status: string }>(`${API_BASE}/term/sessions/${sessionId}/stop`, {
@@ -680,12 +688,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  updateRequirement: (id: number, data: {
-    noteType?: RequirementsNoteType;
-    title?: string;
-    content?: string;
-    notionUrl?: string;
-  }) =>
+  updateRequirement: (
+    id: number,
+    data: {
+      noteType?: RequirementsNoteType;
+      title?: string;
+      content?: string;
+      notionUrl?: string;
+    },
+  ) =>
     fetchJson<RequirementsNote>(`${API_BASE}/requirements/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -700,12 +711,14 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ content }),
-      }
+      },
     ),
 
   // External Links
   getExternalLinks: (planningSessionId: string) =>
-    fetchJson<ExternalLink[]>(`${API_BASE}/external-links?planningSessionId=${encodeURIComponent(planningSessionId)}`),
+    fetchJson<ExternalLink[]>(
+      `${API_BASE}/external-links?planningSessionId=${encodeURIComponent(planningSessionId)}`,
+    ),
   addExternalLink: (planningSessionId: string, url: string, title?: string) =>
     fetchJson<ExternalLink>(`${API_BASE}/external-links`, {
       method: "POST",
@@ -727,7 +740,9 @@ export const api = {
 
   // Planning Sessions
   getPlanningSessions: (repoId: string) =>
-    fetchJson<PlanningSession[]>(`${API_BASE}/planning-sessions?repoId=${encodeURIComponent(repoId)}`),
+    fetchJson<PlanningSession[]>(
+      `${API_BASE}/planning-sessions?repoId=${encodeURIComponent(repoId)}`,
+    ),
   getPlanningSession: (id: string) =>
     fetchJson<PlanningSession>(`${API_BASE}/planning-sessions/${id}`),
   createPlanningSession: (repoId: string, baseBranch: string, title?: string) =>
@@ -735,12 +750,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ repoId, baseBranch, title }),
     }),
-  updatePlanningSession: (id: string, data: {
-    title?: string;
-    baseBranch?: string;
-    nodes?: TaskNode[];
-    edges?: TaskEdge[];
-  }) =>
+  updatePlanningSession: (
+    id: string,
+    data: {
+      title?: string;
+      baseBranch?: string;
+      nodes?: TaskNode[];
+      edges?: TaskEdge[];
+    },
+  ) =>
     fetchJson<PlanningSession>(`${API_BASE}/planning-sessions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -761,7 +779,7 @@ export const api = {
   // Task Instructions
   getTaskInstruction: (repoId: string, branchName: string) =>
     fetchJson<TaskInstruction>(
-      `${API_BASE}/instructions/task?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`
+      `${API_BASE}/instructions/task?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`,
     ),
   updateTaskInstruction: (repoId: string, branchName: string, instructionMd: string) =>
     fetchJson<TaskInstruction>(`${API_BASE}/instructions/task`, {
@@ -771,53 +789,38 @@ export const api = {
 
   // Worktree
   createWorktree: (localPath: string, branchName: string) =>
-    fetchJson<{ worktreePath: string; branchName: string }>(
-      `${API_BASE}/branch/create-worktree`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName }),
-      }
-    ),
+    fetchJson<{ worktreePath: string; branchName: string }>(`${API_BASE}/branch/create-worktree`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, branchName }),
+    }),
 
   // Checkout
   checkout: (localPath: string, branchName: string) =>
-    fetchJson<{ success: boolean; branchName: string }>(
-      `${API_BASE}/branch/checkout`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName }),
-      }
-    ),
+    fetchJson<{ success: boolean; branchName: string }>(`${API_BASE}/branch/checkout`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, branchName }),
+    }),
 
   // Pull
   pull: (localPath: string, branchName: string, worktreePath?: string) =>
-    fetchJson<{ success: boolean; branchName: string; output: string }>(
-      `${API_BASE}/branch/pull`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, worktreePath }),
-      }
-    ),
+    fetchJson<{ success: boolean; branchName: string; output: string }>(`${API_BASE}/branch/pull`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, branchName, worktreePath }),
+    }),
 
   // Check if branch can be deleted
   checkBranchDeletable: (localPath: string, branchName: string, parentBranch?: string) =>
-    fetchJson<{ deletable: boolean; reason: string | null }>(
-      `${API_BASE}/branch/check-deletable`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, parentBranch }),
-      }
-    ),
+    fetchJson<{ deletable: boolean; reason: string | null }>(`${API_BASE}/branch/check-deletable`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, branchName, parentBranch }),
+    }),
 
   // Delete branch
   deleteBranch: (localPath: string, branchName: string, force?: boolean) =>
-    fetchJson<{ success: boolean; branchName: string }>(
-      `${API_BASE}/branch/delete`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, force }),
-      }
-    ),
+    fetchJson<{ success: boolean; branchName: string }>(`${API_BASE}/branch/delete`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, branchName, force }),
+    }),
 
   // Clean up orphaned branch data
   cleanupOrphanedBranchData: (localPath: string) =>
@@ -843,7 +846,7 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ localPath, worktreePath }),
-      }
+      },
     ),
 
   // Rebase onto parent
@@ -853,33 +856,35 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ localPath, branchName, parentBranch, worktreePath }),
-      }
+      },
     ),
 
   // Merge parent into current branch
-  mergeParent: (localPath: string, branchName: string, parentBranch: string, worktreePath?: string) =>
+  mergeParent: (
+    localPath: string,
+    branchName: string,
+    parentBranch: string,
+    worktreePath?: string,
+  ) =>
     fetchJson<{ success: boolean; branchName: string; parentBranch: string; output: string }>(
       `${API_BASE}/branch/merge-parent`,
       {
         method: "POST",
         body: JSON.stringify({ localPath, branchName, parentBranch, worktreePath }),
-      }
+      },
     ),
 
   // Push branch to remote
   push: (localPath: string, branchName: string, worktreePath?: string, force?: boolean) =>
-    fetchJson<{ success: boolean; branchName: string; output: string }>(
-      `${API_BASE}/branch/push`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, worktreePath, force }),
-      }
-    ),
+    fetchJson<{ success: boolean; branchName: string; output: string }>(`${API_BASE}/branch/push`, {
+      method: "POST",
+      body: JSON.stringify({ localPath, branchName, worktreePath, force }),
+    }),
 
   // Branch Links
   getBranchLinks: (repoId: string, branchName: string) =>
     fetchJson<BranchLink[]>(
-      `${API_BASE}/branch-links?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`
+      `${API_BASE}/branch-links?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`,
     ),
   createBranchLink: (data: {
     repoId: string;

@@ -31,7 +31,7 @@ export function linkifyText(text: string): React.ReactNode[] {
         onClick={(e) => e.stopPropagation()}
       >
         {url}
-      </a>
+      </a>,
     );
 
     lastIndex = match.index + match[0].length;

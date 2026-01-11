@@ -71,10 +71,7 @@ export interface PlanTask {
   updatedAt: string;
 }
 
-export type InstructionKind =
-  | "director_suggestion"
-  | "user_instruction"
-  | "system_note";
+export type InstructionKind = "director_suggestion" | "user_instruction" | "system_note";
 
 export interface InstructionLog {
   id: number;

@@ -56,7 +56,7 @@ export function TaskCard({
               title="Claudeでこのタスクについて相談"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
               </svg>
               Claude
             </button>
@@ -102,12 +102,8 @@ export function TaskCard({
         <div className="task-card__description">{task.description}</div>
       )}
       <div className="task-card__meta">
-        {task.branchName && (
-          <span className="task-card__branch">{task.branchName}</span>
-        )}
-        {task.worktreePath && (
-          <span className="task-card__worktree">WT</span>
-        )}
+        {task.branchName && <span className="task-card__branch">{task.branchName}</span>}
+        {task.worktreePath && <span className="task-card__worktree">WT</span>}
       </div>
     </div>
   );

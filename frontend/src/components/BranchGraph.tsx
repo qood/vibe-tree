@@ -52,7 +52,6 @@ const VERTICAL_GAP = 50;
 const TOP_PADDING = 30;
 const LEFT_PADDING = 16;
 
-
 export default function BranchGraph({
   nodes,
   edges,
@@ -82,11 +81,7 @@ export default function BranchGraph({
   }, []);
 
   // Handle drag start from node
-  const handleDragStart = useCallback((
-    branchName: string,
-    startX: number,
-    startY: number
-  ) => {
+  const handleDragStart = useCallback((branchName: string, startX: number, startY: number) => {
     setDragState({
       fromBranch: branchName,
       fromX: startX,
@@ -97,11 +92,14 @@ export default function BranchGraph({
   }, []);
 
   // Handle drag move
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragState) return;
-    const coords = getSVGCoords(e);
-    setDragState((prev) => prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null);
-  }, [dragState, getSVGCoords]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!dragState) return;
+      const coords = getSVGCoords(e);
+      setDragState((prev) => (prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null));
+    },
+    [dragState, getSVGCoords],
+  );
 
   // Handle drag end
   const handleMouseUp = useCallback(() => {
@@ -251,7 +249,7 @@ export default function BranchGraph({
         taskId: string,
         parentLayoutNode: LayoutNode | null,
         depth: number,
-        minCol: number
+        minCol: number,
       ): number {
         const task = tentativeNodes.find((t) => t.id === taskId);
         if (!task) return minCol;
@@ -327,10 +325,13 @@ export default function BranchGraph({
     // Calculate canvas size (add extra space for badges below nodes)
     const BADGE_HEIGHT = 20; // Space for badges below nodes
     const maxX = Math.max(...layoutNodes.map((n) => n.x), 0) + NODE_WIDTH + LEFT_PADDING;
-    const maxY = Math.max(
-      ...layoutNodes.map((n) => n.y + (n.isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT) + BADGE_HEIGHT),
-      0
-    ) + TOP_PADDING;
+    const maxY =
+      Math.max(
+        ...layoutNodes.map(
+          (n) => n.y + (n.isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT) + BADGE_HEIGHT,
+        ),
+        0,
+      ) + TOP_PADDING;
 
     return {
       layoutNodes,
@@ -433,15 +434,25 @@ export default function BranchGraph({
     const nodeHeight = isTentative ? TENTATIVE_NODE_HEIGHT : NODE_HEIGHT;
 
     // In edit mode, the whole node is draggable (line starts from top edge of node for vertical layout)
-    const handleNodeMouseDown = canDrag ? (e: React.MouseEvent) => {
-      e.stopPropagation();
-      handleDragStart(id, x + NODE_WIDTH / 2, y);
-    } : undefined;
+    const handleNodeMouseDown = canDrag
+      ? (e: React.MouseEvent) => {
+          e.stopPropagation();
+          handleDragStart(id, x + NODE_WIDTH / 2, y);
+        }
+      : undefined;
 
     return (
       <g
         key={id}
-        style={{ cursor: canDrag ? (isDragging ? "grabbing" : "grab") : (isTentative ? "default" : "pointer") }}
+        style={{
+          cursor: canDrag
+            ? isDragging
+              ? "grabbing"
+              : "grab"
+            : isTentative
+              ? "default"
+              : "pointer",
+        }}
         opacity={isTentative ? 0.8 : isDragging ? 0.5 : isMerged ? 0.6 : 1}
         onMouseEnter={() => {
           if (dragState && dragState.fromBranch !== id && !isTentative) {
@@ -491,85 +502,115 @@ export default function BranchGraph({
           >
             {/* Line 1: Status labels - right aligned */}
             {hasPR && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", justifyContent: "flex-end" }}>
+              <div
+                style={{ display: "flex", gap: 6, flexWrap: "nowrap", justifyContent: "flex-end" }}
+              >
                 {/* Review status */}
                 {node.pr?.reviewDecision === "APPROVED" && (
-                  <span style={{
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: "transparent",
-                    border: "1px solid #22c55e",
-                    color: "#4ade80",
-                    whiteSpace: "nowrap",
-                  }}>Approved ✔</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "transparent",
+                      border: "1px solid #22c55e",
+                      color: "#4ade80",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Approved ✔
+                  </span>
                 )}
                 {node.pr?.reviewDecision === "CHANGES_REQUESTED" && (
-                  <span style={{
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: "transparent",
-                    border: "1px solid #ef4444",
-                    color: "#f87171",
-                    whiteSpace: "nowrap",
-                  }}>Changes ✗</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "transparent",
+                      border: "1px solid #ef4444",
+                      color: "#f87171",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Changes ✗
+                  </span>
                 )}
                 {node.pr?.reviewDecision === "REVIEW_REQUIRED" && (
-                  <span style={{
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: "transparent",
-                    border: "1px solid #f59e0b",
-                    color: "#fbbf24",
-                    whiteSpace: "nowrap",
-                  }}>Review?</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "transparent",
+                      border: "1px solid #f59e0b",
+                      color: "#fbbf24",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Review?
+                  </span>
                 )}
                 {/* CI status */}
                 {node.pr?.checks === "SUCCESS" && (
-                  <span style={{
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: "#14532d",
-                    border: "1px solid #22c55e",
-                    color: "#4ade80",
-                    whiteSpace: "nowrap",
-                  }}>CI ✔</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "#14532d",
+                      border: "1px solid #22c55e",
+                      color: "#4ade80",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    CI ✔
+                  </span>
                 )}
                 {node.pr?.checks === "FAILURE" && (
-                  <span style={{
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: "#7f1d1d",
-                    border: "1px solid #ef4444",
-                    color: "#f87171",
-                    whiteSpace: "nowrap",
-                  }}>CI ✗</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "#7f1d1d",
+                      border: "1px solid #ef4444",
+                      color: "#f87171",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    CI ✗
+                  </span>
                 )}
                 {node.pr?.checks === "PENDING" && (
-                  <span style={{
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: "#78350f",
+                      border: "1px solid #f59e0b",
+                      color: "#fbbf24",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    CI …
+                  </span>
+                )}
+                {/* PR indicator - with background */}
+                <span
+                  style={{
                     fontSize: 10,
                     padding: "1px 5px",
                     borderRadius: 3,
-                    background: "#78350f",
-                    border: "1px solid #f59e0b",
-                    color: "#fbbf24",
+                    background: node.pr?.state === "MERGED" ? "#3b0764" : "#374151",
+                    border: node.pr?.state === "MERGED" ? "1px solid #9333ea" : "1px solid #4b5563",
+                    color: node.pr?.state === "MERGED" ? "#c084fc" : "#e5e7eb",
                     whiteSpace: "nowrap",
-                  }}>CI …</span>
-                )}
-                {/* PR indicator - with background */}
-                <span style={{
-                  fontSize: 10,
-                  padding: "1px 5px",
-                  borderRadius: 3,
-                  background: node.pr?.state === "MERGED" ? "#3b0764" : "#374151",
-                  border: node.pr?.state === "MERGED" ? "1px solid #9333ea" : "1px solid #4b5563",
-                  color: node.pr?.state === "MERGED" ? "#c084fc" : "#e5e7eb",
-                  whiteSpace: "nowrap",
-                }}>PR</span>
+                  }}
+                >
+                  PR
+                </span>
               </div>
             )}
 
@@ -608,53 +649,53 @@ export default function BranchGraph({
         </foreignObject>
 
         {/* Worktree label on top + active border effect */}
-        {hasWorktree && (() => {
-          const worktreeName = node.worktree?.path?.split("/").pop() || "worktree";
-          const isActive = node.worktree?.isActive;
-          const labelWidth = Math.min(worktreeName.length * 7 + 16, NODE_WIDTH);
-          return (
-            <g>
-              {/* Active glow effect */}
-              {isActive && (
+        {hasWorktree &&
+          (() => {
+            const worktreeName = node.worktree?.path?.split("/").pop() || "worktree";
+            const isActive = node.worktree?.isActive;
+            const labelWidth = Math.min(worktreeName.length * 7 + 16, NODE_WIDTH);
+            return (
+              <g>
+                {/* Active glow effect */}
+                {isActive && (
+                  <rect
+                    x={x - 2}
+                    y={y - 2}
+                    width={NODE_WIDTH + 4}
+                    height={nodeHeight + 4}
+                    rx={8}
+                    ry={8}
+                    fill="none"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    opacity={0.6}
+                  />
+                )}
+                {/* Worktree folder name label - positioned above node */}
                 <rect
-                  x={x - 2}
-                  y={y - 2}
-                  width={NODE_WIDTH + 4}
-                  height={nodeHeight + 4}
-                  rx={8}
-                  ry={8}
-                  fill="none"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  opacity={0.6}
+                  x={x}
+                  y={y - 22}
+                  width={labelWidth}
+                  height={20}
+                  rx={4}
+                  fill={isActive ? "#14532d" : "#1e3a5f"}
+                  stroke={isActive ? "#22c55e" : "#3b82f6"}
+                  strokeWidth={1.5}
                 />
-              )}
-              {/* Worktree folder name label - positioned above node */}
-              <rect
-                x={x}
-                y={y - 22}
-                width={labelWidth}
-                height={20}
-                rx={4}
-                fill={isActive ? "#14532d" : "#1e3a5f"}
-                stroke={isActive ? "#22c55e" : "#3b82f6"}
-                strokeWidth={1.5}
-              />
-              <text
-                x={x + 6}
-                y={y - 11}
-                textAnchor="start"
-                dominantBaseline="middle"
-                fontSize={11}
-                fill={isActive ? "#4ade80" : "#60a5fa"}
-                fontWeight="600"
-              >
-                {worktreeName.length > 22 ? worktreeName.substring(0, 20) + "…" : worktreeName}
-              </text>
-            </g>
-          );
-        })()}
-
+                <text
+                  x={x + 6}
+                  y={y - 11}
+                  textAnchor="start"
+                  dominantBaseline="middle"
+                  fontSize={11}
+                  fill={isActive ? "#4ade80" : "#60a5fa"}
+                  fontWeight="600"
+                >
+                  {worktreeName.length > 22 ? worktreeName.substring(0, 20) + "…" : worktreeName}
+                </text>
+              </g>
+            );
+          })()}
 
         {/* All badges in a single horizontal row below the node */}
         {(() => {
@@ -738,8 +779,7 @@ export default function BranchGraph({
             </text>
           </g>
         )}
-
-              </g>
+      </g>
     );
   };
 
@@ -766,11 +806,8 @@ export default function BranchGraph({
           userSelect: dragState ? "none" : undefined,
         }}
       >
-
         {/* Render edges first (behind nodes) */}
-        <g className="branch-graph__edges">
-          {layoutEdges.map((edge, i) => renderEdge(edge, i))}
-        </g>
+        <g className="branch-graph__edges">{layoutEdges.map((edge, i) => renderEdge(edge, i))}</g>
 
         {/* Render drag line while dragging */}
         {dragState && (
@@ -796,22 +833,23 @@ export default function BranchGraph({
               strokeDasharray={dropTarget ? undefined : "6,4"}
             />
             {/* Arrow head at end */}
-            {dropTarget && (() => {
-              const dx = dragState.currentX - dragState.fromX;
-              const dy = dragState.currentY - dragState.fromY;
-              const angle = Math.atan2(dy, dx);
-              const arrowSize = 10;
-              return (
-                <polygon
-                  points={`
+            {dropTarget &&
+              (() => {
+                const dx = dragState.currentX - dragState.fromX;
+                const dy = dragState.currentY - dragState.fromY;
+                const angle = Math.atan2(dy, dx);
+                const arrowSize = 10;
+                return (
+                  <polygon
+                    points={`
                     ${dragState.currentX},${dragState.currentY}
                     ${dragState.currentX - arrowSize * Math.cos(angle - Math.PI / 6)},${dragState.currentY - arrowSize * Math.sin(angle - Math.PI / 6)}
                     ${dragState.currentX - arrowSize * Math.cos(angle + Math.PI / 6)},${dragState.currentY - arrowSize * Math.sin(angle + Math.PI / 6)}
                   `}
-                  fill="#22c55e"
-                />
-              );
-            })()}
+                    fill="#22c55e"
+                  />
+                );
+              })()}
             {/* Instruction text */}
             <text
               x={dragState.currentX + 10}
@@ -826,9 +864,7 @@ export default function BranchGraph({
         )}
 
         {/* Render nodes */}
-        <g className="branch-graph__nodes">
-          {layoutNodes.map((node) => renderNode(node))}
-        </g>
+        <g className="branch-graph__nodes">{layoutNodes.map((node) => renderNode(node))}</g>
       </svg>
     </div>
   );

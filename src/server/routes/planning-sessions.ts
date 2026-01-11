@@ -64,17 +64,25 @@ const createSessionSchema = z.object({
 const updateSessionSchema = z.object({
   title: z.string().optional(),
   baseBranch: z.string().optional(),
-  nodes: z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    description: z.string().optional(),
-    branchName: z.string().optional(),
-    issueUrl: z.string().optional(),
-  })).optional(),
-  edges: z.array(z.object({
-    parent: z.string(),
-    child: z.string(),
-  })).optional(),
+  nodes: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        description: z.string().optional(),
+        branchName: z.string().optional(),
+        issueUrl: z.string().optional(),
+      }),
+    )
+    .optional(),
+  edges: z
+    .array(
+      z.object({
+        parent: z.string(),
+        child: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 // GET /api/planning-sessions?repoId=xxx
@@ -304,8 +312,13 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
     }
 
     // Determine branch name
-    const branchName = task.branchName ||
-      `task/${task.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").substring(0, 30)}`;
+    const branchName =
+      task.branchName ||
+      `task/${task.title
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "")
+        .substring(0, 30)}`;
 
     // Determine parent branch
     let parentBranch = session.baseBranch;
@@ -316,7 +329,7 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
       }
     }
 
-    const result: typeof results[number] = {
+    const result: (typeof results)[number] = {
       taskId: task.id,
       branchName,
       parentBranch,
@@ -325,10 +338,9 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
 
     try {
       // Check if branch already exists
-      const existingBranches = execSync(
-        `cd "${localPath}" && git branch --list "${branchName}"`,
-        { encoding: "utf-8" }
-      ).trim();
+      const existingBranches = execSync(`cd "${localPath}" && git branch --list "${branchName}"`, {
+        encoding: "utf-8",
+      }).trim();
 
       // Create branch if it doesn't exist
       if (!existingBranches) {
@@ -337,7 +349,7 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
         try {
           const localExists = execSync(
             `cd "${localPath}" && git rev-parse --verify "${parentBranch}" 2>/dev/null`,
-            { encoding: "utf-8" }
+            { encoding: "utf-8" },
           ).trim();
           if (!localExists) {
             actualParent = `origin/${parentBranch}`;
@@ -346,18 +358,13 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
           // Local branch doesn't exist, try with origin prefix
           actualParent = `origin/${parentBranch}`;
         }
-        execSync(
-          `cd "${localPath}" && git branch "${branchName}" "${actualParent}"`,
-          { encoding: "utf-8" }
-        );
+        execSync(`cd "${localPath}" && git branch "${branchName}" "${actualParent}"`, {
+          encoding: "utf-8",
+        });
       }
 
       // Store task instruction for this branch
-      const instructionMd = [
-        `# ${task.title}`,
-        "",
-        task.description || "",
-      ].join("\n");
+      const instructionMd = [`# ${task.title}`, "", task.description || ""].join("\n");
 
       await db.insert(schema.taskInstructions).values({
         repoId: session.repoId,
@@ -383,8 +390,8 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
                 eq(schema.branchLinks.repoId, session.repoId),
                 eq(schema.branchLinks.branchName, branchName),
                 eq(schema.branchLinks.linkType, "issue"),
-                eq(schema.branchLinks.number, issueNumber)
-              )
+                eq(schema.branchLinks.number, issueNumber),
+              ),
             )
             .limit(1);
 
@@ -395,7 +402,7 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
             try {
               const issueResult = execSync(
                 `gh issue view ${issueNumber} --repo "${session.repoId}" --json title,state`,
-                { encoding: "utf-8", timeout: 10000 }
+                { encoding: "utf-8", timeout: 10000 },
               ).trim();
               const issueData = JSON.parse(issueResult);
               title = issueData.title;
@@ -540,9 +547,7 @@ planningSessionsRouter.delete("/:id", async (c) => {
   }
 
   // Delete external links
-  await db
-    .delete(schema.externalLinks)
-    .where(eq(schema.externalLinks.planningSessionId, id));
+  await db.delete(schema.externalLinks).where(eq(schema.externalLinks.planningSessionId, id));
 
   // Delete chat messages
   if (session.chatSessionId) {
@@ -550,15 +555,11 @@ planningSessionsRouter.delete("/:id", async (c) => {
       .delete(schema.chatMessages)
       .where(eq(schema.chatMessages.sessionId, session.chatSessionId));
 
-    await db
-      .delete(schema.chatSessions)
-      .where(eq(schema.chatSessions.id, session.chatSessionId));
+    await db.delete(schema.chatSessions).where(eq(schema.chatSessions.id, session.chatSessionId));
   }
 
   // Delete planning session
-  await db
-    .delete(schema.planningSessions)
-    .where(eq(schema.planningSessions.id, id));
+  await db.delete(schema.planningSessions).where(eq(schema.planningSessions.id, id));
 
   broadcast({
     type: "planning.deleted",

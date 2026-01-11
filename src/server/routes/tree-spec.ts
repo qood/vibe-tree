@@ -1,11 +1,7 @@
 import { Hono } from "hono";
 import { db, schema } from "../../db";
 import { eq } from "drizzle-orm";
-import {
-  repoIdQuerySchema,
-  updateTreeSpecSchema,
-  validateOrThrow,
-} from "../../shared/validation";
+import { repoIdQuerySchema, updateTreeSpecSchema, validateOrThrow } from "../../shared/validation";
 
 export const treeSpecRouter = new Hono();
 

@@ -28,7 +28,7 @@ export function getDefaultBranch(repoPath: string, branchNames: string[]): strin
   try {
     const output = execSync(
       `cd "${repoPath}" && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     const match = output.match(/refs\/remotes\/origin\/(.+)$/);
     if (match && match[1] && branchNames.includes(match[1])) {
@@ -42,7 +42,7 @@ export function getDefaultBranch(repoPath: string, branchNames: string[]): strin
   try {
     const output = execSync(
       `cd "${repoPath}" && gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     if (output && branchNames.includes(output)) {
       return output;
@@ -64,7 +64,7 @@ export function getBranches(repoPath: string): BranchInfo[] {
   try {
     const output = execSync(
       `cd "${repoPath}" && git for-each-ref --sort=-committerdate --format='%(refname:short)|%(objectname)|%(committerdate:iso8601)' refs/heads/`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
     return output
       .trim()
@@ -86,10 +86,9 @@ export function getBranches(repoPath: string): BranchInfo[] {
 
 export async function getWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
   try {
-    const output = execSync(
-      `cd "${repoPath}" && git worktree list --porcelain`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`cd "${repoPath}" && git worktree list --porcelain`, {
+      encoding: "utf-8",
+    });
     const worktrees: WorktreeInfo[] = [];
     let current: Partial<WorktreeInfo> = {};
 
@@ -132,7 +131,7 @@ export async function getWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
             // Ignore parse errors
           }
         }
-      })
+      }),
     );
 
     return worktrees;
@@ -148,7 +147,7 @@ export async function getPRs(repoId: string): Promise<PRInfo[]> {
   return getCachedOrFetch(
     cacheKey,
     () => fetchPRsGraphQL(repoId),
-    60_000 // 60 seconds TTL
+    60_000, // 60 seconds TTL
   );
 }
 
@@ -157,7 +156,7 @@ export function findBestParent(
   allBranches: string[],
   defaultBranch: string,
   repoPath?: string,
-  commitHashMap?: Map<string, string>
+  commitHashMap?: Map<string, string>,
 ): { parent: string; confidence: "high" | "medium" | "low" } {
   let bestMatch = defaultBranch;
   let bestMatchLength = 0;
@@ -167,10 +166,7 @@ export function findBestParent(
     if (candidate === branchName) continue;
     if (candidate === defaultBranch) continue;
 
-    if (
-      branchName.startsWith(candidate + "/") ||
-      branchName.startsWith(candidate + "-")
-    ) {
+    if (branchName.startsWith(candidate + "/") || branchName.startsWith(candidate + "-")) {
       if (candidate.length > bestMatchLength) {
         bestMatch = candidate;
         bestMatchLength = candidate.length;
@@ -196,9 +192,9 @@ export function findBestParent(
         const defaultCount = parseInt(
           execSync(
             `cd "${repoPath}" && git rev-list --count "${defaultBranch}..${branchName}" 2>/dev/null || echo "999999"`,
-            { encoding: "utf-8" }
+            { encoding: "utf-8" },
           ).trim(),
-          10
+          10,
         );
         if (!isNaN(defaultCount) && defaultCount < minDistance) {
           minDistance = defaultCount;
@@ -245,7 +241,7 @@ export function findBestParent(
           // Using git merge-base: if merge-base(A, B) == A, then A is ancestor of B
           const mergeBase = execSync(
             `cd "${repoPath}" && git merge-base "${candidate}" "${branchName}" 2>/dev/null`,
-            { encoding: "utf-8" }
+            { encoding: "utf-8" },
           ).trim();
 
           // Use pre-computed commit hash from map, fallback to git rev-parse
@@ -255,7 +251,7 @@ export function findBestParent(
           } else {
             candidateTip = execSync(
               `cd "${repoPath}" && git rev-parse "${candidate}" 2>/dev/null`,
-              { encoding: "utf-8" }
+              { encoding: "utf-8" },
             ).trim();
           }
 
@@ -265,9 +261,9 @@ export function findBestParent(
             const count = parseInt(
               execSync(
                 `cd "${repoPath}" && git rev-list --count "${candidate}..${branchName}" 2>/dev/null`,
-                { encoding: "utf-8" }
+                { encoding: "utf-8" },
               ).trim(),
-              10
+              10,
             );
 
             // Find the candidate with the smallest distance (closest ancestor)
@@ -298,7 +294,7 @@ export function buildTree(
   worktrees: WorktreeInfo[],
   prs: PRInfo[],
   repoPath: string,
-  defaultBranch: string
+  defaultBranch: string,
 ): { nodes: TreeNode[]; edges: TreeEdge[] } {
   const nodes: TreeNode[] = [];
   const edges: TreeEdge[] = [];
@@ -338,7 +334,13 @@ export function buildTree(
     nodes.push(node);
 
     if (baseBranch && branch.name !== defaultBranch) {
-      const { parent, confidence } = findBestParent(branch.name, branchNames, defaultBranch, repoPath, commitHashMap);
+      const { parent, confidence } = findBestParent(
+        branch.name,
+        branchNames,
+        defaultBranch,
+        repoPath,
+        commitHashMap,
+      );
       edges.push({
         parent,
         child: branch.name,
@@ -358,7 +360,7 @@ export async function calculateAheadBehind(
   nodes: TreeNode[],
   edges: TreeEdge[],
   repoPath: string,
-  defaultBranch: string
+  defaultBranch: string,
 ): Promise<void> {
   // Build a map of child -> parent from edges
   const parentMap = new Map<string, string>();
@@ -375,7 +377,7 @@ export async function calculateAheadBehind(
 
       try {
         const { stdout } = await execAsync(
-          `cd "${repoPath}" && git rev-list --left-right --count "${parentBranch}"..."${node.branchName}"`
+          `cd "${repoPath}" && git rev-list --left-right --count "${parentBranch}"..."${node.branchName}"`,
         );
         const parts = stdout.trim().split(/\s+/);
         const behind = parseInt(parts[0] ?? "0", 10);
@@ -384,7 +386,7 @@ export async function calculateAheadBehind(
       } catch {
         // Ignore errors (branch might not exist, etc.)
       }
-    })
+    }),
   );
 }
 
@@ -393,7 +395,7 @@ export async function calculateAheadBehind(
  */
 export async function calculateRemoteAheadBehind(
   nodes: TreeNode[],
-  repoPath: string
+  repoPath: string,
 ): Promise<void> {
   // Process all nodes in parallel
   await Promise.all(
@@ -401,14 +403,14 @@ export async function calculateRemoteAheadBehind(
       try {
         // Check if there's a remote tracking branch
         const { stdout: upstream } = await execAsync(
-          `cd "${repoPath}" && git rev-parse --abbrev-ref "${node.branchName}@{upstream}" 2>/dev/null`
+          `cd "${repoPath}" && git rev-parse --abbrev-ref "${node.branchName}@{upstream}" 2>/dev/null`,
         );
 
         if (!upstream.trim()) return;
 
         // Get ahead/behind count relative to upstream
         const { stdout } = await execAsync(
-          `cd "${repoPath}" && git rev-list --left-right --count "${upstream.trim()}"..."${node.branchName}"`
+          `cd "${repoPath}" && git rev-list --left-right --count "${upstream.trim()}"..."${node.branchName}"`,
         );
         const parts = stdout.trim().split(/\s+/);
         const behind = parseInt(parts[0] ?? "0", 10);
@@ -420,7 +422,7 @@ export async function calculateRemoteAheadBehind(
       } catch {
         // No upstream or error - skip
       }
-    })
+    }),
   );
 }
 
@@ -429,7 +431,7 @@ export function calculateWarnings(
   edges: TreeEdge[],
   branchNaming: BranchNamingRule | null,
   defaultBranch: string,
-  treeSpec?: TreeSpec
+  treeSpec?: TreeSpec,
 ): Warning[] {
   const warnings: Warning[] = [];
 
@@ -521,18 +523,16 @@ export function generateRestartInfo(
   worktree: WorktreeInfo,
   nodes: TreeNode[],
   warnings: Warning[],
-  branchNaming: BranchNamingRule | null
+  branchNaming: BranchNamingRule | null,
 ): RestartInfo {
   const node = nodes.find((n) => n.branchName === worktree.branch);
-  const branchWarnings = warnings.filter(
-    (w) => w.meta?.branch === worktree.branch
-  );
+  const branchWarnings = warnings.filter((w) => w.meta?.branch === worktree.branch);
 
   const restartPromptMd = `# Restart Prompt
 
 ## Project Rules
 ### Branch Naming
-- Patterns: ${branchNaming?.patterns?.map(p => `\`${p}\``).join(", ") ?? "N/A"}
+- Patterns: ${branchNaming?.patterns?.map((p) => `\`${p}\``).join(", ") ?? "N/A"}
 
 ## Current State
 - Branch: \`${worktree.branch}\`

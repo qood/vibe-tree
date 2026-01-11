@@ -181,7 +181,7 @@ interface SinglePRResponse {
  */
 export async function fetchIssueGraphQL(
   repoId: string,
-  issueNumber: number
+  issueNumber: number,
 ): Promise<BranchLinkIssueInfo | null> {
   const token = getGitHubToken();
   if (!token) {
@@ -247,7 +247,7 @@ export async function fetchIssueGraphQL(
  */
 export async function fetchPRGraphQL(
   repoId: string,
-  prNumber: number
+  prNumber: number,
 ): Promise<BranchLinkPRInfo | null> {
   const token = getGitHubToken();
   if (!token) {
@@ -299,8 +299,7 @@ export async function fetchPRGraphQL(
     // Extract checks from statusCheckRollup
     const checksMap = new Map<string, BranchLinkPRCheck>();
     let checksStatus = "pending";
-    const statusRollup =
-      pr.commits.nodes[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
+    const statusRollup = pr.commits.nodes[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
 
     for (const c of statusRollup) {
       const name = c.name || c.context || "Unknown";
@@ -314,11 +313,9 @@ export async function fetchPRGraphQL(
 
     const checks = Array.from(checksMap.values());
     if (checks.length > 0) {
-      const hasFailure = checks.some(
-        (c) => c.conclusion === "FAILURE" || c.conclusion === "ERROR"
-      );
+      const hasFailure = checks.some((c) => c.conclusion === "FAILURE" || c.conclusion === "ERROR");
       const allSuccess = checks.every(
-        (c) => c.conclusion === "SUCCESS" || c.conclusion === "SKIPPED"
+        (c) => c.conclusion === "SUCCESS" || c.conclusion === "SKIPPED",
       );
       if (hasFailure) checksStatus = "failure";
       else if (allSuccess) checksStatus = "success";

@@ -299,7 +299,7 @@ describe("Database Schema", () => {
     expect(() => {
       sqlite.run(
         "INSERT INTO worktree_activity (worktree_path, repo_id, last_seen_at) VALUES ('/unique/path', 'another/repo', ?)",
-        [now]
+        [now],
       );
     }).toThrow();
   });

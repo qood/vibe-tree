@@ -18,7 +18,7 @@ class PtyManager {
     sessionId: string,
     worktreePath: string,
     cols: number = 80,
-    rows: number = 24
+    rows: number = 24,
   ): Promise<PtySession> {
     // Check if session already exists
     const existing = this.sessions.get(sessionId);

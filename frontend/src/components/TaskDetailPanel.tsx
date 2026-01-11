@@ -16,10 +16,7 @@ import {
   computeSimpleDiff,
   type DiffLine,
 } from "../lib/instruction-parser";
-import {
-  extractPermissionRequests,
-  removePermissionTags,
-} from "../lib/permission-parser";
+import { extractPermissionRequests, removePermissionTags } from "../lib/permission-parser";
 import { linkifyPreContent } from "../lib/linkify";
 import "./TaskDetailPanel.css";
 
@@ -86,9 +83,7 @@ function ExpandableDiff({
   });
 
   const displayIndices = Array.from(displaySet).sort((a, b) => a - b);
-  const visibleLines = expanded
-    ? displayIndices
-    : displayIndices.slice(0, MAX_VISIBLE_LINES);
+  const visibleLines = expanded ? displayIndices : displayIndices.slice(0, MAX_VISIBLE_LINES);
   const hasMore = displayIndices.length > MAX_VISIBLE_LINES;
 
   return (
@@ -101,18 +96,12 @@ function ExpandableDiff({
           const showEllipsis = i > 0 && idx - prevIdx > 1;
           return (
             <div key={idx}>
-              {showEllipsis && (
-                <div style={{ color: "#6b7280", padding: "2px 12px" }}>...</div>
-              )}
+              {showEllipsis && <div style={{ color: "#6b7280", padding: "2px 12px" }}>...</div>}
               <div
                 className={`task-detail-panel__diff-line task-detail-panel__diff-line--${line.type}`}
               >
                 <span className="task-detail-panel__diff-prefix">
-                  {line.type === "added"
-                    ? "+"
-                    : line.type === "removed"
-                      ? "-"
-                      : " "}
+                  {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
                 </span>
                 <span>{line.content || " "}</span>
               </div>
@@ -120,18 +109,12 @@ function ExpandableDiff({
           );
         })}
         {hasMore && !expanded && (
-          <button
-            className="task-detail-panel__diff-expand-btn"
-            onClick={() => setExpanded(true)}
-          >
+          <button className="task-detail-panel__diff-expand-btn" onClick={() => setExpanded(true)}>
             Show {displayIndices.length - MAX_VISIBLE_LINES} more lines
           </button>
         )}
         {hasMore && expanded && (
-          <button
-            className="task-detail-panel__diff-expand-btn"
-            onClick={() => setExpanded(false)}
-          >
+          <button className="task-detail-panel__diff-expand-btn" onClick={() => setExpanded(false)}>
             Collapse
           </button>
         )}
@@ -150,11 +133,7 @@ function RenderToolUseContent({
 }): React.ReactNode {
   // Bash command
   if (input.command) {
-    return (
-      <pre className="task-detail-panel__tool-input">
-        $ {String(input.command)}
-      </pre>
-    );
+    return <pre className="task-detail-panel__tool-input">$ {String(input.command)}</pre>;
   }
 
   // Grep/search pattern
@@ -180,11 +159,7 @@ function RenderToolUseContent({
 
   // Read file
   if (input.file_path) {
-    return (
-      <pre className="task-detail-panel__tool-input">
-        📄 {String(input.file_path)}
-      </pre>
-    );
+    return <pre className="task-detail-panel__tool-input">📄 {String(input.file_path)}</pre>;
   }
 
   // Glob pattern
@@ -198,14 +173,10 @@ function RenderToolUseContent({
 
   // Write file
   if (toolName === "Write" && input.file_path) {
-    const contentPreview = input.content
-      ? String(input.content).slice(0, 200)
-      : "";
+    const contentPreview = input.content ? String(input.content).slice(0, 200) : "";
     return (
       <div className="task-detail-panel__tool-input">
-        <div style={{ color: "#9ca3af", marginBottom: 4 }}>
-          ✏️ {String(input.file_path)}
-        </div>
+        <div style={{ color: "#9ca3af", marginBottom: 4 }}>✏️ {String(input.file_path)}</div>
         {contentPreview && (
           <pre style={{ color: "#4ade80" }}>
             {contentPreview}
@@ -217,11 +188,7 @@ function RenderToolUseContent({
   }
 
   // Default: show JSON
-  return (
-    <pre className="task-detail-panel__tool-input">
-      {JSON.stringify(input, null, 2)}
-    </pre>
-  );
+  return <pre className="task-detail-panel__tool-input">{JSON.stringify(input, null, 2)}</pre>;
 }
 
 interface TaskDetailPanelProps {
@@ -265,36 +232,22 @@ export function TaskDetailPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const [chatMode, setChatMode] = useState<"execution" | "planning">(
-    "planning",
-  );
+  const [chatMode, setChatMode] = useState<"execution" | "planning">("planning");
   // Track instruction edit statuses (loaded from DB + local updates)
-  const [editStatuses, setEditStatuses] = useState<
-    Map<number, InstructionEditStatus>
-  >(new Map());
+  const [editStatuses, setEditStatuses] = useState<Map<number, InstructionEditStatus>>(new Map());
   // Track granted permission requests (message ID -> granted)
-  const [grantedPermissions, setGrantedPermissions] = useState<Set<number>>(
-    new Set(),
-  );
+  const [grantedPermissions, setGrantedPermissions] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Streaming state
   interface StreamingChunk {
-    type:
-      | "thinking"
-      | "text"
-      | "tool_use"
-      | "tool_result"
-      | "thinking_delta"
-      | "text_delta";
+    type: "thinking" | "text" | "tool_use" | "tool_result" | "thinking_delta" | "text_delta";
     content?: string;
     toolName?: string;
     toolInput?: Record<string, unknown>;
   }
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [streamingChunks, setStreamingChunks] = useState<StreamingChunk[]>([]);
-  const [streamingMode, setStreamingMode] = useState<
-    "planning" | "execution" | null
-  >(null);
+  const [streamingMode, setStreamingMode] = useState<"planning" | "execution" | null>(null);
   const [canCancel, setCanCancel] = useState(false);
   const hasStreamingChunksRef = useRef(false);
 
@@ -304,9 +257,7 @@ export function TaskDetailPanel({
 
   // Resizable instruction section
   const DEFAULT_INSTRUCTION_HEIGHT = 120;
-  const [instructionHeight, setInstructionHeight] = useState(
-    DEFAULT_INSTRUCTION_HEIGHT,
-  );
+  const [instructionHeight, setInstructionHeight] = useState(DEFAULT_INSTRUCTION_HEIGHT);
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(0);
@@ -321,9 +272,7 @@ export function TaskDetailPanel({
 
   // Branch links state
   const [branchLinks, setBranchLinks] = useState<BranchLink[]>([]);
-  const [addingLinkType, setAddingLinkType] = useState<"issue" | "pr" | null>(
-    null,
-  );
+  const [addingLinkType, setAddingLinkType] = useState<"issue" | "pr" | null>(null);
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [deletingLinkId, setDeletingLinkId] = useState<number | null>(null);
   const [addingLink, setAddingLink] = useState(false);
@@ -341,17 +290,13 @@ export function TaskDetailPanel({
 
   // Deletable branch check (no commits + not on remote)
   const [isDeletable, setIsDeletable] = useState(false);
-  const [deleteBlockedReason, setDeleteBlockedReason] = useState<string | null>(
-    null,
-  );
+  const [deleteBlockedReason, setDeleteBlockedReason] = useState<string | null>(null);
 
   // The working path is either the worktree path or localPath if checked out
   const workingPath = worktreePath || (checkedOut ? localPath : null);
 
   // Check if PR is merged
-  const isMerged = branchLinks.some(
-    (l) => l.linkType === "pr" && l.status === "merged",
-  );
+  const isMerged = branchLinks.some((l) => l.linkType === "pr" && l.status === "merged");
 
   // Planning mode can work without workingPath (uses localPath), Execution requires workingPath
   const effectivePath = workingPath || localPath; // For Planning mode, use localPath as fallback
@@ -405,9 +350,7 @@ export function TaskDetailPanel({
             api
               .refreshBranchLink(link.id)
               .then((refreshed) => {
-                setBranchLinks((prev) =>
-                  prev.map((l) => (l.id === refreshed.id ? refreshed : l)),
-                );
+                setBranchLinks((prev) => prev.map((l) => (l.id === refreshed.id ? refreshed : l)));
               })
               .catch((err) => {
                 console.error(`Failed to refresh link ${link.id}:`, err);
@@ -430,11 +373,7 @@ export function TaskDetailPanel({
         return;
       }
       try {
-        const result = await api.checkBranchDeletable(
-          localPath,
-          branchName,
-          parentBranch,
-        );
+        const result = await api.checkBranchDeletable(localPath, branchName, parentBranch);
         setIsDeletable(result.deletable);
         setDeleteBlockedReason(result.reason);
       } catch (err) {
@@ -454,9 +393,7 @@ export function TaskDetailPanel({
     const pollCI = async () => {
       try {
         const refreshed = await api.refreshBranchLink(pr.id);
-        setBranchLinks((prev) =>
-          prev.map((l) => (l.id === refreshed.id ? refreshed : l)),
-        );
+        setBranchLinks((prev) => prev.map((l) => (l.id === refreshed.id ? refreshed : l)));
       } catch (err) {
         console.error("Failed to poll CI:", err);
       }
@@ -482,9 +419,7 @@ export function TaskDetailPanel({
     const unsubUpdated = wsClient.on("branchLink.updated", (msg) => {
       const data = msg.data as BranchLink;
       if (data.repoId === repoId && data.branchName === branchName) {
-        setBranchLinks((prev) =>
-          prev.map((l) => (l.id === data.id ? data : l)),
-        );
+        setBranchLinks((prev) => prev.map((l) => (l.id === data.id ? data : l)));
       }
     });
 
@@ -501,9 +436,7 @@ export function TaskDetailPanel({
         // Get existing sessions for this repo
         const sessions = await api.getChatSessions(repoId);
         // Find session by branchName only (branch is the key)
-        const existing = sessions.find(
-          (s) => s.branchName === branchName && s.status === "active",
-        );
+        const existing = sessions.find((s) => s.branchName === branchName && s.status === "active");
 
         if (existing) {
           setChatSessionId(existing.id);
@@ -528,11 +461,7 @@ export function TaskDetailPanel({
           }
         } else {
           // Create new session for this branch
-          const newSession = await api.createChatSession(
-            repoId,
-            effectivePath,
-            branchName,
-          );
+          const newSession = await api.createChatSession(repoId, effectivePath, branchName);
           setChatSessionId(newSession.id);
           setMessages([]);
           setEditStatuses(new Map());
@@ -572,9 +501,7 @@ export function TaskDetailPanel({
         setStreamingContent("");
         setStreamingChunks([]);
         hasStreamingChunksRef.current = false;
-        setStreamingMode(
-          (data.chatMode as "planning" | "execution") || "planning",
-        );
+        setStreamingMode((data.chatMode as "planning" | "execution") || "planning");
       }
     });
 
@@ -679,11 +606,7 @@ export function TaskDetailPanel({
   const handleSaveInstruction = async () => {
     if (!instructionDraft.trim()) return;
     try {
-      const updated = await api.updateTaskInstruction(
-        repoId,
-        branchName,
-        instructionDraft,
-      );
+      const updated = await api.updateTaskInstruction(repoId, branchName, instructionDraft);
       setInstruction(updated);
       setEditingInstruction(false);
     } catch (err) {
@@ -796,17 +719,10 @@ export function TaskDetailPanel({
     }
   };
 
-  const handleCommitInstructionEdit = async (
-    messageId: number,
-    newContent: string,
-  ) => {
+  const handleCommitInstructionEdit = async (messageId: number, newContent: string) => {
     try {
       // Update the task instruction
-      const updated = await api.updateTaskInstruction(
-        repoId,
-        branchName,
-        newContent,
-      );
+      const updated = await api.updateTaskInstruction(repoId, branchName, newContent);
       setInstruction(updated);
       // Save the commit status to DB
       await api.updateInstructionEditStatus(messageId, "committed");
@@ -873,9 +789,7 @@ export function TaskDetailPanel({
     setRefreshingLink(id);
     try {
       const refreshed = await api.refreshBranchLink(id);
-      setBranchLinks((prev) =>
-        prev.map((l) => (l.id === refreshed.id ? refreshed : l)),
-      );
+      setBranchLinks((prev) => prev.map((l) => (l.id === refreshed.id ? refreshed : l)));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -907,16 +821,9 @@ export function TaskDetailPanel({
         ? `[Task Instruction]\n${instruction.instructionMd}\n\n[Mode: ${chatMode}]`
         : `[Mode: ${chatMode}]`;
       // API returns immediately, assistant message comes via WebSocket
-      const result = await api.sendChatMessage(
-        chatSessionId,
-        userMessage,
-        context,
-        chatMode,
-      );
+      const result = await api.sendChatMessage(chatSessionId, userMessage, context, chatMode);
       // Replace temp user message with saved one
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? result.userMessage : m)),
-      );
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? result.userMessage : m)));
       // Loading will be set to false when assistant message arrives via WebSocket
     } catch (err) {
       setError((err as Error).message);
@@ -933,11 +840,7 @@ export function TaskDetailPanel({
       // Archive current session
       await api.archiveChatSession(chatSessionId);
       // Create new session for this branch
-      const newSession = await api.createChatSession(
-        repoId,
-        effectivePath,
-        branchName,
-      );
+      const newSession = await api.createChatSession(repoId, effectivePath, branchName);
       setChatSessionId(newSession.id);
       setMessages([]);
       setEditStatuses(new Map());
@@ -961,12 +864,7 @@ export function TaskDetailPanel({
         <div className="task-detail-panel__header">
           <h3>
             {branchName}
-            {isRefetching && (
-              <span
-                className="task-detail-panel__spinner"
-                title="Refreshing..."
-              />
-            )}
+            {isRefetching && <span className="task-detail-panel__spinner" title="Refreshing..." />}
           </h3>
           <button onClick={onClose} className="task-detail-panel__close">
             x
@@ -986,9 +884,7 @@ export function TaskDetailPanel({
                   onClick={handlePull}
                   disabled={pulling}
                 >
-                  {pulling
-                    ? "Pulling..."
-                    : `Pull (↓${node.remoteAheadBehind.behind})`}
+                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
                 </button>
               )}
             </div>
@@ -1007,9 +903,7 @@ export function TaskDetailPanel({
                   onClick={handlePull}
                   disabled={pulling}
                 >
-                  {pulling
-                    ? "Pulling..."
-                    : `Pull (↓${node.remoteAheadBehind.behind})`}
+                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
                 </button>
               )}
             </div>
@@ -1017,13 +911,8 @@ export function TaskDetailPanel({
         </div>
 
         <div className="task-detail-panel__default-branch">
-          <span className="task-detail-panel__default-branch-badge">
-            Default Branch
-          </span>
-          <p>
-            This is the default branch. Task planning and execution are not
-            available here.
-          </p>
+          <span className="task-detail-panel__default-branch-badge">Default Branch</span>
+          <p>This is the default branch. Task planning and execution are not available here.</p>
         </div>
       </div>
     );
@@ -1043,12 +932,7 @@ export function TaskDetailPanel({
       <div className="task-detail-panel__header">
         <h3>
           {branchName}
-          {isRefetching && (
-            <span
-              className="task-detail-panel__spinner"
-              title="Refreshing..."
-            />
-          )}
+          {isRefetching && <span className="task-detail-panel__spinner" title="Refreshing..." />}
         </h3>
         <button onClick={onClose} className="task-detail-panel__close">
           x
@@ -1064,19 +948,17 @@ export function TaskDetailPanel({
             <span className="task-detail-panel__active-badge">Active</span>
             <div className="task-detail-panel__branch-actions">
               {/* Behind parent - show Sync button */}
-              {node?.aheadBehind &&
-                node.aheadBehind.behind > 0 &&
-                parentBranch && (
-                  <button
-                    className="task-detail-panel__sync-btn"
-                    onClick={() => setShowSyncModal(true)}
-                    disabled={syncing}
-                  >
-                    {syncing
-                      ? "Syncing..."
-                      : `Sync (↓${node.aheadBehind.behind} from ${parentBranch})`}
-                  </button>
-                )}
+              {node?.aheadBehind && node.aheadBehind.behind > 0 && parentBranch && (
+                <button
+                  className="task-detail-panel__sync-btn"
+                  onClick={() => setShowSyncModal(true)}
+                  disabled={syncing}
+                >
+                  {syncing
+                    ? "Syncing..."
+                    : `Sync (↓${node.aheadBehind.behind} from ${parentBranch})`}
+                </button>
+              )}
               {/* Behind remote - show Pull button */}
               {node?.remoteAheadBehind && node.remoteAheadBehind.behind > 0 && (
                 <button
@@ -1084,9 +966,7 @@ export function TaskDetailPanel({
                   onClick={handlePull}
                   disabled={pulling}
                 >
-                  {pulling
-                    ? "Pulling..."
-                    : `Pull (↓${node.remoteAheadBehind.behind})`}
+                  {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
                 </button>
               )}
               {/* Ahead of remote - show Push button */}
@@ -1096,9 +976,7 @@ export function TaskDetailPanel({
                   onClick={() => setShowPushModal(true)}
                   disabled={pushing}
                 >
-                  {pushing
-                    ? "Pushing..."
-                    : `Push (↑${node.remoteAheadBehind.ahead})`}
+                  {pushing ? "Pushing..." : `Push (↑${node.remoteAheadBehind.ahead})`}
                 </button>
               )}
               {isMerged && (
@@ -1147,9 +1025,7 @@ export function TaskDetailPanel({
                 onClick={handlePull}
                 disabled={pulling}
               >
-                {pulling
-                  ? "Pulling..."
-                  : `Pull (↓${node.remoteAheadBehind.behind})`}
+                {pulling ? "Pulling..." : `Pull (↓${node.remoteAheadBehind.behind})`}
               </button>
             )}
             {isMerged ? (
@@ -1212,11 +1088,7 @@ export function TaskDetailPanel({
               placeholder="Paste GitHub Issue URL..."
               disabled={addingLink}
               onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.nativeEvent.isComposing &&
-                  !addingLink
-                ) {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && !addingLink) {
                   e.preventDefault();
                   handleAddBranchLink("issue");
                 } else if (e.key === "Escape" && !addingLink) {
@@ -1252,9 +1124,7 @@ export function TaskDetailPanel({
           return issues.length > 0 ? (
             <div className="task-detail-panel__links-list">
               {issues.map((link) => {
-                const labels = link.labels
-                  ? (JSON.parse(link.labels) as string[])
-                  : [];
+                const labels = link.labels ? (JSON.parse(link.labels) as string[]) : [];
                 return (
                   <div
                     key={link.id}
@@ -1268,9 +1138,7 @@ export function TaskDetailPanel({
                         className="task-detail-panel__link-url"
                       >
                         {link.number && (
-                          <span className="task-detail-panel__link-number">
-                            #{link.number}
-                          </span>
+                          <span className="task-detail-panel__link-number">#{link.number}</span>
                         )}
                         {link.title || (!link.number && link.url)}
                       </a>
@@ -1291,10 +1159,7 @@ export function TaskDetailPanel({
                       {labels.length > 0 && (
                         <span className="task-detail-panel__link-labels">
                           {labels.map((l, i) => (
-                            <span
-                              key={i}
-                              className="task-detail-panel__link-label"
-                            >
+                            <span key={i} className="task-detail-panel__link-label">
                               {l}
                             </span>
                           ))}
@@ -1351,9 +1216,7 @@ export function TaskDetailPanel({
                   const parsed = JSON.parse(pr.labels!);
                   return Array.isArray(parsed)
                     ? parsed.map((l: string | GitHubLabel) =>
-                        typeof l === "string"
-                          ? { name: l, color: "374151" }
-                          : l,
+                        typeof l === "string" ? { name: l, color: "374151" } : l,
                       )
                     : [];
                 } catch {
@@ -1401,9 +1264,7 @@ export function TaskDetailPanel({
                   className="task-detail-panel__link-url"
                 >
                   {pr.number && (
-                    <span className="task-detail-panel__link-number">
-                      #{pr.number}
-                    </span>
+                    <span className="task-detail-panel__link-number">#{pr.number}</span>
                   )}
                   {pr.title || (!pr.number && pr.url)}
                 </a>
@@ -1456,17 +1317,12 @@ export function TaskDetailPanel({
                   </span>
                 )}
                 {pr.projectStatus && (
-                  <span className="task-detail-panel__link-project">
-                    {pr.projectStatus}
-                  </span>
+                  <span className="task-detail-panel__link-project">{pr.projectStatus}</span>
                 )}
                 <span className="task-detail-panel__link-reviewers">
                   {reviewers.length > 0 ? (
                     reviewers.map((r, i) => (
-                      <span
-                        key={i}
-                        className="task-detail-panel__link-reviewer"
-                      >
+                      <span key={i} className="task-detail-panel__link-reviewer">
                         @{r}
                       </span>
                     ))
@@ -1514,10 +1370,7 @@ export function TaskDetailPanel({
                   <button
                     className="task-detail-panel__planning-btn"
                     onClick={() => {
-                      onStartPlanning?.(
-                        branchName,
-                        instruction?.instructionMd || null,
-                      );
+                      onStartPlanning?.(branchName, instruction?.instructionMd || null);
                     }}
                     title="Start Planning Session"
                   >
@@ -1554,11 +1407,7 @@ export function TaskDetailPanel({
           >
             <textarea
               className="task-detail-panel__instruction-textarea"
-              value={
-                editingInstruction
-                  ? instructionDraft
-                  : instruction?.instructionMd || ""
-              }
+              value={editingInstruction ? instructionDraft : instruction?.instructionMd || ""}
               onChange={(e) => setInstructionDraft(e.target.value)}
               readOnly={!editingInstruction}
               placeholder="No instructions yet..."
@@ -1592,11 +1441,7 @@ export function TaskDetailPanel({
                   Planning
                 </button>
                 <span
-                  className={
-                    !workingPath || isMerged
-                      ? "task-detail-panel__tooltip-wrapper"
-                      : ""
-                  }
+                  className={!workingPath || isMerged ? "task-detail-panel__tooltip-wrapper" : ""}
                   data-tooltip={
                     isMerged
                       ? "PR is merged"
@@ -1627,16 +1472,13 @@ export function TaskDetailPanel({
           <div className="task-detail-panel__messages">
             {messages.length === 0 && (
               <div className="task-detail-panel__no-messages">
-                Start a conversation to refine this task or get implementation
-                help.
+                Start a conversation to refine this task or get implementation help.
               </div>
             )}
             {messages.map((msg) => {
               // Check if content is saved chunks (JSON format)
               const savedChunks =
-                msg.role === "assistant"
-                  ? parseChunkedContent(msg.content)
-                  : null;
+                msg.role === "assistant" ? parseChunkedContent(msg.content) : null;
 
               const instructionEdit =
                 msg.role === "assistant" && !savedChunks
@@ -1676,16 +1518,13 @@ export function TaskDetailPanel({
                       >
                         {i === 0 && (
                           <div className="task-detail-panel__message-role">
-                            ASSISTANT -{" "}
-                            {msgMode === "planning" ? "Planning" : "Execution"}
+                            ASSISTANT - {msgMode === "planning" ? "Planning" : "Execution"}
                           </div>
                         )}
                         <div className="task-detail-panel__message-content">
                           {chunk.type === "thinking" && (
                             <div className="task-detail-panel__thinking">
-                              <div className="task-detail-panel__thinking-header">
-                                💭 Thinking
-                              </div>
+                              <div className="task-detail-panel__thinking-header">💭 Thinking</div>
                               <pre>{chunk.content}</pre>
                             </div>
                           )}
@@ -1709,9 +1548,7 @@ export function TaskDetailPanel({
                             <div className="task-detail-panel__tool-result">
                               <pre>
                                 {chunk.content?.slice(0, 500)}
-                                {(chunk.content?.length || 0) > 500
-                                  ? "..."
-                                  : ""}
+                                {(chunk.content?.length || 0) > 500 ? "..." : ""}
                               </pre>
                             </div>
                           )}
@@ -1732,71 +1569,58 @@ export function TaskDetailPanel({
                     {msgMode === "planning" ? "Planning" : "Execution"}
                   </div>
                   <div className="task-detail-panel__message-content">
-                    {displayContent && (
-                      <pre>{linkifyPreContent(displayContent)}</pre>
-                    )}
-                    {hasExecutionRequest &&
-                      !isPermissionGranted &&
-                      workingPath &&
-                      !isMerged && (
-                        <div className="task-detail-panel__permission-request">
-                          <span className="task-detail-panel__permission-text">
-                            Execution権限が必要です
-                          </span>
-                          <button
-                            className="task-detail-panel__permission-grant-btn"
-                            onClick={async () => {
-                              setGrantedPermissions((prev) =>
-                                new Set(prev).add(msg.id),
-                              );
-                              setChatMode("execution");
-                              // Send continuation message in execution mode
-                              if (chatSessionId && !chatLoading) {
-                                setChatLoading(true);
-                                const continueMessage =
-                                  "Execution権限を許可しました。実装を進めてください。";
-                                const tempId = Date.now();
-                                const tempUserMsg: ChatMessage = {
-                                  id: tempId,
-                                  sessionId: chatSessionId,
-                                  role: "user",
-                                  content: continueMessage,
-                                  chatMode: "execution",
-                                  createdAt: new Date().toISOString(),
-                                };
-                                setMessages((prev) => [...prev, tempUserMsg]);
-                                try {
-                                  const context = instruction?.instructionMd
-                                    ? `[Task Instruction]\n${instruction.instructionMd}\n\n[Mode: execution]`
-                                    : `[Mode: execution]`;
-                                  const result = await api.sendChatMessage(
-                                    chatSessionId,
-                                    continueMessage,
-                                    context,
-                                    "execution",
-                                  );
-                                  setMessages((prev) =>
-                                    prev.map((m) =>
-                                      m.id === tempId ? result.userMessage : m,
-                                    ),
-                                  );
-                                } catch (err) {
-                                  setError((err as Error).message);
-                                  setMessages((prev) =>
-                                    prev.filter((m) => m.id !== tempId),
-                                  );
-                                  setChatLoading(false);
-                                }
+                    {displayContent && <pre>{linkifyPreContent(displayContent)}</pre>}
+                    {hasExecutionRequest && !isPermissionGranted && workingPath && !isMerged && (
+                      <div className="task-detail-panel__permission-request">
+                        <span className="task-detail-panel__permission-text">
+                          Execution権限が必要です
+                        </span>
+                        <button
+                          className="task-detail-panel__permission-grant-btn"
+                          onClick={async () => {
+                            setGrantedPermissions((prev) => new Set(prev).add(msg.id));
+                            setChatMode("execution");
+                            // Send continuation message in execution mode
+                            if (chatSessionId && !chatLoading) {
+                              setChatLoading(true);
+                              const continueMessage =
+                                "Execution権限を許可しました。実装を進めてください。";
+                              const tempId = Date.now();
+                              const tempUserMsg: ChatMessage = {
+                                id: tempId,
+                                sessionId: chatSessionId,
+                                role: "user",
+                                content: continueMessage,
+                                chatMode: "execution",
+                                createdAt: new Date().toISOString(),
+                              };
+                              setMessages((prev) => [...prev, tempUserMsg]);
+                              try {
+                                const context = instruction?.instructionMd
+                                  ? `[Task Instruction]\n${instruction.instructionMd}\n\n[Mode: execution]`
+                                  : `[Mode: execution]`;
+                                const result = await api.sendChatMessage(
+                                  chatSessionId,
+                                  continueMessage,
+                                  context,
+                                  "execution",
+                                );
+                                setMessages((prev) =>
+                                  prev.map((m) => (m.id === tempId ? result.userMessage : m)),
+                                );
+                              } catch (err) {
+                                setError((err as Error).message);
+                                setMessages((prev) => prev.filter((m) => m.id !== tempId));
+                                setChatLoading(false);
                               }
-                            }}
-                            disabled={chatLoading}
-                          >
-                            {chatLoading
-                              ? "処理中..."
-                              : "許可してExecutionモードに切り替え"}
-                          </button>
-                        </div>
-                      )}
+                            }
+                          }}
+                          disabled={chatLoading}
+                        >
+                          {chatLoading ? "処理中..." : "許可してExecutionモードに切り替え"}
+                        </button>
+                      </div>
+                    )}
                     {hasExecutionRequest && isPermissionGranted && (
                       <div className="task-detail-panel__permission-granted">
                         ✓ Execution権限を許可しました
@@ -1809,14 +1633,10 @@ export function TaskDetailPanel({
                         <div className="task-detail-panel__diff-header">
                           <span>Task Instruction の変更提案</span>
                           {editStatus === "committed" && (
-                            <span className="task-detail-panel__committed-badge">
-                              Accepted
-                            </span>
+                            <span className="task-detail-panel__committed-badge">Accepted</span>
                           )}
                           {editStatus === "rejected" && (
-                            <span className="task-detail-panel__rejected-badge">
-                              Rejected
-                            </span>
+                            <span className="task-detail-panel__rejected-badge">Rejected</span>
                           )}
                         </div>
                         <div className="task-detail-panel__diff-content">
@@ -1829,11 +1649,7 @@ export function TaskDetailPanel({
                               className={`task-detail-panel__diff-line task-detail-panel__diff-line--${line.type}`}
                             >
                               <span className="task-detail-panel__diff-prefix">
-                                {line.type === "added"
-                                  ? "+"
-                                  : line.type === "removed"
-                                    ? "-"
-                                    : " "}
+                                {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
                               </span>
                               <span>{line.content || " "}</span>
                             </div>
@@ -1844,19 +1660,14 @@ export function TaskDetailPanel({
                             <button
                               className="task-detail-panel__accept-btn"
                               onClick={() =>
-                                handleCommitInstructionEdit(
-                                  msg.id,
-                                  instructionEdit.newContent,
-                                )
+                                handleCommitInstructionEdit(msg.id, instructionEdit.newContent)
                               }
                             >
                               Accept
                             </button>
                             <button
                               className="task-detail-panel__reject-btn"
-                              onClick={() =>
-                                handleRejectInstructionEdit(msg.id)
-                              }
+                              onClick={() => handleRejectInstructionEdit(msg.id)}
                             >
                               Reject
                             </button>
@@ -1876,18 +1687,13 @@ export function TaskDetailPanel({
                 {i === 0 && (
                   <div className="task-detail-panel__message-role">
                     ASSISTANT -{" "}
-                    {(streamingMode || chatMode) === "planning"
-                      ? "Planning"
-                      : "Execution"}
+                    {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}
                   </div>
                 )}
                 <div className="task-detail-panel__message-content">
-                  {(chunk.type === "thinking" ||
-                    chunk.type === "thinking_delta") && (
+                  {(chunk.type === "thinking" || chunk.type === "thinking_delta") && (
                     <div className="task-detail-panel__thinking">
-                      <div className="task-detail-panel__thinking-header">
-                        💭 Thinking
-                      </div>
+                      <div className="task-detail-panel__thinking-header">💭 Thinking</div>
                       <pre>{chunk.content}</pre>
                     </div>
                   )}
@@ -1896,9 +1702,7 @@ export function TaskDetailPanel({
                   )}
                   {chunk.type === "tool_use" && (
                     <div className="task-detail-panel__tool-use">
-                      <div className="task-detail-panel__tool-header">
-                        🔧 {chunk.toolName}
-                      </div>
+                      <div className="task-detail-panel__tool-header">🔧 {chunk.toolName}</div>
                       {chunk.toolInput && (
                         <RenderToolUseContent
                           toolName={chunk.toolName || ""}
@@ -1918,20 +1722,15 @@ export function TaskDetailPanel({
                 </div>
               </div>
             ))}
-            {(chatLoading || streamingContent !== null) &&
-              streamingChunks.length === 0 && (
-                <div className="task-detail-panel__message task-detail-panel__message--loading">
-                  <div className="task-detail-panel__message-role">
-                    ASSISTANT -{" "}
-                    {(streamingMode || chatMode) === "planning"
-                      ? "Planning"
-                      : "Execution"}
-                  </div>
-                  <div className="task-detail-panel__message-content">
-                    Thinking...
-                  </div>
+            {(chatLoading || streamingContent !== null) && streamingChunks.length === 0 && (
+              <div className="task-detail-panel__message task-detail-panel__message--loading">
+                <div className="task-detail-panel__message-role">
+                  ASSISTANT -{" "}
+                  {(streamingMode || chatMode) === "planning" ? "Planning" : "Execution"}
                 </div>
-              )}
+                <div className="task-detail-panel__message-content">Thinking...</div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
           <div className="task-detail-panel__chat-input">
@@ -1939,11 +1738,7 @@ export function TaskDetailPanel({
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  (e.metaKey || e.ctrlKey) &&
-                  !e.nativeEvent.isComposing
-                ) {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   handleSendMessage();
                 }
@@ -1969,10 +1764,7 @@ export function TaskDetailPanel({
                 Cancel
               </button>
             ) : (
-              <button
-                onClick={handleSendMessage}
-                disabled={!chatInput.trim() || chatLoading}
-              >
+              <button onClick={handleSendMessage} disabled={!chatInput.trim() || chatLoading}>
                 {chatLoading ? "..." : "Send"}
               </button>
             )}
@@ -1982,14 +1774,8 @@ export function TaskDetailPanel({
 
       {/* Delete Confirmation Modal */}
       {deletingLinkId !== null && (
-        <div
-          className="task-detail-panel__modal-overlay"
-          onClick={() => setDeletingLinkId(null)}
-        >
-          <div
-            className="task-detail-panel__modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="task-detail-panel__modal-overlay" onClick={() => setDeletingLinkId(null)}>
+          <div className="task-detail-panel__modal" onClick={(e) => e.stopPropagation()}>
             <h4>Issue を削除しますか？</h4>
             <p>この操作は取り消せません。</p>
             <div className="task-detail-panel__modal-actions">
@@ -2024,10 +1810,7 @@ export function TaskDetailPanel({
               })()
             : [];
           return (
-            <div
-              className="task-detail-panel__modal-overlay"
-              onClick={() => setShowCIModal(false)}
-            >
+            <div className="task-detail-panel__modal-overlay" onClick={() => setShowCIModal(false)}>
               <div
                 className="task-detail-panel__modal task-detail-panel__modal--ci"
                 onClick={(e) => e.stopPropagation()}
@@ -2043,9 +1826,7 @@ export function TaskDetailPanel({
                 </div>
                 <div className="task-detail-panel__ci-list">
                   {checks.length === 0 ? (
-                    <p className="task-detail-panel__ci-empty">
-                      No checks found
-                    </p>
+                    <p className="task-detail-panel__ci-empty">No checks found</p>
                   ) : (
                     checks.map((check, i) =>
                       check.detailsUrl ? (
@@ -2061,19 +1842,14 @@ export function TaskDetailPanel({
                           >
                             {check.conclusion === "SUCCESS"
                               ? "✓"
-                              : check.conclusion === "FAILURE" ||
-                                  check.conclusion === "ERROR"
+                              : check.conclusion === "FAILURE" || check.conclusion === "ERROR"
                                 ? "✗"
                                 : check.conclusion === "SKIPPED"
                                   ? "⊘"
                                   : "●"}
                           </span>
-                          <span className="task-detail-panel__ci-name">
-                            {check.name}
-                          </span>
-                          <span className="task-detail-panel__ci-link-icon">
-                            ↗
-                          </span>
+                          <span className="task-detail-panel__ci-name">{check.name}</span>
+                          <span className="task-detail-panel__ci-link-icon">↗</span>
                         </a>
                       ) : (
                         <div key={i} className="task-detail-panel__ci-item">
@@ -2082,16 +1858,13 @@ export function TaskDetailPanel({
                           >
                             {check.conclusion === "SUCCESS"
                               ? "✓"
-                              : check.conclusion === "FAILURE" ||
-                                  check.conclusion === "ERROR"
+                              : check.conclusion === "FAILURE" || check.conclusion === "ERROR"
                                 ? "✗"
                                 : check.conclusion === "SKIPPED"
                                   ? "⊘"
                                   : "●"}
                           </span>
-                          <span className="task-detail-panel__ci-name">
-                            {check.name}
-                          </span>
+                          <span className="task-detail-panel__ci-name">{check.name}</span>
                         </div>
                       ),
                     )
@@ -2108,15 +1881,9 @@ export function TaskDetailPanel({
           className="task-detail-panel__modal-overlay"
           onClick={() => setShowCreateWorktreeModal(false)}
         >
-          <div
-            className="task-detail-panel__modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="task-detail-panel__modal" onClick={(e) => e.stopPropagation()}>
             <h4>Worktreeを作成しますか？</h4>
-            <p
-              className="task-detail-panel__modal-branch-name"
-              style={{ color: "#4ade80" }}
-            >
+            <p className="task-detail-panel__modal-branch-name" style={{ color: "#4ade80" }}>
               {branchName}
             </p>
             <div className="task-detail-panel__modal-actions">
@@ -2126,10 +1893,7 @@ export function TaskDetailPanel({
               >
                 キャンセル
               </button>
-              <button
-                className="task-detail-panel__modal-confirm"
-                onClick={handleCreateWorktree}
-              >
+              <button className="task-detail-panel__modal-confirm" onClick={handleCreateWorktree}>
                 作成
               </button>
             </div>
@@ -2159,8 +1923,7 @@ export function TaskDetailPanel({
               </p>
             ) : deleteBlockedReason === "pushed_to_remote" ? (
               <p className="task-detail-panel__modal-warning task-detail-panel__modal-warning--strong">
-                ⚠️
-                このブランチはリモートにプッシュされていますが、まだマージされていません。
+                ⚠️ このブランチはリモートにプッシュされていますが、まだマージされていません。
                 <br />
                 ローカルとリモートの両方から強制削除されます。この操作は取り消せません。
               </p>
@@ -2197,19 +1960,13 @@ export function TaskDetailPanel({
 
       {/* Sync Modal - Choose Rebase or Merge */}
       {showSyncModal && parentBranch && (
-        <div
-          className="task-detail-panel__modal-overlay"
-          onClick={() => setShowSyncModal(false)}
-        >
+        <div className="task-detail-panel__modal-overlay" onClick={() => setShowSyncModal(false)}>
           <div
             className="task-detail-panel__modal task-detail-panel__modal--sync"
             onClick={(e) => e.stopPropagation()}
           >
             <h4>Sync with Parent</h4>
-            <p
-              className="task-detail-panel__modal-branch-name"
-              style={{ color: "#4ade80" }}
-            >
+            <p className="task-detail-panel__modal-branch-name" style={{ color: "#4ade80" }}>
               {parentBranch}
             </p>
             <p className="task-detail-panel__modal-info">
@@ -2217,27 +1974,15 @@ export function TaskDetailPanel({
                 `${node.aheadBehind.behind} commit${node.aheadBehind.behind > 1 ? "s" : ""} behind`}
             </p>
             <div className="task-detail-panel__sync-options">
-              <button
-                className="task-detail-panel__sync-option"
-                onClick={handleRebase}
-              >
-                <span className="task-detail-panel__sync-option-title">
-                  Rebase
-                </span>
+              <button className="task-detail-panel__sync-option" onClick={handleRebase}>
+                <span className="task-detail-panel__sync-option-title">Rebase</span>
                 <span className="task-detail-panel__sync-option-desc">
                   Keep history clean (recommended)
                 </span>
               </button>
-              <button
-                className="task-detail-panel__sync-option"
-                onClick={handleMergeParent}
-              >
-                <span className="task-detail-panel__sync-option-title">
-                  Merge
-                </span>
-                <span className="task-detail-panel__sync-option-desc">
-                  Create a merge commit
-                </span>
+              <button className="task-detail-panel__sync-option" onClick={handleMergeParent}>
+                <span className="task-detail-panel__sync-option-title">Merge</span>
+                <span className="task-detail-panel__sync-option-desc">Create a merge commit</span>
               </button>
             </div>
             <div className="task-detail-panel__modal-actions">
@@ -2254,10 +1999,7 @@ export function TaskDetailPanel({
 
       {/* Push Modal - Choose Push or Force Push */}
       {showPushModal && (
-        <div
-          className="task-detail-panel__modal-overlay"
-          onClick={() => setShowPushModal(false)}
-        >
+        <div className="task-detail-panel__modal-overlay" onClick={() => setShowPushModal(false)}>
           <div
             className="task-detail-panel__modal task-detail-panel__modal--sync"
             onClick={(e) => e.stopPropagation()}
@@ -2268,13 +2010,8 @@ export function TaskDetailPanel({
                 `${node.remoteAheadBehind.ahead} commit${node.remoteAheadBehind.ahead > 1 ? "s" : ""} ahead`}
             </p>
             <div className="task-detail-panel__sync-options">
-              <button
-                className="task-detail-panel__sync-option"
-                onClick={() => handlePush(false)}
-              >
-                <span className="task-detail-panel__sync-option-title">
-                  Push
-                </span>
+              <button className="task-detail-panel__sync-option" onClick={() => handlePush(false)}>
+                <span className="task-detail-panel__sync-option-title">Push</span>
                 <span className="task-detail-panel__sync-option-desc">
                   Normal push (recommended)
                 </span>
@@ -2283,9 +2020,7 @@ export function TaskDetailPanel({
                 className="task-detail-panel__sync-option task-detail-panel__sync-option--danger"
                 onClick={() => handlePush(true)}
               >
-                <span className="task-detail-panel__sync-option-title">
-                  Force Push
-                </span>
+                <span className="task-detail-panel__sync-option-title">Force Push</span>
                 <span className="task-detail-panel__sync-option-desc">
                   Overwrite remote history (use with caution)
                 </span>
@@ -2309,14 +2044,9 @@ export function TaskDetailPanel({
           className="task-detail-panel__modal-overlay"
           onClick={() => setShowClearChatModal(false)}
         >
-          <div
-            className="task-detail-panel__modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="task-detail-panel__modal" onClick={(e) => e.stopPropagation()}>
             <h4>チャット履歴をクリアしますか？</h4>
-            <p>
-              現在のチャット履歴は保存されますが、新しいセッションが開始されます。
-            </p>
+            <p>現在のチャット履歴は保存されますが、新しいセッションが開始されます。</p>
             <div className="task-detail-panel__modal-actions">
               <button
                 className="task-detail-panel__modal-cancel"
@@ -2324,10 +2054,7 @@ export function TaskDetailPanel({
               >
                 キャンセル
               </button>
-              <button
-                className="task-detail-panel__modal-confirm"
-                onClick={handleClearChat}
-              >
+              <button className="task-detail-panel__modal-confirm" onClick={handleClearChat}>
                 クリア
               </button>
             </div>

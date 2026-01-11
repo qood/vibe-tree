@@ -63,7 +63,9 @@ export function computeSimpleDiff(oldText: string, newText: string): DiffLine[] 
 function longestCommonSubsequence(a: string[], b: string[]): string[] {
   const m = a.length;
   const n = b.length;
-  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  const dp: number[][] = Array(m + 1)
+    .fill(null)
+    .map(() => Array(n + 1).fill(0));
 
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
@@ -77,7 +79,8 @@ function longestCommonSubsequence(a: string[], b: string[]): string[] {
 
   // Backtrack to find LCS
   const lcs: string[] = [];
-  let i = m, j = n;
+  let i = m,
+    j = n;
   while (i > 0 && j > 0) {
     if (a[i - 1] === b[j - 1]) {
       lcs.unshift(a[i - 1]);

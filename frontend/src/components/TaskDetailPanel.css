@@ -986,8 +986,7 @@
   border-color: #7f1d1d;
 }
 
-.task-detail-panel__instruction-edit-proposal--rejected
-  .task-detail-panel__diff-header {
+.task-detail-panel__instruction-edit-proposal--rejected .task-detail-panel__diff-header {
   background: #7f1d1d;
   color: #f87171;
 }

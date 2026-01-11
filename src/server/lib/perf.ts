@@ -91,10 +91,7 @@ export class PerfTimer {
   /**
    * Measure an async GitHub API call (for GraphQL fetch)
    */
-  async measureGitHubAsync<T>(
-    name: string,
-    fn: () => Promise<T>
-  ): Promise<T> {
+  async measureGitHubAsync<T>(name: string, fn: () => Promise<T>): Promise<T> {
     const start = performance.now();
     try {
       return await fn();
@@ -153,9 +150,7 @@ export class PerfTimer {
     console.log(`  Total: ${metrics.total.toFixed(2)}ms`);
     console.log(`  DB: ${metrics.db.toFixed(2)}ms`);
     console.log(`  GitHub: ${metrics.github.toFixed(2)}ms`);
-    console.log(
-      `  Cache: ${metrics.cache.hits} hits, ${metrics.cache.misses} misses`
-    );
+    console.log(`  Cache: ${metrics.cache.hits} hits, ${metrics.cache.misses} misses`);
 
     if (metrics.operations.length > 0) {
       console.log(`  Operations:`);

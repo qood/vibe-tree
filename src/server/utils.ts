@@ -19,7 +19,7 @@ export function getRepoId(repoPath: string): string | null {
   try {
     const output = execSync(
       `cd "${repoPath}" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
     const trimmed = output.trim();
     if (trimmed) return trimmed;
@@ -29,10 +29,9 @@ export function getRepoId(repoPath: string): string | null {
 
   // 2. Try git remote origin URL
   try {
-    const output = execSync(
-      `cd "${repoPath}" && git remote get-url origin 2>/dev/null`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`cd "${repoPath}" && git remote get-url origin 2>/dev/null`, {
+      encoding: "utf-8",
+    });
     const url = output.trim();
     // Parse GitHub URL: git@github.com:owner/repo.git or https://github.com/owner/repo.git
     const match = url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/);

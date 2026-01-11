@@ -25,8 +25,8 @@ projectRulesRouter.get("/branch-naming", async (c) => {
       and(
         eq(schema.projectRules.repoId, query.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   const rule = rules[0];
@@ -74,8 +74,8 @@ projectRulesRouter.post("/branch-naming", async (c) => {
       and(
         eq(schema.projectRules.repoId, input.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   let ruleId: number;
@@ -135,8 +135,8 @@ projectRulesRouter.get("/worktree", async (c) => {
       and(
         eq(schema.projectRules.repoId, query.repoId),
         eq(schema.projectRules.ruleType, "worktree"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   const rule = rules[0];
@@ -184,8 +184,8 @@ projectRulesRouter.post("/worktree", async (c) => {
       and(
         eq(schema.projectRules.repoId, input.repoId),
         eq(schema.projectRules.ruleType, "worktree"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   let ruleId: number;

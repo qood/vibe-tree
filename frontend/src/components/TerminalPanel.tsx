@@ -13,7 +13,13 @@ interface TerminalPanelProps {
   autoRunClaude?: boolean;
 }
 
-export function TerminalPanel({ repoId, worktreePath, onClose, taskContext, autoRunClaude }: TerminalPanelProps) {
+export function TerminalPanel({
+  repoId,
+  worktreePath,
+  onClose,
+  taskContext,
+  autoRunClaude,
+}: TerminalPanelProps) {
   const [session, setSession] = useState<TerminalSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,9 +116,7 @@ export function TerminalPanel({ repoId, worktreePath, onClose, taskContext, auto
   if (session.status === "stopped" || starting) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-[#1a1b26] text-[#a9b1d6] gap-4">
-        <div className="text-sm">
-          {starting ? "Starting terminal..." : "Terminal stopped"}
-        </div>
+        <div className="text-sm">{starting ? "Starting terminal..." : "Terminal stopped"}</div>
         {!starting && (
           <button
             onClick={handleRestart}
@@ -125,5 +129,12 @@ export function TerminalPanel({ repoId, worktreePath, onClose, taskContext, auto
     );
   }
 
-  return <Terminal sessionId={session.id} onClose={onClose} taskContext={taskContext} autoRunClaude={autoRunClaude} />;
+  return (
+    <Terminal
+      sessionId={session.id}
+      onClose={onClose}
+      taskContext={taskContext}
+      autoRunClaude={autoRunClaude}
+    />
+  );
 }
