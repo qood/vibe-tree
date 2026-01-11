@@ -41,7 +41,7 @@ function fetchGitHubIssueInfo(repoId: string, issueNumber: number): GitHubIssueI
       title: data.title,
       status: data.state?.toLowerCase() || "open",
       labels: (data.labels || []).map((l: { name: string }) => l.name),
-      projectStatus,
+      ...(projectStatus !== undefined && { projectStatus }),
     };
   } catch (err) {
     console.error(`Failed to fetch issue #${issueNumber}:`, err);
@@ -139,7 +139,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): GitHubPRInfo | nul
       checks,
       labels: (data.labels || []).map((l: { name: string; color: string }) => ({ name: l.name, color: l.color })),
       reviewers,
-      projectStatus,
+      ...(projectStatus !== undefined && { projectStatus }),
     };
   } catch (err) {
     console.error(`Failed to fetch PR #${prNumber}:`, err);

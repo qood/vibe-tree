@@ -186,8 +186,7 @@ ${plan.title}
 
 ## Project Rules
 ### Branch Naming
-- Pattern: \`${branchNaming?.pattern ?? "N/A"}\`
-- Examples: ${branchNaming?.examples?.map((e) => `\`${e}\``).join(", ") ?? "N/A"}
+- Patterns: ${branchNaming?.patterns.map((p) => `\`${p}\``).join(", ") ?? "N/A"}
 
 ## Plan Content
 ${truncatedContent}

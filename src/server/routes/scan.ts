@@ -172,7 +172,7 @@ scanRouter.post("/", async (c) => {
         // Check if this child already has an edge
         const existingIndex = edges.findIndex((e) => e.child === childBranch);
         if (existingIndex >= 0) {
-          const existingEdge = edges[existingIndex];
+          const existingEdge = edges[existingIndex]!;
           // Only replace if git didn't detect a confident relationship (medium = git ancestry detected)
           // Planning session edges should not override git-detected linear relationships
           if (existingEdge.confidence !== "medium") {
@@ -213,7 +213,7 @@ scanRouter.post("/", async (c) => {
         // This is a root task - connect to base branch
         const existingIndex = edges.findIndex((e) => e.child === node.branchName);
         if (existingIndex >= 0) {
-          const existingEdge = edges[existingIndex];
+          const existingEdge = edges[existingIndex]!;
           // Don't override git-detected linear relationships
           if (existingEdge.confidence !== "medium") {
             edges[existingIndex] = {
@@ -259,7 +259,7 @@ scanRouter.post("/", async (c) => {
       // Find and replace existing edge for this child
       const existingIndex = edges.findIndex((e) => e.child === designedEdge.child);
       if (existingIndex >= 0) {
-        const existingEdge = edges[existingIndex];
+        const existingEdge = edges[existingIndex]!;
         // Don't override git-detected linear relationships
         if (existingEdge.confidence !== "medium") {
           edges[existingIndex] = {
@@ -375,8 +375,7 @@ scanRouter.get("/restart-prompt", async (c) => {
 
 ## Project Rules
 ### Branch Naming
-- Pattern: \`${branchNaming?.pattern ?? "N/A"}\`
-- Examples: ${branchNaming?.examples?.join(", ") ?? "N/A"}
+- Patterns: ${branchNaming?.patterns.map((p) => `\`${p}\``).join(", ") ?? "N/A"}
 
 ${
   plan
@@ -447,15 +446,15 @@ scanRouter.post("/fetch", async (c) => {
         const behindMatch = track.match(/behind (\d+)/);
 
         branchStatus[branchName] = {
-          ahead: aheadMatch ? parseInt(aheadMatch[1], 10) : 0,
-          behind: behindMatch ? parseInt(behindMatch[1], 10) : 0,
+          ahead: aheadMatch?.[1] ? parseInt(aheadMatch[1], 10) : 0,
+          behind: behindMatch?.[1] ? parseInt(behindMatch[1], 10) : 0,
         };
       }
     } catch {
       // Ignore errors in getting branch status
     }
 
-    const repoId = getRepoId(localPath);
+    const repoId = getRepoId(localPath) ?? "";
     broadcast({
       type: "fetch.completed",
       repoId,
