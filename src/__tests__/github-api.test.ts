@@ -8,7 +8,7 @@ import {
   mock,
 } from "bun:test";
 import * as childProcess from "child_process";
-import type { PRInfo } from "../../shared/types";
+import type { PRInfo } from "../shared/types";
 import { fetchPRsGraphQL } from "../server/lib/github-api";
 
 // Token cache TTL is 5 minutes
