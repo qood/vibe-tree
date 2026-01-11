@@ -20,6 +20,8 @@ export interface WorktreeSettings {
   postCreateScript?: string;
   postDeleteScript?: string;
   checkoutPreference?: "main" | "first" | "ask";
+  worktreeCreateCommand?: string;
+  worktreeDeleteCommand?: string;
 }
 
 export interface Plan {

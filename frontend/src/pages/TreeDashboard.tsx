@@ -334,7 +334,7 @@ export default function TreeDashboard() {
       setRepoPins((prev) => prev.filter((p) => p.id !== id));
       if (selectedPinId === id) {
         const remaining = repoPins.filter((p) => p.id !== id);
-        navigate(remaining.length > 0 ? `/projects/${remaining[0].id}` : "/");
+        navigate(remaining.length > 0 ? `/projects/${remaining[0]!.id}` : "/");
         setSnapshot(null);
       }
     } catch (err) {
@@ -366,8 +366,10 @@ export default function TreeDashboard() {
       ];
 
       // Optimistic update: Add new branch node and edge immediately
-      const newNode = {
+      const newNode: TreeNode = {
         branchName: newBranchName,
+        badges: [],
+        lastCommitAt: new Date().toISOString(),
         aheadBehind: { ahead: 0, behind: 0 },
       };
       const newDisplayEdge = {
