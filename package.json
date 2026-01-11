@@ -13,7 +13,8 @@
     "test": "bun test",
     "test:frontend": "bun --filter frontend test",
     "test:all": "bun run test && bun --filter frontend test",
-    "typecheck": "tsc --noEmit && bun --filter frontend typecheck",
+    "typecheck": "tsgo --noEmit && bun --filter frontend typecheck",
+    "typecheck:tsc": "tsc --noEmit && bun --filter frontend typecheck",
     "frontend:dev": "bun --filter frontend dev",
     "frontend:build": "bun --filter frontend build",
     "frontend:test": "bun --filter frontend test",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@typescript/native-preview": "^7.0.0-dev.20260111.1",
     "bun-types": "latest",
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.8",
