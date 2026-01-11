@@ -56,6 +56,8 @@ export async function getReposRpc(): Promise<RepoInfo[]> {
 
 // Get single repo via RPC
 export async function getRepoRpc(owner: string, name: string): Promise<RepoInfo> {
+  // Dynamic route access requires type assertion for Hono RPC client
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await (rpc.repos as any)[owner][name].$get();
   return unwrap<RepoInfo>(res);
 }
