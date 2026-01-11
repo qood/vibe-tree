@@ -1,7 +1,6 @@
-import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { Hono } from "hono";
 import { systemRouter } from "../server/routes/system";
-import * as childProcess from "child_process";
 
 // Create a test app with the system router
 const app = new Hono();
@@ -30,7 +29,7 @@ describe("systemRouter", () => {
       });
 
       expect(res.status).toBe(400);
-      const json = await res.json();
+      const json = (await res.json()) as { code: string };
       expect(json.code).toBe("UNSUPPORTED_PLATFORM");
     });
 
@@ -52,7 +51,7 @@ describe("systemRouter", () => {
 
       // The response should be either success or an error (if dialog fails)
       expect([200, 500]).toContain(res.status);
-      const json = await res.json();
+      const json = (await res.json()) as Record<string, unknown>;
 
       // Verify response structure
       if (res.status === 200) {
@@ -71,7 +70,7 @@ describe("systemRouter", () => {
         method: "POST",
       });
 
-      const json = await res.json();
+      const json = (await res.json()) as { cancelled?: boolean; path?: string | null };
 
       // Response should have the expected structure
       if (res.status === 200) {
