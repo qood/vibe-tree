@@ -26,9 +26,9 @@ export function worktreeExists(repoPath: string, branch: string): boolean {
     );
     // Parse worktree list output to find matching branch
     const lines = output.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith("branch refs/heads/")) {
-        const worktreeBranch = lines[i].replace("branch refs/heads/", "");
+    for (const line of lines) {
+      if (line.startsWith("branch refs/heads/")) {
+        const worktreeBranch = line.replace("branch refs/heads/", "");
         if (worktreeBranch === branch) {
           return true;
         }

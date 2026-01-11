@@ -371,7 +371,7 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
       // Link issue if task has issueUrl
       if (task.issueUrl) {
         const issueMatch = task.issueUrl.match(/\/issues\/(\d+)/);
-        if (issueMatch) {
+        if (issueMatch?.[1]) {
           const issueNumber = parseInt(issueMatch[1], 10);
 
           // Check if link already exists
