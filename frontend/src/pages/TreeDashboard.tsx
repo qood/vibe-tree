@@ -703,14 +703,33 @@ export default function TreeDashboard() {
         </div>
         {showAddNew ? (
           <div className="add-project-form">
-            <input
-              type="text"
-              placeholder="Local path (e.g. ~/projects/my-app)"
-              value={newLocalPath}
-              onChange={(e) => setNewLocalPath(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddRepoPin()}
-              autoFocus
-            />
+            <div className="add-project-form__input-row">
+              <input
+                type="text"
+                placeholder="Local path (e.g. ~/projects/my-app)"
+                value={newLocalPath}
+                onChange={(e) => setNewLocalPath(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddRepoPin()}
+                autoFocus
+              />
+              <button
+                type="button"
+                className="btn-browse"
+                onClick={async () => {
+                  try {
+                    const result = await api.selectDirectory();
+                    if (!result.cancelled && result.path) {
+                      setNewLocalPath(result.path);
+                    }
+                  } catch (err) {
+                    console.error("Failed to open directory picker:", err);
+                  }
+                }}
+                title="フォルダを選択"
+              >
+                📁
+              </button>
+            </div>
             <div className="add-project-form__buttons">
               <button className="btn-primary" onClick={handleAddRepoPin}>Add</button>
               <button className="btn-secondary" onClick={() => setShowAddNew(false)}>Cancel</button>
@@ -816,19 +835,36 @@ export default function TreeDashboard() {
             padding: 20px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
           }
+          .add-project-form__input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+          }
           .add-project-form input {
-            width: 100%;
+            flex: 1;
             padding: 14px;
             border: 2px solid #374151;
             border-radius: 8px;
             font-size: 16px;
-            margin-bottom: 12px;
             background: #111827;
             color: #e5e7eb;
           }
           .add-project-form input:focus {
             outline: none;
             border-color: #3b82f6;
+          }
+          .btn-browse {
+            padding: 14px 16px;
+            border: 2px solid #374151;
+            border-radius: 8px;
+            background: #1f2937;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+          }
+          .btn-browse:hover {
+            background: #374151;
+            border-color: #4b5563;
           }
           .add-project-form__buttons {
             display: flex;
