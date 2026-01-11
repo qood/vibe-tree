@@ -72,8 +72,8 @@ scanRouter.post("/", async (c) => {
   // 3. Get worktrees with heartbeat
   const worktrees = await getWorktrees(localPath);
 
-  // 4. Get PRs with detailed info
-  const prs = getPRs(localPath);
+  // 4. Get PRs with detailed info (using GitHub GraphQL API)
+  const prs = await getPRs(repoId);
 
   // 5. Build tree (infer parent-child relationships)
   const { nodes, edges } = buildTree(branches, worktrees, prs, localPath, defaultBranch);

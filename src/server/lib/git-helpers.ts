@@ -2,6 +2,8 @@ import { execSync, exec } from "child_process";
 import { promisify } from "util";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { getCachedOrFetch } from "./cache";
+import { fetchPRsGraphQL } from "./github-api";
 
 const execAsync = promisify(exec);
 import type {
@@ -156,38 +158,14 @@ export async function getWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
   }
 }
 
-export function getPRs(repoPath: string): PRInfo[] {
-  try {
-    const output = execSync(
-      `cd "${repoPath}" && gh pr list --state all --json number,title,state,url,headRefName,isDraft,labels,assignees,reviewDecision,statusCheckRollup,additions,deletions,changedFiles --limit 50`,
-      { encoding: "utf-8" }
-    );
-    const prs: GhPR[] = JSON.parse(output);
-    return prs.map((pr) => {
-      const prInfo: PRInfo = {
-        number: pr.number,
-        title: pr.title,
-        state: pr.state,
-        url: pr.url,
-        branch: pr.headRefName,
-        isDraft: pr.isDraft,
-        labels: pr.labels?.map((l) => l.name) ?? [],
-        assignees: pr.assignees?.map((a) => a.login) ?? [],
-        reviewDecision: pr.reviewDecision,
-        additions: pr.additions,
-        deletions: pr.deletions,
-        changedFiles: pr.changedFiles,
-      };
-      const conclusion = pr.statusCheckRollup?.[0]?.conclusion;
-      if (conclusion) {
-        prInfo.checks = conclusion;
-      }
-      return prInfo;
-    });
-  } catch (err) {
-    console.error("getPRs error:", err);
-    return [];
-  }
+export async function getPRs(repoId: string): Promise<PRInfo[]> {
+  // Cache PR info for 60 seconds (PRs don't change frequently)
+  const cacheKey = `prs:${repoId}`;
+  return getCachedOrFetch(
+    cacheKey,
+    () => fetchPRsGraphQL(repoId),
+    60_000 // 60 seconds TTL
+  );
 }
 
 export function findBestParent(
