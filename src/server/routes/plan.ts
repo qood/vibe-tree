@@ -102,10 +102,7 @@ planRouter.post("/commit", async (c) => {
   const input = validateOrThrow(commitPlanSchema, body);
 
   // Get plan
-  const plans = await db
-    .select()
-    .from(schema.plans)
-    .where(eq(schema.plans.id, input.planId));
+  const plans = await db.select().from(schema.plans).where(eq(schema.plans.id, input.planId));
 
   const plan = plans[0];
   if (!plan) {
@@ -120,14 +117,12 @@ planRouter.post("/commit", async (c) => {
       and(
         eq(schema.projectRules.repoId, plan.repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   const ruleRecord = rules[0];
-  const branchNaming = ruleRecord
-    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
-    : null;
+  const branchNaming = ruleRecord ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule) : null;
 
   // Create GitHub Issue with minimal summary
   const issueBody = createIssueBody(plan, branchNaming);
@@ -138,7 +133,7 @@ planRouter.post("/commit", async (c) => {
     const escapedBody = issueBody.replace(/"/g, '\\"').replace(/\n/g, "\\n");
     const result = execSync(
       `cd "${input.localPath}" && gh issue create --title "${escapedTitle}" --body "${escapedBody}"`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
     issueUrl = result.trim();
   } catch (error) {
@@ -174,12 +169,10 @@ planRouter.post("/commit", async (c) => {
 
 function createIssueBody(
   plan: { id: number; title: string; contentMd: string },
-  branchNaming: BranchNamingRule | null
+  branchNaming: BranchNamingRule | null,
 ): string {
   const truncatedContent =
-    plan.contentMd.length > 500
-      ? plan.contentMd.substring(0, 500) + "..."
-      : plan.contentMd;
+    plan.contentMd.length > 500 ? plan.contentMd.substring(0, 500) + "..." : plan.contentMd;
 
   return `## Goal
 ${plan.title}

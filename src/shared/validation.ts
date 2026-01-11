@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 // Repo ID format: owner/name (e.g., "kthatoto/vibe-tree")
-const repoIdSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/, "Invalid repo ID format (expected owner/name)");
+const repoIdSchema = z
+  .string()
+  .min(1)
+  .regex(/^[^/]+\/[^/]+$/, "Invalid repo ID format (expected owner/name)");
 
 // Branch naming schemas
 export const branchNamingRuleSchema = z.object({
@@ -229,10 +232,7 @@ export const chatPurgeSchema = z.object({
 export type ChatPurgeInput = z.infer<typeof chatPurgeSchema>;
 
 // Validation helper
-export function validateOrThrow<T>(
-  schema: z.ZodSchema<T>,
-  data: unknown
-): T {
+export function validateOrThrow<T>(schema: z.ZodSchema<T>, data: unknown): T {
   const result = schema.safeParse(data);
   if (!result.success) {
     const issues = result.error.issues;

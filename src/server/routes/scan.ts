@@ -5,11 +5,7 @@ import { execSync } from "child_process";
 import { existsSync } from "fs";
 import { broadcast } from "../ws";
 import { expandTilde, getRepoId } from "../utils";
-import {
-  scanSchema,
-  restartPromptQuerySchema,
-  validateOrThrow,
-} from "../../shared/validation";
+import { scanSchema, restartPromptQuerySchema, validateOrThrow } from "../../shared/validation";
 import { BadRequestError } from "../middleware/error-handler";
 import type { BranchNamingRule, ScanSnapshot, TreeSpec } from "../../shared/types";
 import { getCache, setCache } from "../lib/cache";
@@ -75,16 +71,14 @@ scanRouter.post("/", async (c) => {
 
   // Update repoId in repo_pins if it has changed (ensures consistency)
   if (repoPin && repoPin.repoId !== repoId) {
-    await db
-      .update(schema.repoPins)
-      .set({ repoId })
-      .where(eq(schema.repoPins.id, repoPin.id));
+    await db.update(schema.repoPins).set({ repoId }).where(eq(schema.repoPins.id, repoPin.id));
   }
 
   // 3. Detect default branch dynamically (use saved if available and valid)
-  const defaultBranch = savedBaseBranch && branchNames.includes(savedBaseBranch)
-    ? savedBaseBranch
-    : getDefaultBranch(localPath, branchNames);
+  const defaultBranch =
+    savedBaseBranch && branchNames.includes(savedBaseBranch)
+      ? savedBaseBranch
+      : getDefaultBranch(localPath, branchNames);
 
   // 3. Get worktrees with heartbeat
   const worktrees = await getWorktrees(localPath);
@@ -103,14 +97,12 @@ scanRouter.post("/", async (c) => {
       and(
         eq(schema.projectRules.repoId, repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   const ruleRecord = rules[0];
-  const branchNaming = ruleRecord
-    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
-    : null;
+  const branchNaming = ruleRecord ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule) : null;
 
   // 7. Get tree spec (タスクツリー)
   const treeSpecs = await db
@@ -137,8 +129,8 @@ scanRouter.post("/", async (c) => {
     .where(
       and(
         eq(schema.planningSessions.repoId, repoId),
-        eq(schema.planningSessions.status, "confirmed")
-      )
+        eq(schema.planningSessions.status, "confirmed"),
+      ),
     );
 
   for (const session of confirmedSessions) {
@@ -172,11 +164,11 @@ scanRouter.post("/", async (c) => {
         try {
           const mergeBase = execSync(
             `cd "${localPath}" && git merge-base "${childBranch}" "${parentBranch}" 2>/dev/null`,
-            { encoding: "utf-8" }
+            { encoding: "utf-8" },
           ).trim();
           const childTip = execSync(
             `cd "${localPath}" && git rev-parse "${childBranch}" 2>/dev/null`,
-            { encoding: "utf-8" }
+            { encoding: "utf-8" },
           ).trim();
           if (mergeBase === childTip) {
             // Child is ancestor of parent - skip this backwards edge
@@ -254,16 +246,19 @@ scanRouter.post("/", async (c) => {
 
   // 8.5. Merge treeSpec edges LAST (manual edits take highest priority, but not over git ancestry)
   if (treeSpec) {
-    for (const designedEdge of treeSpec.specJson.edges as Array<{ parent: string; child: string }>) {
+    for (const designedEdge of treeSpec.specJson.edges as Array<{
+      parent: string;
+      child: string;
+    }>) {
       // Skip edges that contradict git ancestry (child is ancestor of parent in git)
       try {
         const mergeBase = execSync(
           `cd "${localPath}" && git merge-base "${designedEdge.child}" "${designedEdge.parent}" 2>/dev/null`,
-          { encoding: "utf-8" }
+          { encoding: "utf-8" },
         ).trim();
         const childTip = execSync(
           `cd "${localPath}" && git rev-parse "${designedEdge.child}" 2>/dev/null`,
-          { encoding: "utf-8" }
+          { encoding: "utf-8" },
         ).trim();
         // If child is ancestor of parent, this edge is backwards - skip it
         if (mergeBase === childTip) {
@@ -349,17 +344,12 @@ scanRouter.get("/restart-prompt", async (c) => {
 
   const repoId = query.repoId;
   const localPath = expandTilde(query.localPath);
-  const worktreePath = query.worktreePath
-    ? expandTilde(query.worktreePath)
-    : undefined;
+  const worktreePath = query.worktreePath ? expandTilde(query.worktreePath) : undefined;
 
   // Get plan if provided
   let plan = null;
   if (query.planId) {
-    const plans = await db
-      .select()
-      .from(schema.plans)
-      .where(eq(schema.plans.id, query.planId));
+    const plans = await db.select().from(schema.plans).where(eq(schema.plans.id, query.planId));
     plan = plans[0] ?? null;
   }
 
@@ -371,14 +361,12 @@ scanRouter.get("/restart-prompt", async (c) => {
       and(
         eq(schema.projectRules.repoId, repoId),
         eq(schema.projectRules.ruleType, "branch_naming"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   const ruleRecord = rules[0];
-  const branchNaming = ruleRecord
-    ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule)
-    : null;
+  const branchNaming = ruleRecord ? (JSON.parse(ruleRecord.ruleJson) as BranchNamingRule) : null;
 
   // Get git status for worktree
   const targetPath = worktreePath ?? localPath;
@@ -449,7 +437,7 @@ scanRouter.post("/fetch", async (c) => {
       // Get all local branches with their upstream
       const branchOutput = execSync(
         `cd "${localPath}" && git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads`,
-        { encoding: "utf-8" }
+        { encoding: "utf-8" },
       );
 
       for (const line of branchOutput.trim().split("\n")) {
@@ -486,4 +474,3 @@ scanRouter.post("/fetch", async (c) => {
     throw new BadRequestError(`Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 });
-

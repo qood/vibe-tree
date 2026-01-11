@@ -20,12 +20,17 @@ async function getWorktreeSettings(repoId: string): Promise<WorktreeSettings> {
       and(
         eq(schema.projectRules.repoId, repoId),
         eq(schema.projectRules.ruleType, "worktree"),
-        eq(schema.projectRules.isActive, true)
-      )
+        eq(schema.projectRules.isActive, true),
+      ),
     );
 
   if (!rules[0]) {
-    return { createScript: "", postCreateScript: "", postDeleteScript: "", checkoutPreference: "main" };
+    return {
+      createScript: "",
+      postCreateScript: "",
+      postDeleteScript: "",
+      checkoutPreference: "main",
+    };
   }
 
   return JSON.parse(rules[0].ruleJson) as WorktreeSettings;
@@ -70,7 +75,7 @@ function runPostDeleteScript(localPath: string, script: string): void {
 function runCustomCommand(
   command: string,
   context: { repoId: string; branchName: string; worktreePath: string },
-  label: string
+  label: string,
 ): void {
   if (!command || !command.trim()) return;
 
@@ -97,10 +102,9 @@ function runCustomCommand(
 // Helper to find worktree path for a branch from git worktree list
 function findWorktreePathForBranch(localPath: string, branchName: string): string | null {
   try {
-    const output = execSync(
-      `cd "${localPath}" && git worktree list --porcelain`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`cd "${localPath}" && git worktree list --porcelain`, {
+      encoding: "utf-8",
+    });
 
     // Parse porcelain output: worktree path, HEAD sha, branch name
     const lines = output.trim().split("\n");
@@ -128,7 +132,7 @@ function createWorktreeWithScript(
   localPath: string,
   fallbackWorktreePath: string,
   branchName: string,
-  createScript?: string
+  createScript?: string,
 ): string {
   if (createScript && createScript.trim()) {
     // Replace placeholders in custom script
@@ -148,10 +152,9 @@ function createWorktreeWithScript(
     return fallbackWorktreePath;
   } else {
     // Default worktree creation
-    execSync(
-      `cd "${localPath}" && git worktree add "${fallbackWorktreePath}" "${branchName}"`,
-      { encoding: "utf-8" }
-    );
+    execSync(`cd "${localPath}" && git worktree add "${fallbackWorktreePath}" "${branchName}"`, {
+      encoding: "utf-8",
+    });
     return fallbackWorktreePath;
   }
 }
@@ -173,7 +176,7 @@ branchRouter.post("/create", async (c) => {
   const branchNameRegex = /^[a-zA-Z0-9/_-]+$/;
   if (!branchNameRegex.test(input.branchName)) {
     throw new BadRequestError(
-      `Invalid branch name: ${input.branchName}. Use only alphanumeric, /, _, -`
+      `Invalid branch name: ${input.branchName}. Use only alphanumeric, /, _, -`,
     );
   }
 
@@ -181,7 +184,7 @@ branchRouter.post("/create", async (c) => {
   try {
     const existingBranches = execSync(
       `cd "${localPath}" && git branch --list "${input.branchName}"`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     if (existingBranches) {
       throw new BadRequestError(`Branch already exists: ${input.branchName}`);
@@ -193,10 +196,9 @@ branchRouter.post("/create", async (c) => {
 
   // Create the branch
   try {
-    execSync(
-      `cd "${localPath}" && git branch "${input.branchName}" "${input.baseBranch}"`,
-      { encoding: "utf-8" }
-    );
+    execSync(`cd "${localPath}" && git branch "${input.branchName}" "${input.baseBranch}"`, {
+      encoding: "utf-8",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new BadRequestError(`Failed to create branch: ${message}`);
@@ -221,11 +223,14 @@ interface TaskResult {
 }
 
 // Check if PR already exists for branch
-function getExistingPr(localPath: string, branchName: string): { url: string; number: number } | null {
+function getExistingPr(
+  localPath: string,
+  branchName: string,
+): { url: string; number: number } | null {
   try {
     const result = execSync(
       `cd "${localPath}" && gh pr view "${branchName}" --json url,number 2>/dev/null || true`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     if (result) {
       const pr = JSON.parse(result);
@@ -243,7 +248,7 @@ function createPr(
   branchName: string,
   baseBranch: string,
   title: string,
-  body: string
+  body: string,
 ): { url: string; number: number } {
   // First push the branch
   execSync(`cd "${localPath}" && git push -u origin "${branchName}"`, {
@@ -254,7 +259,7 @@ function createPr(
   // Create PR
   const result = execSync(
     `cd "${localPath}" && gh pr create --head "${branchName}" --base "${baseBranch}" --title "${title.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --json url,number`,
-    { encoding: "utf-8" }
+    { encoding: "utf-8" },
   ).trim();
 
   const pr = JSON.parse(result);
@@ -304,15 +309,14 @@ branchRouter.post("/create-tree", async (c) => {
       // Check if branch already exists
       const existingBranches = execSync(
         `cd "${localPath}" && git branch --list "${task.branchName}"`,
-        { encoding: "utf-8" }
+        { encoding: "utf-8" },
       ).trim();
 
       // Create branch if it doesn't exist
       if (!existingBranches) {
-        execSync(
-          `cd "${localPath}" && git branch "${task.branchName}" "${task.parentBranch}"`,
-          { encoding: "utf-8" }
-        );
+        execSync(`cd "${localPath}" && git branch "${task.branchName}" "${task.parentBranch}"`, {
+          encoding: "utf-8",
+        });
       }
 
       // Check if worktree already exists for this branch
@@ -324,7 +328,12 @@ branchRouter.post("/create-tree", async (c) => {
       } else {
         // Create worktree with optional custom script
         const wtSettings = await getWorktreeSettings(input.repoId);
-        const actualPath = createWorktreeWithScript(localPath, result.worktreePath, task.branchName, wtSettings.createScript);
+        const actualPath = createWorktreeWithScript(
+          localPath,
+          result.worktreePath,
+          task.branchName,
+          wtSettings.createScript,
+        );
         result.worktreePath = actualPath;
 
         // Run post-creation script if configured
@@ -334,11 +343,15 @@ branchRouter.post("/create-tree", async (c) => {
 
         // Run custom worktree create command if configured
         if (wtSettings.worktreeCreateCommand) {
-          runCustomCommand(wtSettings.worktreeCreateCommand, {
-            repoId: input.repoId,
-            branchName: task.branchName,
-            worktreePath: result.worktreePath,
-          }, "worktreeCreateCommand");
+          runCustomCommand(
+            wtSettings.worktreeCreateCommand,
+            {
+              repoId: input.repoId,
+              branchName: task.branchName,
+              worktreePath: result.worktreePath,
+            },
+            "worktreeCreateCommand",
+          );
         }
       }
 
@@ -381,13 +394,7 @@ branchRouter.post("/create-tree", async (c) => {
               .filter(Boolean)
               .join("\n");
 
-            const pr = createPr(
-              localPath,
-              task.branchName,
-              task.parentBranch,
-              prTitle,
-              prBody
-            );
+            const pr = createPr(localPath, task.branchName, task.parentBranch, prTitle, prBody);
             result.prUrl = pr.url;
             result.prNumber = pr.number;
             console.log(`Created PR for ${task.branchName}: ${pr.url}`);
@@ -463,16 +470,17 @@ branchRouter.post("/create-worktree", async (c) => {
 
   // Check if branch exists
   try {
-    const existingBranches = execSync(
-      `cd "${localPath}" && git branch --list "${branchName}"`,
-      { encoding: "utf-8" }
-    ).trim();
+    const existingBranches = execSync(`cd "${localPath}" && git branch --list "${branchName}"`, {
+      encoding: "utf-8",
+    }).trim();
     if (!existingBranches) {
       throw new BadRequestError(`Branch does not exist: ${branchName}`);
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check branch: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check branch: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Create worktrees directory
@@ -505,7 +513,12 @@ branchRouter.post("/create-worktree", async (c) => {
     const wtSettings = await getWorktreeSettings(repoId);
 
     // Create worktree with optional custom script
-    actualWorktreePath = createWorktreeWithScript(localPath, fallbackWorktreePath, branchName, wtSettings.createScript);
+    actualWorktreePath = createWorktreeWithScript(
+      localPath,
+      fallbackWorktreePath,
+      branchName,
+      wtSettings.createScript,
+    );
 
     // Run post-creation script if configured
     if (wtSettings.postCreateScript) {
@@ -514,14 +527,20 @@ branchRouter.post("/create-worktree", async (c) => {
 
     // Run custom worktree create command if configured
     if (wtSettings.worktreeCreateCommand && repoId) {
-      runCustomCommand(wtSettings.worktreeCreateCommand, {
-        repoId,
-        branchName,
-        worktreePath: actualWorktreePath,
-      }, "worktreeCreateCommand");
+      runCustomCommand(
+        wtSettings.worktreeCreateCommand,
+        {
+          repoId,
+          branchName,
+          worktreePath: actualWorktreePath,
+        },
+        "worktreeCreateCommand",
+      );
     }
   } catch (err) {
-    throw new BadRequestError(`Failed to create worktree: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to create worktree: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return c.json({
@@ -549,40 +568,43 @@ branchRouter.post("/checkout", async (c) => {
 
   // Check if branch exists
   try {
-    const existingBranches = execSync(
-      `cd "${localPath}" && git branch --list "${branchName}"`,
-      { encoding: "utf-8" }
-    ).trim();
+    const existingBranches = execSync(`cd "${localPath}" && git branch --list "${branchName}"`, {
+      encoding: "utf-8",
+    }).trim();
     if (!existingBranches) {
       throw new BadRequestError(`Branch does not exist: ${branchName}`);
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check branch: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check branch: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Check for uncommitted changes
   try {
-    const status = execSync(
-      `cd "${localPath}" && git status --porcelain`,
-      { encoding: "utf-8" }
-    ).trim();
+    const status = execSync(`cd "${localPath}" && git status --porcelain`, {
+      encoding: "utf-8",
+    }).trim();
     if (status) {
-      throw new BadRequestError("Cannot checkout: you have uncommitted changes. Please commit or stash them first.");
+      throw new BadRequestError(
+        "Cannot checkout: you have uncommitted changes. Please commit or stash them first.",
+      );
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check git status: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Checkout
   try {
-    execSync(
-      `cd "${localPath}" && git checkout "${branchName}"`,
-      { encoding: "utf-8" }
-    );
+    execSync(`cd "${localPath}" && git checkout "${branchName}"`, { encoding: "utf-8" });
   } catch (err) {
-    throw new BadRequestError(`Failed to checkout: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to checkout: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return c.json({
@@ -617,10 +639,9 @@ branchRouter.post("/pull", async (c) => {
   } else {
     // Check if the main repo is on this branch
     try {
-      const currentBranch = execSync(
-        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
-        { encoding: "utf-8" }
-      ).trim();
+      const currentBranch = execSync(`cd "${localPath}" && git rev-parse --abbrev-ref HEAD`, {
+        encoding: "utf-8",
+      }).trim();
       if (currentBranch === branchName) {
         pullPath = localPath;
       }
@@ -635,7 +656,7 @@ branchRouter.post("/pull", async (c) => {
       // Use git fetch origin branchname:branchname for fast-forward update
       const output = execSync(
         `cd "${localPath}" && git fetch origin "${branchName}:${branchName}"`,
-        { encoding: "utf-8", timeout: 30000 }
+        { encoding: "utf-8", timeout: 30000 },
       );
       return c.json({
         success: true,
@@ -648,7 +669,7 @@ branchRouter.post("/pull", async (c) => {
       // If fast-forward fails (e.g., diverged), suggest checkout
       if (message.includes("non-fast-forward") || message.includes("rejected")) {
         throw new BadRequestError(
-          `Cannot fast-forward: branch "${branchName}" has diverged. Please checkout and merge manually.`
+          `Cannot fast-forward: branch "${branchName}" has diverged. Please checkout and merge manually.`,
         );
       }
       throw new BadRequestError(`Failed to update branch: ${message}`);
@@ -657,26 +678,24 @@ branchRouter.post("/pull", async (c) => {
 
   // Check for uncommitted changes
   try {
-    const status = execSync(
-      `cd "${pullPath}" && git status --porcelain`,
-      { encoding: "utf-8" }
-    ).trim();
+    const status = execSync(`cd "${pullPath}" && git status --porcelain`, {
+      encoding: "utf-8",
+    }).trim();
     if (status) {
       throw new BadRequestError(
-        "Cannot pull: you have uncommitted changes. Please commit or stash them first."
+        "Cannot pull: you have uncommitted changes. Please commit or stash them first.",
       );
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check git status: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Pull
   try {
-    const output = execSync(
-      `cd "${pullPath}" && git pull`,
-      { encoding: "utf-8", timeout: 30000 }
-    );
+    const output = execSync(`cd "${pullPath}" && git pull`, { encoding: "utf-8", timeout: 30000 });
     return c.json({
       success: true,
       branchName,
@@ -684,7 +703,9 @@ branchRouter.post("/pull", async (c) => {
       method: "pull",
     });
   } catch (err) {
-    throw new BadRequestError(`Failed to pull: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to pull: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 });
 
@@ -713,10 +734,9 @@ branchRouter.post("/rebase", async (c) => {
   } else {
     // Check if the main repo is on this branch
     try {
-      const currentBranch = execSync(
-        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
-        { encoding: "utf-8" }
-      ).trim();
+      const currentBranch = execSync(`cd "${localPath}" && git rev-parse --abbrev-ref HEAD`, {
+        encoding: "utf-8",
+      }).trim();
       if (currentBranch === branchName) {
         rebasePath = localPath;
       }
@@ -731,16 +751,19 @@ branchRouter.post("/rebase", async (c) => {
 
   // Check for uncommitted changes
   try {
-    const status = execSync(
-      `cd "${rebasePath}" && git status --porcelain`,
-      { encoding: "utf-8" }
-    ).trim();
+    const status = execSync(`cd "${rebasePath}" && git status --porcelain`, {
+      encoding: "utf-8",
+    }).trim();
     if (status) {
-      throw new BadRequestError("Cannot rebase: you have uncommitted changes. Please commit or stash them first.");
+      throw new BadRequestError(
+        "Cannot rebase: you have uncommitted changes. Please commit or stash them first.",
+      );
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check git status: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Check if remote branch exists
@@ -762,10 +785,10 @@ branchRouter.post("/rebase", async (c) => {
   // Rebase onto remote or local parent
   const rebaseTarget = useRemote ? `origin/${parentBranch}` : parentBranch;
   try {
-    const output = execSync(
-      `cd "${rebasePath}" && git rebase "${rebaseTarget}"`,
-      { encoding: "utf-8", timeout: 60000 }
-    );
+    const output = execSync(`cd "${rebasePath}" && git rebase "${rebaseTarget}"`, {
+      encoding: "utf-8",
+      timeout: 60000,
+    });
     return c.json({
       success: true,
       branchName,
@@ -776,7 +799,9 @@ branchRouter.post("/rebase", async (c) => {
     const message = err instanceof Error ? err.message : String(err);
     // Abort rebase if it failed
     try {
-      execSync(`cd "${rebasePath}" && git rebase --abort 2>/dev/null || true`, { encoding: "utf-8" });
+      execSync(`cd "${rebasePath}" && git rebase --abort 2>/dev/null || true`, {
+        encoding: "utf-8",
+      });
     } catch {
       // Ignore
     }
@@ -812,10 +837,9 @@ branchRouter.post("/merge-parent", async (c) => {
   } else {
     // Check if the main repo is on this branch
     try {
-      const currentBranch = execSync(
-        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
-        { encoding: "utf-8" }
-      ).trim();
+      const currentBranch = execSync(`cd "${localPath}" && git rev-parse --abbrev-ref HEAD`, {
+        encoding: "utf-8",
+      }).trim();
       if (currentBranch === branchName) {
         mergePath = localPath;
       }
@@ -830,16 +854,19 @@ branchRouter.post("/merge-parent", async (c) => {
 
   // Check for uncommitted changes
   try {
-    const status = execSync(
-      `cd "${mergePath}" && git status --porcelain`,
-      { encoding: "utf-8" }
-    ).trim();
+    const status = execSync(`cd "${mergePath}" && git status --porcelain`, {
+      encoding: "utf-8",
+    }).trim();
     if (status) {
-      throw new BadRequestError("Cannot merge: you have uncommitted changes. Please commit or stash them first.");
+      throw new BadRequestError(
+        "Cannot merge: you have uncommitted changes. Please commit or stash them first.",
+      );
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check git status: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Check if remote branch exists
@@ -861,10 +888,10 @@ branchRouter.post("/merge-parent", async (c) => {
   // Merge remote or local parent
   const mergeTarget = useRemote ? `origin/${parentBranch}` : parentBranch;
   try {
-    const output = execSync(
-      `cd "${mergePath}" && git merge "${mergeTarget}" --no-edit`,
-      { encoding: "utf-8", timeout: 60000 }
-    );
+    const output = execSync(`cd "${mergePath}" && git merge "${mergeTarget}" --no-edit`, {
+      encoding: "utf-8",
+      timeout: 60000,
+    });
     return c.json({
       success: true,
       branchName,
@@ -911,10 +938,9 @@ branchRouter.post("/push", async (c) => {
   } else {
     // Check if the main repo is on this branch
     try {
-      const currentBranch = execSync(
-        `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
-        { encoding: "utf-8" }
-      ).trim();
+      const currentBranch = execSync(`cd "${localPath}" && git rev-parse --abbrev-ref HEAD`, {
+        encoding: "utf-8",
+      }).trim();
       if (currentBranch === branchName) {
         pushPath = localPath;
       }
@@ -932,7 +958,7 @@ branchRouter.post("/push", async (c) => {
     const forceFlag = force ? "--force-with-lease" : "";
     const output = execSync(
       `cd "${pushPath}" && git push ${forceFlag} -u origin "${branchName}" 2>&1`,
-      { encoding: "utf-8", timeout: 60000 }
+      { encoding: "utf-8", timeout: 60000 },
     );
     return c.json({
       success: true,
@@ -942,7 +968,9 @@ branchRouter.post("/push", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("rejected") || message.includes("non-fast-forward")) {
-      throw new BadRequestError("Push rejected. Remote has changes not in your branch. Pull/rebase first or use force push.");
+      throw new BadRequestError(
+        "Push rejected. Remote has changes not in your branch. Pull/rebase first or use force push.",
+      );
     }
     throw new BadRequestError(`Failed to push: ${message}`);
   }
@@ -966,10 +994,9 @@ branchRouter.post("/check-deletable", async (c) => {
 
   // Check if branch exists
   try {
-    const existingBranches = execSync(
-      `cd "${localPath}" && git branch --list "${branchName}"`,
-      { encoding: "utf-8" }
-    ).trim();
+    const existingBranches = execSync(`cd "${localPath}" && git branch --list "${branchName}"`, {
+      encoding: "utf-8",
+    }).trim();
     if (!existingBranches) {
       return c.json({ deletable: false, reason: "branch_not_found" });
     }
@@ -979,10 +1006,9 @@ branchRouter.post("/check-deletable", async (c) => {
 
   // Check if currently on this branch
   try {
-    const currentBranch = execSync(
-      `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
-      { encoding: "utf-8" }
-    ).trim();
+    const currentBranch = execSync(`cd "${localPath}" && git rev-parse --abbrev-ref HEAD`, {
+      encoding: "utf-8",
+    }).trim();
     if (currentBranch === branchName) {
       return c.json({ deletable: false, reason: "currently_checked_out" });
     }
@@ -995,7 +1021,7 @@ branchRouter.post("/check-deletable", async (c) => {
   try {
     const remoteRef = execSync(
       `cd "${localPath}" && git ls-remote --heads origin "${branchName}" 2>/dev/null`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     existsOnRemote = remoteRef.length > 0;
   } catch {
@@ -1046,7 +1072,7 @@ branchRouter.post("/check-deletable", async (c) => {
         // Try main first
         const mainExists = execSync(
           `cd "${localPath}" && git rev-parse --verify main 2>/dev/null`,
-          { encoding: "utf-8" }
+          { encoding: "utf-8" },
         ).trim();
         if (mainExists) {
           actualParent = "main";
@@ -1061,7 +1087,7 @@ branchRouter.post("/check-deletable", async (c) => {
   try {
     const commits = execSync(
       `cd "${localPath}" && git log "${actualParent}..${branchName}" --oneline 2>/dev/null`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     ).trim();
     if (commits.length > 0) {
       return c.json({ deletable: false, reason: "has_commits" });
@@ -1071,7 +1097,7 @@ branchRouter.post("/check-deletable", async (c) => {
     try {
       const commits = execSync(
         `cd "${localPath}" && git log "origin/${actualParent}..${branchName}" --oneline 2>/dev/null`,
-        { encoding: "utf-8" }
+        { encoding: "utf-8" },
       ).trim();
       if (commits.length > 0) {
         return c.json({ deletable: false, reason: "has_commits" });
@@ -1104,24 +1130,24 @@ branchRouter.post("/delete", async (c) => {
 
   // Check if branch exists
   try {
-    const existingBranches = execSync(
-      `cd "${localPath}" && git branch --list "${branchName}"`,
-      { encoding: "utf-8" }
-    ).trim();
+    const existingBranches = execSync(`cd "${localPath}" && git branch --list "${branchName}"`, {
+      encoding: "utf-8",
+    }).trim();
     if (!existingBranches) {
       throw new BadRequestError(`Branch does not exist: ${branchName}`);
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check branch: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check branch: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Check if currently on this branch
   try {
-    const currentBranch = execSync(
-      `cd "${localPath}" && git rev-parse --abbrev-ref HEAD`,
-      { encoding: "utf-8" }
-    ).trim();
+    const currentBranch = execSync(`cd "${localPath}" && git rev-parse --abbrev-ref HEAD`, {
+      encoding: "utf-8",
+    }).trim();
     if (currentBranch === branchName) {
       throw new BadRequestError("Cannot delete the currently checked out branch");
     }
@@ -1144,11 +1170,15 @@ branchRouter.post("/delete", async (c) => {
       } else {
         // Run custom worktree delete command if configured
         if (wtSettings.worktreeDeleteCommand && repoIdForWorktree) {
-          runCustomCommand(wtSettings.worktreeDeleteCommand, {
-            repoId: repoIdForWorktree,
-            branchName,
-            worktreePath,
-          }, "worktreeDeleteCommand");
+          runCustomCommand(
+            wtSettings.worktreeDeleteCommand,
+            {
+              repoId: repoIdForWorktree,
+              branchName,
+              worktreePath,
+            },
+            "worktreeDeleteCommand",
+          );
         }
 
         // Run post-delete script if configured
@@ -1165,16 +1195,13 @@ branchRouter.post("/delete", async (c) => {
   // Delete the branch
   try {
     const flag = force ? "-D" : "-d";
-    execSync(
-      `cd "${localPath}" && git branch ${flag} "${branchName}"`,
-      { encoding: "utf-8" }
-    );
+    execSync(`cd "${localPath}" && git branch ${flag} "${branchName}"`, { encoding: "utf-8" });
 
     // Also delete remote branch if it exists
     try {
       execSync(
         `cd "${localPath}" && git push origin --delete "${branchName}" 2>/dev/null || true`,
-        { encoding: "utf-8", timeout: 30000 }
+        { encoding: "utf-8", timeout: 30000 },
       );
     } catch {
       // Ignore errors deleting remote branch
@@ -1234,8 +1261,8 @@ branchRouter.post("/delete", async (c) => {
           .where(
             and(
               eq(schema.planningSessions.repoId, repoId),
-              ne(schema.planningSessions.status, "discarded")
-            )
+              ne(schema.planningSessions.status, "discarded"),
+            ),
           );
 
         for (const session of sessions) {
@@ -1281,23 +1308,17 @@ branchRouter.post("/delete", async (c) => {
         .where(
           and(
             eq(schema.chatSessions.repoId, repoId),
-            eq(schema.chatSessions.branchName, branchName)
-          )
+            eq(schema.chatSessions.branchName, branchName),
+          ),
         );
 
       for (const session of sessionsToDelete) {
         // Delete chat summaries first (foreign key)
-        await db
-          .delete(schema.chatSummaries)
-          .where(eq(schema.chatSummaries.sessionId, session.id));
+        await db.delete(schema.chatSummaries).where(eq(schema.chatSummaries.sessionId, session.id));
         // Delete chat messages
-        await db
-          .delete(schema.chatMessages)
-          .where(eq(schema.chatMessages.sessionId, session.id));
+        await db.delete(schema.chatMessages).where(eq(schema.chatMessages.sessionId, session.id));
         // Delete agent runs
-        await db
-          .delete(schema.agentRuns)
-          .where(eq(schema.agentRuns.sessionId, session.id));
+        await db.delete(schema.agentRuns).where(eq(schema.agentRuns.sessionId, session.id));
       }
 
       // Delete the chat sessions
@@ -1306,8 +1327,8 @@ branchRouter.post("/delete", async (c) => {
         .where(
           and(
             eq(schema.chatSessions.repoId, repoId),
-            eq(schema.chatSessions.branchName, branchName)
-          )
+            eq(schema.chatSessions.branchName, branchName),
+          ),
         );
 
       // Delete task instructions
@@ -1316,18 +1337,15 @@ branchRouter.post("/delete", async (c) => {
         .where(
           and(
             eq(schema.taskInstructions.repoId, repoId),
-            eq(schema.taskInstructions.branchName, branchName)
-          )
+            eq(schema.taskInstructions.branchName, branchName),
+          ),
         );
 
       // Delete branch links
       await db
         .delete(schema.branchLinks)
         .where(
-          and(
-            eq(schema.branchLinks.repoId, repoId),
-            eq(schema.branchLinks.branchName, branchName)
-          )
+          and(eq(schema.branchLinks.repoId, repoId), eq(schema.branchLinks.branchName, branchName)),
         );
 
       // Delete instruction logs
@@ -1336,8 +1354,8 @@ branchRouter.post("/delete", async (c) => {
         .where(
           and(
             eq(schema.instructionsLog.repoId, repoId),
-            eq(schema.instructionsLog.branchName, branchName)
-          )
+            eq(schema.instructionsLog.branchName, branchName),
+          ),
         );
     } catch (err) {
       console.error("Failed to clean up branch data:", err);
@@ -1352,7 +1370,7 @@ branchRouter.post("/delete", async (c) => {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("not fully merged")) {
       throw new BadRequestError(
-        `Branch "${branchName}" is not fully merged. Use force delete if you're sure.`
+        `Branch "${branchName}" is not fully merged. Use force delete if you're sure.`,
       );
     }
     throw new BadRequestError(`Failed to delete branch: ${message}`);
@@ -1379,7 +1397,7 @@ branchRouter.post("/cleanup-orphaned", async (c) => {
   try {
     const output = execSync(
       `cd "${localPath}" && git for-each-ref --format='%(refname:short)' refs/heads/`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
     existingBranches = output.trim().split("\n").filter(Boolean);
   } catch (err) {
@@ -1406,7 +1424,9 @@ branchRouter.post("/cleanup-orphaned", async (c) => {
       if (session.branchName && !branchSet.has(session.branchName)) {
         // Delete related data
         await db.delete(schema.chatSummaries).where(eq(schema.chatSummaries.sessionId, session.id));
-        const msgResult = await db.delete(schema.chatMessages).where(eq(schema.chatMessages.sessionId, session.id)) as unknown as { changes: number };
+        const msgResult = (await db
+          .delete(schema.chatMessages)
+          .where(eq(schema.chatMessages.sessionId, session.id))) as unknown as { changes: number };
         cleaned.chatMessages += msgResult.changes ?? 0;
         await db.delete(schema.agentRuns).where(eq(schema.agentRuns.sessionId, session.id));
         await db.delete(schema.chatSessions).where(eq(schema.chatSessions.id, session.id));
@@ -1489,39 +1509,40 @@ branchRouter.post("/delete-worktree", async (c) => {
   // Get branch name from worktree
   let branchName: string | null = null;
   try {
-    branchName = execSync(
-      `cd "${worktreePath}" && git rev-parse --abbrev-ref HEAD`,
-      { encoding: "utf-8" }
-    ).trim();
+    branchName = execSync(`cd "${worktreePath}" && git rev-parse --abbrev-ref HEAD`, {
+      encoding: "utf-8",
+    }).trim();
   } catch {
     // Could be detached HEAD
   }
 
   // Check for uncommitted changes
   try {
-    const status = execSync(
-      `cd "${worktreePath}" && git status --porcelain`,
-      { encoding: "utf-8" }
-    ).trim();
+    const status = execSync(`cd "${worktreePath}" && git status --porcelain`, {
+      encoding: "utf-8",
+    }).trim();
     if (status) {
-      throw new BadRequestError("Cannot delete worktree: you have uncommitted changes. Please commit, stash, or discard them first.");
+      throw new BadRequestError(
+        "Cannot delete worktree: you have uncommitted changes. Please commit, stash, or discard them first.",
+      );
     }
   } catch (err) {
     if (err instanceof BadRequestError) throw err;
-    throw new BadRequestError(`Failed to check git status: ${err instanceof Error ? err.message : String(err)}`);
+    throw new BadRequestError(
+      `Failed to check git status: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Remove worktree
   try {
-    execSync(
-      `cd "${localPath}" && git worktree remove "${worktreePath}"`,
-      { encoding: "utf-8" }
-    );
+    execSync(`cd "${localPath}" && git worktree remove "${worktreePath}"`, { encoding: "utf-8" });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Try force remove if normal fails
     if (message.includes("not empty") || message.includes("dirty")) {
-      throw new BadRequestError("Cannot delete worktree: working tree is dirty. Please clean up first.");
+      throw new BadRequestError(
+        "Cannot delete worktree: working tree is dirty. Please clean up first.",
+      );
     }
     throw new BadRequestError(`Failed to delete worktree: ${message}`);
   }

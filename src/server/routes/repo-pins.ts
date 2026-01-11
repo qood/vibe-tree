@@ -3,11 +3,7 @@ import { db, schema } from "../../db";
 import { eq, desc } from "drizzle-orm";
 import { existsSync } from "fs";
 import { expandTilde, getRepoId } from "../utils";
-import {
-  createRepoPinSchema,
-  useRepoPinSchema,
-  validateOrThrow,
-} from "../../shared/validation";
+import { createRepoPinSchema, useRepoPinSchema, validateOrThrow } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import type { RepoPin } from "../../shared/types";
 
@@ -15,10 +11,7 @@ export const repoPinsRouter = new Hono();
 
 // GET /api/repo-pins - Get all saved repo pins
 repoPinsRouter.get("/", async (c) => {
-  const pins = await db
-    .select()
-    .from(schema.repoPins)
-    .orderBy(desc(schema.repoPins.lastUsedAt));
+  const pins = await db.select().from(schema.repoPins).orderBy(desc(schema.repoPins.lastUsedAt));
 
   const result: RepoPin[] = pins.map((p) => ({
     id: p.id,
@@ -117,10 +110,7 @@ repoPinsRouter.post("/use", async (c) => {
   const body = await c.req.json();
   const input = validateOrThrow(useRepoPinSchema, body);
 
-  const existing = await db
-    .select()
-    .from(schema.repoPins)
-    .where(eq(schema.repoPins.id, input.id));
+  const existing = await db.select().from(schema.repoPins).where(eq(schema.repoPins.id, input.id));
 
   const existingPin = existing[0];
   if (!existingPin) {
@@ -128,10 +118,7 @@ repoPinsRouter.post("/use", async (c) => {
   }
 
   const now = new Date().toISOString();
-  await db
-    .update(schema.repoPins)
-    .set({ lastUsedAt: now })
-    .where(eq(schema.repoPins.id, input.id));
+  await db.update(schema.repoPins).set({ lastUsedAt: now }).where(eq(schema.repoPins.id, input.id));
 
   const updated: RepoPin = {
     id: existingPin.id,
@@ -156,10 +143,7 @@ repoPinsRouter.patch("/:id", async (c) => {
   const body = await c.req.json();
   const { label, baseBranch } = body as { label?: string; baseBranch?: string };
 
-  const existing = await db
-    .select()
-    .from(schema.repoPins)
-    .where(eq(schema.repoPins.id, id));
+  const existing = await db.select().from(schema.repoPins).where(eq(schema.repoPins.id, id));
 
   const existingPin = existing[0];
   if (!existingPin) {
@@ -171,10 +155,7 @@ repoPinsRouter.patch("/:id", async (c) => {
   if (baseBranch !== undefined) updateData.baseBranch = baseBranch;
 
   if (Object.keys(updateData).length > 0) {
-    await db
-      .update(schema.repoPins)
-      .set(updateData)
-      .where(eq(schema.repoPins.id, id));
+    await db.update(schema.repoPins).set(updateData).where(eq(schema.repoPins.id, id));
   }
 
   const updated: RepoPin = {
@@ -182,7 +163,7 @@ repoPinsRouter.patch("/:id", async (c) => {
     repoId: existingPin.repoId,
     localPath: existingPin.localPath,
     label: label !== undefined ? label : existingPin.label,
-    baseBranch: baseBranch !== undefined ? baseBranch : existingPin.baseBranch ?? null,
+    baseBranch: baseBranch !== undefined ? baseBranch : (existingPin.baseBranch ?? null),
     lastUsedAt: existingPin.lastUsedAt,
     createdAt: existingPin.createdAt,
   };
@@ -197,10 +178,7 @@ repoPinsRouter.delete("/:id", async (c) => {
     throw new BadRequestError("Invalid id");
   }
 
-  const existing = await db
-    .select()
-    .from(schema.repoPins)
-    .where(eq(schema.repoPins.id, id));
+  const existing = await db.select().from(schema.repoPins).where(eq(schema.repoPins.id, id));
 
   if (existing.length === 0) {
     throw new NotFoundError(`Repo pin not found: ${id}`);

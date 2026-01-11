@@ -1,8 +1,8 @@
-import '@testing-library/jest-dom';
-import { vi } from 'vitest';
+import "@testing-library/jest-dom";
+import { vi } from "vitest";
 
 // Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
     matches: false,
@@ -39,7 +39,7 @@ class MockWebSocket {
   constructor(_url: string) {
     setTimeout(() => {
       if (this.onopen) {
-        this.onopen(new Event('open'));
+        this.onopen(new Event("open"));
       }
     }, 0);
   }
@@ -51,7 +51,7 @@ class MockWebSocket {
   close() {
     this.readyState = MockWebSocket.CLOSED;
     if (this.onclose) {
-      this.onclose(new CloseEvent('close'));
+      this.onclose(new CloseEvent("close"));
     }
   }
 }

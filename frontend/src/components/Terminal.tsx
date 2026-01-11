@@ -86,7 +86,8 @@ export function Terminal({ sessionId, onClose, taskContext, autoRunClaude }: Ter
     const term = new XTerm({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, "Courier New", monospace',
+      fontFamily:
+        '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: "#1a1b26",
         foreground: "#a9b1d6",
@@ -134,9 +135,7 @@ export function Terminal({ sessionId, onClose, taskContext, autoRunClaude }: Ter
     const handleResize = () => {
       fitAddon.fit();
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })
-        );
+        wsRef.current.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
       }
     };
 
@@ -161,7 +160,7 @@ export function Terminal({ sessionId, onClose, taskContext, autoRunClaude }: Ter
           type: "resize",
           cols: xtermRef.current.cols,
           rows: xtermRef.current.rows,
-        })
+        }),
       );
     }
   }, [connected]);
@@ -188,8 +187,8 @@ export function Terminal({ sessionId, onClose, taskContext, autoRunClaude }: Ter
               status === "connected"
                 ? "bg-green-500"
                 : status === "connecting"
-                ? "bg-yellow-500 animate-pulse"
-                : "bg-red-500"
+                  ? "bg-yellow-500 animate-pulse"
+                  : "bg-red-500"
             }`}
           />
         </div>
@@ -205,8 +204,17 @@ export function Terminal({ sessionId, onClose, taskContext, autoRunClaude }: Ter
               }`}
               title={taskContext ? `Run Claude with task: ${taskContext.title}` : "Run Claude Code"}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-3 w-3"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                  clipRule="evenodd"
+                />
               </svg>
               {claudeRunning ? "Claude Running..." : "Run Claude"}
             </button>

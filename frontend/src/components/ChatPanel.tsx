@@ -107,9 +107,7 @@ export function ChatPanel({
       // API returns immediately, assistant message comes via WebSocket
       const result = await api.sendChatMessage(sessionId, userMessage);
       // Replace temp message with real one
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? result.userMessage : m))
-      );
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? result.userMessage : m)));
       // Loading will be set to false when assistant message arrives via WebSocket
       inputRef.current?.focus();
     } catch (err) {
@@ -160,26 +158,38 @@ export function ChatPanel({
 
         {/* Instruction Edit Proposal */}
         {instructionEdit && (
-          <div style={{
-            marginTop: 12,
-            border: "1px solid #374151",
-            background: "#1f2937",
-            borderRadius: 6,
-            overflow: "hidden",
-          }}>
-            <div style={{
-              padding: "8px 12px",
-              background: "#0f172a",
-              borderBottom: "1px solid #374151",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}>
+          <div
+            style={{
+              marginTop: 12,
+              border: "1px solid #374151",
+              background: "#1f2937",
+              borderRadius: 6,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "8px 12px",
+                background: "#0f172a",
+                borderBottom: "1px solid #374151",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
               <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>
                 Task Instruction の変更提案
               </span>
               {isInstructionAccepted && (
-                <span style={{ fontSize: 11, padding: "2px 8px", background: "#14532d", color: "#4ade80", borderRadius: 3 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    background: "#14532d",
+                    color: "#4ade80",
+                    borderRadius: 3,
+                  }}
+                >
                   Accepted
                 </span>
               )}
@@ -190,10 +200,18 @@ export function ChatPanel({
                   key={i}
                   style={{
                     padding: "1px 4px",
-                    background: line.type === "added" ? "rgba(34, 197, 94, 0.15)" :
-                               line.type === "removed" ? "rgba(239, 68, 68, 0.15)" : "transparent",
-                    color: line.type === "added" ? "#4ade80" :
-                           line.type === "removed" ? "#f87171" : "#9ca3af",
+                    background:
+                      line.type === "added"
+                        ? "rgba(34, 197, 94, 0.15)"
+                        : line.type === "removed"
+                          ? "rgba(239, 68, 68, 0.15)"
+                          : "transparent",
+                    color:
+                      line.type === "added"
+                        ? "#4ade80"
+                        : line.type === "removed"
+                          ? "#f87171"
+                          : "#9ca3af",
                   }}
                 >
                   <span style={{ display: "inline-block", width: 16, opacity: 0.6 }}>
@@ -204,13 +222,15 @@ export function ChatPanel({
               ))}
             </div>
             {!isInstructionAccepted && (
-              <div style={{
-                padding: "8px 12px",
-                borderTop: "1px solid #374151",
-                display: "flex",
-                gap: 8,
-                justifyContent: "flex-end",
-              }}>
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderTop: "1px solid #374151",
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "flex-end",
+                }}
+              >
                 <button
                   onClick={() => handleAcceptInstruction(msg.id, instructionEdit.newContent)}
                   style={{
@@ -248,7 +268,14 @@ export function ChatPanel({
                     padding: 12,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       {task.parentLabel && (
                         <p style={{ margin: "0 0 4px", fontSize: 11, color: "#a78bfa" }}>
@@ -266,17 +293,30 @@ export function ChatPanel({
                             style={{ display: "flex", alignItems: "center" }}
                             title={task.issueUrl}
                           >
-                            <img src={githubIcon} alt="GitHub Issue" style={{ width: 14, height: 14, opacity: 0.7 }} />
+                            <img
+                              src={githubIcon}
+                              alt="GitHub Issue"
+                              style={{ width: 14, height: 14, opacity: 0.7 }}
+                            />
                           </a>
                         )}
                       </div>
                       {task.branchName && (
-                        <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280", fontFamily: "monospace" }}>
+                        <p
+                          style={{
+                            margin: "2px 0 0",
+                            fontSize: 11,
+                            color: "#6b7280",
+                            fontFamily: "monospace",
+                          }}
+                        >
                           {task.branchName}
                         </p>
                       )}
                       {task.description && (
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#9ca3af" }}>{task.description}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#9ca3af" }}>
+                          {task.description}
+                        </p>
                       )}
                     </div>
                     <button
@@ -307,22 +347,26 @@ export function ChatPanel({
   };
 
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      height: "100%",
-      background: "#111827",
-      overflow: "hidden",
-    }}>
-      {/* Messages */}
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: 16,
+    <div
+      style={{
         display: "flex",
         flexDirection: "column",
-        gap: 12,
-      }}>
+        height: "100%",
+        background: "#111827",
+        overflow: "hidden",
+      }}
+    >
+      {/* Messages */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -349,18 +393,22 @@ export function ChatPanel({
 
         {loading && (
           <div style={{ display: "flex", justifyContent: "flex-start" }}>
-            <div style={{
-              borderRadius: 12,
-              padding: 12,
-              background: "#374151",
-              color: "#9ca3af",
-              fontSize: 13,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}>
+            <div
+              style={{
+                borderRadius: 12,
+                padding: 12,
+                background: "#374151",
+                color: "#9ca3af",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
               <span className="chat-dots">
-                <span></span><span></span><span></span>
+                <span></span>
+                <span></span>
+                <span></span>
               </span>
               <span>Thinking...</span>
             </div>
@@ -372,24 +420,28 @@ export function ChatPanel({
 
       {/* Error */}
       {error && (
-        <div style={{
-          padding: "8px 16px",
-          background: "#7f1d1d",
-          borderTop: "1px solid #991b1b",
-          color: "#fca5a5",
-          fontSize: 13,
-        }}>
+        <div
+          style={{
+            padding: "8px 16px",
+            background: "#7f1d1d",
+            borderTop: "1px solid #991b1b",
+            color: "#fca5a5",
+            fontSize: 13,
+          }}
+        >
           {error}
         </div>
       )}
 
       {/* Input */}
-      <div style={{
-        borderTop: "1px solid #374151",
-        padding: 12,
-        display: "flex",
-        gap: 8,
-      }}>
+      <div
+        style={{
+          borderTop: "1px solid #374151",
+          padding: 12,
+          display: "flex",
+          gap: 8,
+        }}
+      >
         <textarea
           ref={inputRef}
           value={input}

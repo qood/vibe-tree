@@ -43,7 +43,12 @@ interface SubIssue {
 }
 
 // Fetch a single GitHub issue/PR
-function fetchSingleGitHubItem(owner: string, repo: string, type: "issue" | "pr", number: string): GitHubItemData | null {
+function fetchSingleGitHubItem(
+  owner: string,
+  repo: string,
+  type: "issue" | "pr",
+  number: string,
+): GitHubItemData | null {
   try {
     const ghType = type === "pr" ? "pr" : "issue";
     const cmd = `gh ${ghType} view ${number} --repo ${owner}/${repo} --json title,body,state,author`;
@@ -120,10 +125,11 @@ function fetchTrackedSubIssues(owner: string, repo: string, issueNumber: string)
 
     const nodes = data?.data?.repository?.issue?.trackedIssues?.nodes || [];
     const results = nodes
-      .filter((n): n is { number: number; title: string; state: string; body: string } =>
-        n?.number !== undefined && n?.title !== undefined
+      .filter(
+        (n): n is { number: number; title: string; state: string; body: string } =>
+          n?.number !== undefined && n?.title !== undefined,
       )
-      .map(n => ({
+      .map((n) => ({
         number: n.number,
         title: n.title || "",
         state: n.state || "OPEN",
@@ -144,7 +150,11 @@ function fetchTrackedSubIssues(owner: string, repo: string, issueNumber: string)
 }
 
 // Fetch issues that are tracking the given issue (reverse lookup)
-function fetchIssuesTrackingThis(owner: string, repo: string, parentIssueNumber: string): SubIssue[] {
+function fetchIssuesTrackingThis(
+  owner: string,
+  repo: string,
+  parentIssueNumber: string,
+): SubIssue[] {
   try {
     // Get all open issues in the repo and check which ones track this issue
     const query = `
@@ -196,17 +206,17 @@ function fetchIssuesTrackingThis(owner: string, repo: string, parentIssueNumber:
     const parentNum = parseInt(parentIssueNumber, 10);
 
     // Filter issues that are tracked by the parent issue
-    const subIssues = allIssues.filter(issue => {
+    const subIssues = allIssues.filter((issue) => {
       if (!issue || issue.number === parentNum) return false;
       const trackedIn = issue.trackedInIssues?.nodes || [];
-      return trackedIn.some(t => t?.number === parentNum);
+      return trackedIn.some((t) => t?.number === parentNum);
     });
 
     console.log(`[GitHub] Found ${subIssues.length} issues tracking #${parentIssueNumber}`);
 
     return subIssues
-      .filter(n => n?.number !== undefined && n?.title !== undefined)
-      .map(n => ({
+      .filter((n) => n?.number !== undefined && n?.title !== undefined)
+      .map((n) => ({
         number: n.number as number,
         title: n.title || "",
         state: n.state || "OPEN",
@@ -219,7 +229,11 @@ function fetchIssuesTrackingThis(owner: string, repo: string, parentIssueNumber:
 }
 
 // Extract sub-issue references from issue body (fallback method)
-function extractSubIssueRefs(body: string, defaultOwner: string, defaultRepo: string): Array<{ owner: string; repo: string; number: string }> {
+function extractSubIssueRefs(
+  body: string,
+  defaultOwner: string,
+  defaultRepo: string,
+): Array<{ owner: string; repo: string; number: string }> {
   const refs: Array<{ owner: string; repo: string; number: string }> = [];
   const seen = new Set<string>();
 
@@ -252,7 +266,8 @@ function extractSubIssueRefs(body: string, defaultOwner: string, defaultRepo: st
   }
 
   // Pattern 3: Task list with URL - [ ] https://github.com/owner/repo/issues/123
-  const taskListUrlPattern = /- \[[x ]\] https:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/issues\/(\d+)/gi;
+  const taskListUrlPattern =
+    /- \[[x ]\] https:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/issues\/(\d+)/gi;
   while ((match = taskListUrlPattern.exec(body)) !== null) {
     const [, o, r, n] = match;
     if (o && r && n) {
@@ -291,7 +306,8 @@ function extractSubIssueRefs(body: string, defaultOwner: string, defaultRepo: st
   }
 
   // Pattern 6: Full GitHub issue URLs anywhere in body
-  const fullUrlPattern = /https:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/issues\/(\d+)/gi;
+  const fullUrlPattern =
+    /https:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/issues\/(\d+)/gi;
   while ((match = fullUrlPattern.exec(body)) !== null) {
     const [, o, r, n] = match;
     if (o && r && n) {
@@ -307,7 +323,12 @@ function extractSubIssueRefs(body: string, defaultOwner: string, defaultRepo: st
 }
 
 // Fetch GitHub content using gh command (with sub-issues support)
-function fetchGitHubContent(owner: string, repo: string, type: "issue" | "pr", number: string): { title?: string; content?: string } {
+function fetchGitHubContent(
+  owner: string,
+  repo: string,
+  type: "issue" | "pr",
+  number: string,
+): { title?: string; content?: string } {
   try {
     // Fetch main issue/PR
     const mainItem = fetchSingleGitHubItem(owner, repo, type, number);
@@ -316,7 +337,9 @@ function fetchGitHubContent(owner: string, repo: string, type: "issue" | "pr", n
       return {};
     }
 
-    console.log(`[GitHub] Fetched ${type} #${number}: "${mainItem.title}" (body length: ${mainItem.body?.length || 0})`);
+    console.log(
+      `[GitHub] Fetched ${type} #${number}: "${mainItem.title}" (body length: ${mainItem.body?.length || 0})`,
+    );
 
     let content = `# ${mainItem.title}\n\n${mainItem.body}\n\n---\nState: ${mainItem.state}\nAuthor: ${mainItem.author}`;
 
@@ -335,9 +358,7 @@ function fetchGitHubContent(owner: string, repo: string, type: "issue" | "pr", n
           content += `\n### ${subState} #${sub.number}: ${sub.title}\n`;
           if (sub.body) {
             // Truncate long sub-issue bodies
-            const truncatedBody = sub.body.length > 500
-              ? sub.body.slice(0, 500) + "..."
-              : sub.body;
+            const truncatedBody = sub.body.length > 500 ? sub.body.slice(0, 500) + "..." : sub.body;
             content += `${truncatedBody}\n`;
           }
         }
@@ -345,7 +366,9 @@ function fetchGitHubContent(owner: string, repo: string, type: "issue" | "pr", n
         // Fallback: extract from body text
         console.log(`[GitHub] Trying fallback: extracting issue refs from body...`);
         const subIssueRefs = extractSubIssueRefs(mainItem.body, owner, repo);
-        console.log(`[GitHub] Found ${subIssueRefs.length} issue refs in body: ${subIssueRefs.map(r => `#${r.number}`).join(", ")}`);
+        console.log(
+          `[GitHub] Found ${subIssueRefs.length} issue refs in body: ${subIssueRefs.map((r) => `#${r.number}`).join(", ")}`,
+        );
 
         if (subIssueRefs.length > 0) {
           content += `\n\n---\n\n## Sub-Issues (${subIssueRefs.length}件)\n`;
@@ -353,14 +376,14 @@ function fetchGitHubContent(owner: string, repo: string, type: "issue" | "pr", n
           for (const ref of subIssueRefs) {
             const subItem = fetchSingleGitHubItem(ref.owner, ref.repo, "issue", ref.number);
             if (subItem) {
-              const subRepo = (ref.owner === owner && ref.repo === repo) ? "" : `${ref.owner}/${ref.repo}`;
+              const subRepo =
+                ref.owner === owner && ref.repo === repo ? "" : `${ref.owner}/${ref.repo}`;
               const subState = subItem.state === "OPEN" ? "🔵" : "✅";
               content += `\n### ${subState} ${subRepo}#${ref.number}: ${subItem.title || "Untitled"}\n`;
               if (subItem.body) {
                 // Truncate long sub-issue bodies
-                const truncatedBody = subItem.body.length > 500
-                  ? subItem.body.slice(0, 500) + "..."
-                  : subItem.body;
+                const truncatedBody =
+                  subItem.body.length > 500 ? subItem.body.slice(0, 500) + "..." : subItem.body;
                 content += `${truncatedBody}\n`;
               }
             }
@@ -381,7 +404,10 @@ function fetchGitHubContent(owner: string, repo: string, type: "issue" | "pr", n
 }
 
 // Fetch content from external URL
-async function fetchLinkContent(url: string, linkType: string): Promise<{ title?: string; content?: string }> {
+async function fetchLinkContent(
+  url: string,
+  linkType: string,
+): Promise<{ title?: string; content?: string }> {
   try {
     if (linkType === "github_issue" || linkType === "github_pr") {
       const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/(issues|pull)\/(\d+)/);
@@ -502,10 +528,7 @@ externalLinksRouter.post("/:id/refresh", async (c) => {
     throw new BadRequestError("Invalid id");
   }
 
-  const [link] = await db
-    .select()
-    .from(externalLinks)
-    .where(eq(externalLinks.id, id));
+  const [link] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
 
   if (!link) {
     throw new NotFoundError("Link not found");
@@ -544,10 +567,7 @@ externalLinksRouter.patch("/:id", async (c) => {
   const body = await c.req.json();
   const { title } = validateOrThrow(updateLinkSchema, body);
 
-  const [existing] = await db
-    .select()
-    .from(externalLinks)
-    .where(eq(externalLinks.id, id));
+  const [existing] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
 
   if (!existing) {
     throw new NotFoundError("Link not found");
@@ -580,10 +600,7 @@ externalLinksRouter.delete("/:id", async (c) => {
     throw new BadRequestError("Invalid id");
   }
 
-  const [link] = await db
-    .select()
-    .from(externalLinks)
-    .where(eq(externalLinks.id, id));
+  const [link] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
 
   if (!link) {
     throw new NotFoundError("Link not found");
@@ -621,8 +638,9 @@ externalLinksRouter.get("/context", async (c) => {
 
   return c.json({
     links,
-    contextMarkdown: contextParts.length > 0
-      ? `# External References\n\n${contextParts.join("\n\n---\n\n")}`
-      : null,
+    contextMarkdown:
+      contextParts.length > 0
+        ? `# External References\n\n${contextParts.join("\n\n---\n\n")}`
+        : null,
   });
 });

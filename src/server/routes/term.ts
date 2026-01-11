@@ -56,7 +56,7 @@ termRouter.post("/sessions", async (c) => {
       id: existing[0].id,
       repoId: existing[0].repoId,
       worktreePath: existing[0].worktreePath,
-      pid: isRunning ? ptyManager.getPid(existing[0].id) ?? null : null,
+      pid: isRunning ? (ptyManager.getPid(existing[0].id) ?? null) : null,
       status: isRunning ? "running" : "stopped",
       lastOutput: existing[0].lastOutput,
       createdAt: existing[0].createdAt,
@@ -124,12 +124,7 @@ termRouter.post("/sessions/:id/start", async (c) => {
   }
 
   // Start PTY
-  const ptySession = await ptyManager.createSession(
-    id,
-    session.worktreePath,
-    cols,
-    rows
-  );
+  const ptySession = await ptyManager.createSession(id, session.worktreePath, cols, rows);
 
   const now = new Date().toISOString();
   await db
@@ -222,7 +217,7 @@ termRouter.get("/sessions/:id", async (c) => {
     id: existing[0].id,
     repoId: existing[0].repoId,
     worktreePath: existing[0].worktreePath,
-    pid: isRunning ? ptyManager.getPid(id) ?? null : null,
+    pid: isRunning ? (ptyManager.getPid(id) ?? null) : null,
     status: isRunning ? "running" : "stopped",
     lastOutput: existing[0].lastOutput,
     createdAt: existing[0].createdAt,

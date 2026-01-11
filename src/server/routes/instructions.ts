@@ -3,11 +3,7 @@ import { db, schema } from "../../db";
 import { eq, desc, and } from "drizzle-orm";
 import { broadcast } from "../ws";
 import { z } from "zod";
-import {
-  repoIdQuerySchema,
-  logInstructionSchema,
-  validateOrThrow,
-} from "../../shared/validation";
+import { repoIdQuerySchema, logInstructionSchema, validateOrThrow } from "../../shared/validation";
 import { BadRequestError } from "../middleware/error-handler";
 
 export const instructionsRouter = new Hono();
@@ -87,8 +83,8 @@ instructionsRouter.get("/task", async (c) => {
     .where(
       and(
         eq(schema.taskInstructions.repoId, query.repoId),
-        eq(schema.taskInstructions.branchName, query.branchName)
-      )
+        eq(schema.taskInstructions.branchName, query.branchName),
+      ),
     )
     .limit(1);
 
@@ -119,8 +115,8 @@ instructionsRouter.patch("/task", async (c) => {
     .where(
       and(
         eq(schema.taskInstructions.repoId, input.repoId),
-        eq(schema.taskInstructions.branchName, input.branchName)
-      )
+        eq(schema.taskInstructions.branchName, input.branchName),
+      ),
     )
     .limit(1);
 

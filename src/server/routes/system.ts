@@ -75,7 +75,11 @@ function selectDirectoryMacOS(): Promise<string | null> {
 function selectDirectoryLinux(): Promise<string | null> {
   return new Promise((resolve, reject) => {
     // Try zenity first
-    const zenity = spawn("zenity", ["--file-selection", "--directory", "--title=プロジェクトフォルダを選択してください"]);
+    const zenity = spawn("zenity", [
+      "--file-selection",
+      "--directory",
+      "--title=プロジェクトフォルダを選択してください",
+    ]);
     let stdout = "";
     let stderr = "";
 
@@ -107,7 +111,12 @@ function selectDirectoryLinux(): Promise<string | null> {
 }
 
 function tryKdialog(resolve: (value: string | null) => void, reject: (reason?: unknown) => void) {
-  const kdialog = spawn("kdialog", ["--getexistingdirectory", ".", "--title", "プロジェクトフォルダを選択してください"]);
+  const kdialog = spawn("kdialog", [
+    "--getexistingdirectory",
+    ".",
+    "--title",
+    "プロジェクトフォルダを選択してください",
+  ]);
   let stdout = "";
 
   kdialog.stdout.on("data", (data) => {

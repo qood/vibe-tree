@@ -56,7 +56,7 @@ export function useSessionNotifications(sessionIds: string[]) {
           let unreadCount = 0;
           if (lastSeen) {
             unreadCount = messages.filter(
-              (m) => m.role === "assistant" && new Date(m.createdAt) > new Date(lastSeen)
+              (m) => m.role === "assistant" && new Date(m.createdAt) > new Date(lastSeen),
             ).length;
           } else if (messages.length > 1) {
             // If never seen, all assistant messages except first are unread
@@ -84,7 +84,7 @@ export function useSessionNotifications(sessionIds: string[]) {
             },
           };
         }
-      })
+      }),
     ).then((results) => {
       const newMap = new Map<string, SessionNotification>();
       results.forEach(({ sessionId, notification }) => {
@@ -157,7 +157,7 @@ export function useSessionNotifications(sessionIds: string[]) {
         }
       );
     },
-    [notifications]
+    [notifications],
   );
 
   // Get total unread count across all sessions (for tab badge)
@@ -171,7 +171,7 @@ export function useSessionNotifications(sessionIds: string[]) {
       });
       return total;
     },
-    [notifications]
+    [notifications],
   );
 
   // Check if any session is thinking
@@ -184,7 +184,7 @@ export function useSessionNotifications(sessionIds: string[]) {
       }
       return false;
     },
-    [notifications]
+    [notifications],
   );
 
   return {

@@ -1,8 +1,10 @@
 {
   "name": "vibe-tree",
-  "type": "module",
   "private": true,
-  "workspaces": ["frontend"],
+  "workspaces": [
+    "frontend"
+  ],
+  "type": "module",
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"bun run dev:backend\" \"bun run dev:frontend\"",
     "dev:backend": "bun run --watch src/server/index.ts",
@@ -21,17 +23,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "bun-types": "latest",
-    "concurrently": "^9.2.1",
-    "drizzle-kit": "^0.31.8",
-    "typescript": "^5.9.3"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
+    "db:studio": "drizzle-kit studio",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check ."
   },
   "dependencies": {
     "@hono/node-server": "^1.19.7",
@@ -41,5 +35,16 @@
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.3",
     "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "bun-types": "latest",
+    "concurrently": "^9.2.1",
+    "drizzle-kit": "^0.31.8",
+    "oxfmt": "^0.23.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
   }
 }

@@ -12,7 +12,7 @@ export class AppError extends Error {
   constructor(
     message: string,
     public statusCode: ContentfulStatusCode = 500,
-    public code?: string
+    public code?: string,
   ) {
     super(message);
     this.name = "AppError";
@@ -38,31 +38,23 @@ export async function errorHandler(c: Context, next: Next): Promise<Response | v
     console.error("Error:", error);
 
     if (error instanceof ValidationError) {
-      return c.json<ApiError>(
-        { error: error.message, code: "VALIDATION_ERROR" },
-        400
-      );
+      return c.json<ApiError>({ error: error.message, code: "VALIDATION_ERROR" }, 400);
     }
 
     if (error instanceof AppError) {
       return c.json<ApiError>(
         { error: error.message, code: error.code ?? "APP_ERROR" },
-        error.statusCode
+        error.statusCode,
       );
     }
 
     if (error instanceof Error) {
       // Don't expose internal errors in production
       const message =
-        process.env.NODE_ENV === "production"
-          ? "Internal server error"
-          : error.message;
+        process.env.NODE_ENV === "production" ? "Internal server error" : error.message;
       return c.json<ApiError>({ error: message, code: "INTERNAL_ERROR" }, 500);
     }
 
-    return c.json<ApiError>(
-      { error: "Unknown error occurred", code: "UNKNOWN_ERROR" },
-      500
-    );
+    return c.json<ApiError>({ error: "Unknown error occurred", code: "UNKNOWN_ERROR" }, 500);
   }
 }

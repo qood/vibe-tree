@@ -41,8 +41,9 @@ export default function TreeDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   // Multi-session planning state
-  const [selectedPlanningSession, setSelectedPlanningSession] =
-    useState<PlanningSession | null>(null);
+  const [selectedPlanningSession, setSelectedPlanningSession] = useState<PlanningSession | null>(
+    null,
+  );
   const [tentativeNodes, setTentativeNodes] = useState<TaskNode[]>([]);
   const [tentativeEdges, setTentativeEdges] = useState<TaskEdge[]>([]);
   const [pendingPlanning, setPendingPlanning] = useState<{
@@ -52,9 +53,7 @@ export default function TreeDashboard() {
 
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false);
-  const [terminalWorktreePath, setTerminalWorktreePath] = useState<
-    string | null
-  >(null);
+  const [terminalWorktreePath, setTerminalWorktreePath] = useState<string | null>(null);
   const [terminalTaskContext, setTerminalTaskContext] = useState<
     { title: string; description?: string } | undefined
   >(undefined);
@@ -70,15 +69,11 @@ export default function TreeDashboard() {
 
   // Fetch state
   const [fetching, setFetching] = useState(false);
-  const [originalTreeSpecEdges, setOriginalTreeSpecEdges] = useState<
-    TreeSpecEdge[] | null
-  >(null);
+  const [originalTreeSpecEdges, setOriginalTreeSpecEdges] = useState<TreeSpecEdge[] | null>(null);
 
   // Settings modal state
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsRule, setSettingsRule] = useState<BranchNamingRule | null>(
-    null,
-  );
+  const [settingsRule, setSettingsRule] = useState<BranchNamingRule | null>(null);
   const [settingsPatterns, setSettingsPatterns] = useState<string[]>([]);
   const [settingsDefaultBranch, setSettingsDefaultBranch] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -88,9 +83,9 @@ export default function TreeDashboard() {
   const [worktreePostCreateScript, setWorktreePostCreateScript] = useState("");
   const [worktreePostDeleteScript, setWorktreePostDeleteScript] = useState("");
   // Settings modal category
-  const [settingsCategory, setSettingsCategory] = useState<
-    "branch" | "worktree" | "cleanup"
-  >("branch");
+  const [settingsCategory, setSettingsCategory] = useState<"branch" | "worktree" | "cleanup">(
+    "branch",
+  );
 
   // Sidebar collapsed state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -188,9 +183,7 @@ export default function TreeDashboard() {
   // Sync selectedNode with latest snapshot data
   useEffect(() => {
     if (selectedNode && snapshot) {
-      const updatedNode = snapshot.nodes.find(
-        (n) => n.branchName === selectedNode.branchName,
-      );
+      const updatedNode = snapshot.nodes.find((n) => n.branchName === selectedNode.branchName);
       if (updatedNode && updatedNode !== selectedNode) {
         setSelectedNode(updatedNode);
       } else if (!updatedNode) {
@@ -242,8 +235,7 @@ export default function TreeDashboard() {
                   pr: {
                     ...node.pr,
                     state: data.status?.toUpperCase() || node.pr.state,
-                    reviewDecision:
-                      data.reviewDecision || node.pr.reviewDecision,
+                    reviewDecision: data.reviewDecision || node.pr.reviewDecision,
                     checks: data.checksStatus?.toUpperCase() || node.pr.checks,
                   },
                 };
@@ -300,27 +292,21 @@ export default function TreeDashboard() {
   }, [isResizingBottom]);
 
   // Planning session handlers
-  const handlePlanningSessionSelect = useCallback(
-    (session: PlanningSession | null) => {
-      setSelectedPlanningSession(session);
-      if (session) {
-        setTentativeNodes(session.nodes);
-        setTentativeEdges(session.edges);
-      } else {
-        setTentativeNodes([]);
-        setTentativeEdges([]);
-      }
-    },
-    [],
-  );
+  const handlePlanningSessionSelect = useCallback((session: PlanningSession | null) => {
+    setSelectedPlanningSession(session);
+    if (session) {
+      setTentativeNodes(session.nodes);
+      setTentativeEdges(session.edges);
+    } else {
+      setTentativeNodes([]);
+      setTentativeEdges([]);
+    }
+  }, []);
 
-  const handlePlanningTasksChange = useCallback(
-    (nodes: TaskNode[], edges: TaskEdge[]) => {
-      setTentativeNodes(nodes);
-      setTentativeEdges(edges);
-    },
-    [],
-  );
+  const handlePlanningTasksChange = useCallback((nodes: TaskNode[], edges: TaskEdge[]) => {
+    setTentativeNodes(nodes);
+    setTentativeEdges(edges);
+  }, []);
 
   const handleAddRepoPin = async () => {
     if (!newLocalPath.trim()) return;
@@ -366,34 +352,21 @@ export default function TreeDashboard() {
 
   // Create branch handler
   const handleCreateBranch = async () => {
-    if (
-      !createBranchBase ||
-      !createBranchName.trim() ||
-      !selectedPin ||
-      !snapshot
-    )
-      return;
+    if (!createBranchBase || !createBranchName.trim() || !selectedPin || !snapshot) return;
 
     setCreateBranchLoading(true);
     try {
       const newBranchName = createBranchName.trim();
 
       // Create the git branch
-      await api.createBranch(
-        selectedPin.localPath,
-        newBranchName,
-        createBranchBase,
-      );
+      await api.createBranch(selectedPin.localPath, newBranchName, createBranchBase);
 
       // Add edge to tree spec (parent -> child relationship)
       const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
       const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
 
       // Add edge from base branch to new branch
-      const newEdges = [
-        ...currentEdges,
-        { parent: createBranchBase, child: newBranchName },
-      ];
+      const newEdges = [...currentEdges, { parent: createBranchBase, child: newBranchName }];
 
       // Optimistic update: Add new branch node and edge immediately
       const newNode: TreeNode = {
@@ -539,14 +512,8 @@ export default function TreeDashboard() {
         </div>
         <div className="project-list">
           {repoPins.map((pin) => (
-            <div
-              key={pin.id}
-              className="project-card"
-              onClick={() => handleSelectPin(pin.id)}
-            >
-              <div className="project-card__name">
-                {pin.label || pin.repoId}
-              </div>
+            <div key={pin.id} className="project-card" onClick={() => handleSelectPin(pin.id)}>
+              <div className="project-card__name">{pin.label || pin.repoId}</div>
               <div className="project-card__path">{pin.localPath}</div>
               <button
                 className="project-card__delete"
@@ -596,19 +563,13 @@ export default function TreeDashboard() {
               <button className="btn-primary" onClick={handleAddRepoPin}>
                 Add
               </button>
-              <button
-                className="btn-secondary"
-                onClick={() => setShowAddNew(false)}
-              >
+              <button className="btn-secondary" onClick={() => setShowAddNew(false)}>
                 Cancel
               </button>
             </div>
           </div>
         ) : (
-          <button
-            className="add-project-btn"
-            onClick={() => setShowAddNew(true)}
-          >
+          <button className="add-project-btn" onClick={() => setShowAddNew(true)}>
             + Add New Project
           </button>
         )}
@@ -828,17 +789,12 @@ export default function TreeDashboard() {
                     repoPins.find((p) => p.id === deletingPinId)?.repoId}
                   "?
                 </p>
-                <p
-                  style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}
-                >
+                <p style={{ margin: "8px 0 0", fontSize: 13, color: "#6b7280" }}>
                   Local files will not be deleted
                 </p>
               </div>
               <div className="modal__footer">
-                <button
-                  className="btn-secondary"
-                  onClick={() => setDeletingPinId(null)}
-                >
+                <button className="btn-secondary" onClick={() => setDeletingPinId(null)}>
                   Cancel
                 </button>
                 <button className="btn-danger" onClick={handleConfirmDeletePin}>
@@ -855,9 +811,7 @@ export default function TreeDashboard() {
   return (
     <div className="dashboard dashboard--with-sidebar">
       {/* Left Sidebar */}
-      <aside
-        className={`sidebar ${sidebarCollapsed ? "sidebar--collapsed" : ""}`}
-      >
+      <aside className={`sidebar ${sidebarCollapsed ? "sidebar--collapsed" : ""}`}>
         <div className="sidebar__header">
           <button
             className="sidebar__back"
@@ -881,9 +835,7 @@ export default function TreeDashboard() {
         {!sidebarCollapsed && (
           <div className="sidebar__section">
             <h3>Project</h3>
-            <div className="sidebar__project-name">
-              {selectedPin?.label || selectedPin?.repoId}
-            </div>
+            <div className="sidebar__project-name">{selectedPin?.label || selectedPin?.repoId}</div>
             <div className="sidebar__path">{selectedPin?.localPath}</div>
           </div>
         )}
@@ -898,18 +850,14 @@ export default function TreeDashboard() {
                   key={wt.path}
                   className={`sidebar__worktree ${selectedNode?.branchName === wt.branch ? "sidebar__worktree--selected" : ""}`}
                   onClick={() => {
-                    const node = snapshot.nodes.find(
-                      (n) => n.branchName === wt.branch,
-                    );
+                    const node = snapshot.nodes.find((n) => n.branchName === wt.branch);
                     if (node) setSelectedNode(node);
                   }}
                 >
                   <div className="sidebar__worktree-header">
                     <div className="sidebar__worktree-name">
                       {wt.path.split("/").pop()}
-                      {wt.dirty && (
-                        <span className="sidebar__worktree-dirty">●</span>
-                      )}
+                      {wt.dirty && <span className="sidebar__worktree-dirty">●</span>}
                     </div>
                     {wt.path !== selectedPin?.localPath && (
                       <button
@@ -923,23 +871,12 @@ export default function TreeDashboard() {
                             );
                             return;
                           }
-                          if (
-                            !confirm(
-                              `Delete worktree "${wt.path.split("/").pop()}"?`,
-                            )
-                          )
-                            return;
+                          if (!confirm(`Delete worktree "${wt.path.split("/").pop()}"?`)) return;
                           try {
-                            await api.deleteWorktree(
-                              selectedPin.localPath,
-                              wt.path,
-                            );
+                            await api.deleteWorktree(selectedPin.localPath, wt.path);
                             handleScan(selectedPin.localPath);
                           } catch (err) {
-                            alert(
-                              "Failed to delete worktree: " +
-                                (err as Error).message,
-                            );
+                            alert("Failed to delete worktree: " + (err as Error).message);
                           }
                         }}
                         title="Delete worktree"
@@ -948,9 +885,7 @@ export default function TreeDashboard() {
                       </button>
                     )}
                   </div>
-                  <div className="sidebar__worktree-branch">
-                    {wt.branch || "(detached)"}
-                  </div>
+                  <div className="sidebar__worktree-branch">{wt.branch || "(detached)"}</div>
                 </div>
               ))}
             </div>
@@ -978,11 +913,7 @@ export default function TreeDashboard() {
             <div className="sidebar__plan">
               <strong>{plan.title}</strong>
               {plan.githubIssueUrl && (
-                <a
-                  href={plan.githubIssueUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a href={plan.githubIssueUrl} target="_blank" rel="noopener noreferrer">
                   View Issue
                 </a>
               )}
@@ -996,15 +927,10 @@ export default function TreeDashboard() {
         {/* Warnings - always at bottom */}
         {!sidebarCollapsed && snapshot && snapshot.warnings.length > 0 && (
           <div className="sidebar__section sidebar__section--bottom">
-            <button
-              className="sidebar__warnings-btn"
-              onClick={() => setShowWarnings(true)}
-            >
+            <button className="sidebar__warnings-btn" onClick={() => setShowWarnings(true)}>
               <span className="sidebar__warnings-icon">⚠</span>
               <span>Warnings</span>
-              <span className="sidebar__warnings-count">
-                {snapshot.warnings.length}
-              </span>
+              <span className="sidebar__warnings-count">{snapshot.warnings.length}</span>
             </button>
           </div>
         )}
@@ -1040,22 +966,16 @@ export default function TreeDashboard() {
                                 setSnapshot((prev) => {
                                   if (!prev) return prev;
                                   // Rebuild edges: remove designed edges that weren't in original, add back original designed edges
-                                  const nonDesignedEdges = prev.edges.filter(
-                                    (e) => !e.isDesigned,
-                                  );
-                                  const originalDesignedEdges =
-                                    originalTreeSpecEdges.map((e) => ({
-                                      parent: e.parent,
-                                      child: e.child,
-                                      confidence: "high" as const,
-                                      isDesigned: true,
-                                    }));
+                                  const nonDesignedEdges = prev.edges.filter((e) => !e.isDesigned);
+                                  const originalDesignedEdges = originalTreeSpecEdges.map((e) => ({
+                                    parent: e.parent,
+                                    child: e.child,
+                                    confidence: "high" as const,
+                                    isDesigned: true,
+                                  }));
                                   return {
                                     ...prev,
-                                    edges: [
-                                      ...nonDesignedEdges,
-                                      ...originalDesignedEdges,
-                                    ],
+                                    edges: [...nonDesignedEdges, ...originalDesignedEdges],
                                     treeSpec: prev.treeSpec
                                       ? {
                                           ...prev.treeSpec,
@@ -1074,10 +994,8 @@ export default function TreeDashboard() {
                                   .updateTreeSpec({
                                     repoId: snapshot.repoId,
                                     baseBranch:
-                                      snapshot.treeSpec?.baseBranch ??
-                                      snapshot.defaultBranch,
-                                    nodes:
-                                      snapshot.treeSpec?.specJson.nodes ?? [],
+                                      snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
+                                    nodes: snapshot.treeSpec?.specJson.nodes ?? [],
                                     edges: originalTreeSpecEdges,
                                   })
                                   .then(() => {
@@ -1115,9 +1033,7 @@ export default function TreeDashboard() {
                             className="btn-icon"
                             onClick={() => {
                               // Save current edges before entering edit mode
-                              setOriginalTreeSpecEdges(
-                                snapshot.treeSpec?.specJson.edges ?? [],
-                              );
+                              setOriginalTreeSpecEdges(snapshot.treeSpec?.specJson.edges ?? []);
                               setBranchGraphEditMode(true);
                             }}
                             title="Edit branch structure"
@@ -1126,9 +1042,7 @@ export default function TreeDashboard() {
                           </button>
                           <button
                             className="btn-icon"
-                            onClick={() =>
-                              selectedPin && handleFetch(selectedPin.localPath)
-                            }
+                            onClick={() => selectedPin && handleFetch(selectedPin.localPath)}
                             disabled={fetching}
                             title="Fetch from remote"
                           >
@@ -1136,9 +1050,7 @@ export default function TreeDashboard() {
                           </button>
                         </>
                       )}
-                      <span className="panel__count">
-                        {snapshot.nodes.length} branches
-                      </span>
+                      <span className="panel__count">{snapshot.nodes.length} branches</span>
                     </div>
                   </div>
                   <div className="graph-container">
@@ -1148,9 +1060,7 @@ export default function TreeDashboard() {
                       defaultBranch={snapshot.defaultBranch}
                       selectedBranch={selectedNode?.branchName ?? null}
                       onSelectBranch={(branchName) => {
-                        const node = snapshot.nodes.find(
-                          (n) => n.branchName === branchName,
-                        );
+                        const node = snapshot.nodes.find((n) => n.branchName === branchName);
                         setSelectedNode(node ?? null);
                       }}
                       tentativeNodes={tentativeNodes}
@@ -1161,18 +1071,13 @@ export default function TreeDashboard() {
                         if (!selectedPin || !snapshot?.repoId) return;
 
                         // Check if this exact edge already exists
-                        const currentEdges =
-                          snapshot.treeSpec?.specJson.edges ?? [];
+                        const currentEdges = snapshot.treeSpec?.specJson.edges ?? [];
                         const edgeExists =
                           currentEdges.some(
-                            (e) =>
-                              e.parent === parentBranch &&
-                              e.child === childBranch,
+                            (e) => e.parent === parentBranch && e.child === childBranch,
                           ) ||
                           snapshot.edges.some(
-                            (e) =>
-                              e.parent === parentBranch &&
-                              e.child === childBranch,
+                            (e) => e.parent === parentBranch && e.child === childBranch,
                           );
                         if (edgeExists) return;
 
@@ -1184,8 +1089,7 @@ export default function TreeDashboard() {
                           ...filteredTreeSpecEdges,
                           { parent: parentBranch, child: childBranch },
                         ];
-                        const currentNodes =
-                          snapshot.treeSpec?.specJson.nodes ?? [];
+                        const currentNodes = snapshot.treeSpec?.specJson.nodes ?? [];
 
                         // Optimistic update: Update UI immediately
                         setSnapshot((prev) => {
@@ -1204,17 +1108,13 @@ export default function TreeDashboard() {
                               ...prev.treeSpec,
                               id: prev.treeSpec?.id ?? 0,
                               repoId: prev.repoId,
-                              baseBranch:
-                                prev.treeSpec?.baseBranch ?? prev.defaultBranch,
-                              status:
-                                prev.treeSpec?.status ?? ("draft" as const),
+                              baseBranch: prev.treeSpec?.baseBranch ?? prev.defaultBranch,
+                              status: prev.treeSpec?.status ?? ("draft" as const),
                               specJson: {
                                 nodes: currentNodes,
                                 edges: newTreeSpecEdges,
                               },
-                              createdAt:
-                                prev.treeSpec?.createdAt ??
-                                new Date().toISOString(),
+                              createdAt: prev.treeSpec?.createdAt ?? new Date().toISOString(),
                               updatedAt: new Date().toISOString(),
                             },
                           };
@@ -1224,9 +1124,7 @@ export default function TreeDashboard() {
                         api
                           .updateTreeSpec({
                             repoId: snapshot.repoId,
-                            baseBranch:
-                              snapshot.treeSpec?.baseBranch ??
-                              snapshot.defaultBranch,
+                            baseBranch: snapshot.treeSpec?.baseBranch ?? snapshot.defaultBranch,
                             nodes: currentNodes,
                             edges: newTreeSpecEdges,
                           })
@@ -1257,9 +1155,7 @@ export default function TreeDashboard() {
                     node={selectedNode}
                     defaultBranch={snapshot.defaultBranch}
                     parentBranch={
-                      snapshot.edges.find(
-                        (e) => e.child === selectedNode.branchName,
-                      )?.parent
+                      snapshot.edges.find((e) => e.child === selectedNode.branchName)?.parent
                     }
                     onClose={() => setSelectedNode(null)}
                     onWorktreeCreated={() => handleScan(selectedPin.localPath)}
@@ -1295,10 +1191,7 @@ export default function TreeDashboard() {
             </div>
 
             {/* Bottom: Claude Code Sessions */}
-            <div
-              className="tree-view__bottom"
-              style={{ flex: `0 0 ${bottomHeight}px` }}
-            >
+            <div className="tree-view__bottom" style={{ flex: `0 0 ${bottomHeight}px` }}>
               <div className="sessions-container">
                 <PlanningPanel
                   repoId={snapshot.repoId}
@@ -1326,10 +1219,7 @@ export default function TreeDashboard() {
         {!snapshot && !loading && (
           <div className="empty-state">
             <h2>No repository selected</h2>
-            <p>
-              Select a repository from the sidebar and click Scan to get
-              started.
-            </p>
+            <p>Select a repository from the sidebar and click Scan to get started.</p>
           </div>
         )}
       </main>
@@ -1381,9 +1271,7 @@ export default function TreeDashboard() {
                   <div className="modal__loading">Loading...</div>
                 ) : settingsRule ? (
                   <>
-                    {settingsSaved && (
-                      <div className="modal__success">Settings saved!</div>
-                    )}
+                    {settingsSaved && <div className="modal__success">Settings saved!</div>}
 
                     {/* Branch Settings */}
                     {settingsCategory === "branch" && (
@@ -1394,14 +1282,11 @@ export default function TreeDashboard() {
                           <input
                             type="text"
                             value={settingsDefaultBranch}
-                            onChange={(e) =>
-                              setSettingsDefaultBranch(e.target.value)
-                            }
+                            onChange={(e) => setSettingsDefaultBranch(e.target.value)}
                             placeholder="develop"
                           />
                           <p style={{ marginTop: 4, color: "#9ca3af" }}>
-                            Task instructions and chat history will not be shown
-                            for this branch
+                            Task instructions and chat history will not be shown for this branch
                           </p>
                         </div>
                         <div className="settings-section">
@@ -1434,9 +1319,7 @@ export default function TreeDashboard() {
                                 className="btn-icon"
                                 onClick={() => {
                                   setSettingsPatterns(
-                                    settingsPatterns.filter(
-                                      (_, i) => i !== index,
-                                    ),
+                                    settingsPatterns.filter((_, i) => i !== index),
                                   );
                                 }}
                                 style={{ padding: "4px 8px", color: "#ef4444" }}
@@ -1448,9 +1331,7 @@ export default function TreeDashboard() {
                           <button
                             type="button"
                             className="btn-secondary"
-                            onClick={() =>
-                              setSettingsPatterns([...settingsPatterns, ""])
-                            }
+                            onClick={() => setSettingsPatterns([...settingsPatterns, ""])}
                             style={{ marginTop: 4 }}
                           >
                             + Add Pattern
@@ -1466,8 +1347,7 @@ export default function TreeDashboard() {
                         <div className="settings-section">
                           <label>Worktree Creation Command</label>
                           <p style={{ marginBottom: 8, color: "#9ca3af" }}>
-                            Custom command to create worktree. Leave empty for
-                            default.
+                            Custom command to create worktree. Leave empty for default.
                             <br />
                             Placeholders:{" "}
                             <code
@@ -1504,9 +1384,7 @@ export default function TreeDashboard() {
                           <input
                             type="text"
                             value={worktreeCreateScript}
-                            onChange={(e) =>
-                              setWorktreeCreateScript(e.target.value)
-                            }
+                            onChange={(e) => setWorktreeCreateScript(e.target.value)}
                             placeholder="git worktree add {worktreePath} {branchName}"
                             style={{
                               width: "100%",
@@ -1518,14 +1396,11 @@ export default function TreeDashboard() {
                         <div className="settings-section">
                           <label>Post-Create Script</label>
                           <p style={{ marginBottom: 8, color: "#9ca3af" }}>
-                            Script to run after creating a worktree (runs in
-                            worktree directory)
+                            Script to run after creating a worktree (runs in worktree directory)
                           </p>
                           <textarea
                             value={worktreePostCreateScript}
-                            onChange={(e) =>
-                              setWorktreePostCreateScript(e.target.value)
-                            }
+                            onChange={(e) => setWorktreePostCreateScript(e.target.value)}
                             placeholder="bun install"
                             rows={4}
                             style={{
@@ -1544,14 +1419,12 @@ export default function TreeDashboard() {
                         <div className="settings-section">
                           <label>Post-Delete Script</label>
                           <p style={{ marginBottom: 8, color: "#9ca3af" }}>
-                            Script to run after deleting a worktree (runs in
-                            main repository directory)
+                            Script to run after deleting a worktree (runs in main repository
+                            directory)
                           </p>
                           <textarea
                             value={worktreePostDeleteScript}
-                            onChange={(e) =>
-                              setWorktreePostDeleteScript(e.target.value)
-                            }
+                            onChange={(e) => setWorktreePostDeleteScript(e.target.value)}
                             placeholder="echo 'Worktree deleted'"
                             rows={4}
                             style={{
@@ -1577,8 +1450,8 @@ export default function TreeDashboard() {
                         <div className="settings-section">
                           <label>Stale Data Cleanup</label>
                           <p style={{ color: "#9ca3af", margin: "4px 0 12px" }}>
-                            Remove chat history and settings for branches that
-                            no longer exist in the repository.
+                            Remove chat history and settings for branches that no longer exist in
+                            the repository.
                           </p>
                           <button
                             type="button"
@@ -1598,10 +1471,7 @@ export default function TreeDashboard() {
               </div>
             </div>
             <div className="settings-modal__footer">
-              <button
-                className="btn-secondary"
-                onClick={() => setShowSettings(false)}
-              >
+              <button className="btn-secondary" onClick={() => setShowSettings(false)}>
                 Cancel
               </button>
               <button
@@ -1627,9 +1497,7 @@ export default function TreeDashboard() {
         >
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal__header">
-              <h2>
-                {cleanupResult ? "Cleanup Complete" : "Clean Up Stale Data"}
-              </h2>
+              <h2>{cleanupResult ? "Cleanup Complete" : "Clean Up Stale Data"}</h2>
             </div>
             <div className="modal__body">
               {cleanupResult ? (
@@ -1652,8 +1520,7 @@ export default function TreeDashboard() {
                 </>
               ) : (
                 <p style={{ margin: 0, color: "#9ca3af" }}>
-                  Remove chat history and settings for branches that no longer
-                  exist?
+                  Remove chat history and settings for branches that no longer exist?
                 </p>
               )}
             </div>
@@ -1670,10 +1537,7 @@ export default function TreeDashboard() {
                 </button>
               ) : (
                 <>
-                  <button
-                    className="btn-secondary"
-                    onClick={() => setShowCleanupConfirm(false)}
-                  >
+                  <button className="btn-secondary" onClick={() => setShowCleanupConfirm(false)}>
                     Cancel
                   </button>
                   <button
@@ -1681,9 +1545,7 @@ export default function TreeDashboard() {
                     onClick={async () => {
                       if (!selectedPin) return;
                       try {
-                        const result = await api.cleanupOrphanedBranchData(
-                          selectedPin.localPath,
-                        );
+                        const result = await api.cleanupOrphanedBranchData(selectedPin.localPath);
                         setCleanupResult(result.cleaned);
                       } catch {
                         setCleanupResult({
@@ -1707,10 +1569,7 @@ export default function TreeDashboard() {
       {showWarnings &&
         snapshot &&
         (() => {
-          const WARNING_CONFIG: Record<
-            string,
-            { label: string; color: string }
-          > = {
+          const WARNING_CONFIG: Record<string, { label: string; color: string }> = {
             BEHIND_PARENT: { label: "Behind Parent", color: "#f59e0b" },
             BRANCH_NAMING_VIOLATION: {
               label: "Branch Naming",
@@ -1725,19 +1584,11 @@ export default function TreeDashboard() {
             WARNING_CONFIG[code] || { label: code, color: "#6b7280" };
 
           // Get unique warning codes that exist in current warnings
-          const existingCodes = [
-            ...new Set(snapshot.warnings.map((w) => w.code)),
-          ];
+          const existingCodes = [...new Set(snapshot.warnings.map((w) => w.code))];
 
           return (
-            <div
-              className="modal-overlay"
-              onClick={() => setShowWarnings(false)}
-            >
-              <div
-                className="modal modal--warnings"
-                onClick={(e) => e.stopPropagation()}
-              >
+            <div className="modal-overlay" onClick={() => setShowWarnings(false)}>
+              <div className="modal modal--warnings" onClick={(e) => e.stopPropagation()}>
                 <div className="modal__header">
                   <h2>Warnings ({snapshot.warnings.length})</h2>
                   <button onClick={() => setShowWarnings(false)}>×</button>
@@ -1761,16 +1612,11 @@ export default function TreeDashboard() {
                 </div>
                 <div className="modal__content modal__content--scrollable">
                   {snapshot.warnings
-                    .filter(
-                      (w) => warningFilter === null || w.code === warningFilter,
-                    )
+                    .filter((w) => warningFilter === null || w.code === warningFilter)
                     .map((w, i) => {
                       const config = getWarningConfig(w.code);
                       return (
-                        <div
-                          key={i}
-                          className={`warning-item warning-item--${w.severity}`}
-                        >
+                        <div key={i} className={`warning-item warning-item--${w.severity}`}>
                           <div className="warning-item__header">
                             <span
                               className="warning-item__code"
@@ -1784,25 +1630,18 @@ export default function TreeDashboard() {
                               {w.severity}
                             </span>
                           </div>
-                          <div className="warning-item__message">
-                            {w.message}
-                          </div>
+                          <div className="warning-item__message">{w.message}</div>
                         </div>
                       );
                     })}
                   {snapshot.warnings.filter(
                     (w) => warningFilter === null || w.code === warningFilter,
                   ).length === 0 && (
-                    <div className="modal__empty">
-                      No warnings match the filter
-                    </div>
+                    <div className="modal__empty">No warnings match the filter</div>
                   )}
                 </div>
                 <div className="modal__footer">
-                  <button
-                    className="btn-secondary"
-                    onClick={() => setShowWarnings(false)}
-                  >
+                  <button className="btn-secondary" onClick={() => setShowWarnings(false)}>
                     Close
                   </button>
                 </div>
@@ -1814,10 +1653,7 @@ export default function TreeDashboard() {
       {/* Delete Confirmation Modal */}
       {deletingPinId && (
         <div className="modal-overlay" onClick={() => setDeletingPinId(null)}>
-          <div
-            className="modal modal--small"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modal modal--small" onClick={(e) => e.stopPropagation()}>
             <div className="modal__header">
               <h2>プロジェクトを削除</h2>
             </div>
@@ -1833,10 +1669,7 @@ export default function TreeDashboard() {
               </p>
             </div>
             <div className="modal__footer">
-              <button
-                className="btn-secondary"
-                onClick={() => setDeletingPinId(null)}
-              >
+              <button className="btn-secondary" onClick={() => setDeletingPinId(null)}>
                 キャンセル
               </button>
               <button className="btn-danger" onClick={handleConfirmDeletePin}>
@@ -1849,14 +1682,8 @@ export default function TreeDashboard() {
 
       {/* Create Branch Modal */}
       {createBranchBase && (
-        <div
-          className="modal-overlay"
-          onClick={() => setCreateBranchBase(null)}
-        >
-          <div
-            className="modal modal--small"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="modal-overlay" onClick={() => setCreateBranchBase(null)}>
+          <div className="modal modal--small" onClick={(e) => e.stopPropagation()}>
             <div className="modal__header">
               <h2>ブランチ作成</h2>
             </div>
@@ -1888,11 +1715,7 @@ export default function TreeDashboard() {
                   fontSize: 14,
                 }}
                 onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    createBranchName.trim() &&
-                    !createBranchLoading
-                  ) {
+                  if (e.key === "Enter" && createBranchName.trim() && !createBranchLoading) {
                     handleCreateBranch();
                   }
                 }}
@@ -1900,10 +1723,7 @@ export default function TreeDashboard() {
               />
             </div>
             <div className="modal__footer">
-              <button
-                className="btn-secondary"
-                onClick={() => setCreateBranchBase(null)}
-              >
+              <button className="btn-secondary" onClick={() => setCreateBranchBase(null)}>
                 キャンセル
               </button>
               <button

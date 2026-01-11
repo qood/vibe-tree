@@ -1,9 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import {
-  AppError,
-  NotFoundError,
-  BadRequestError,
-} from "../server/middleware/error-handler";
+import { AppError, NotFoundError, BadRequestError } from "../server/middleware/error-handler";
 import { ValidationError } from "../shared/validation";
 
 describe("AppError", () => {

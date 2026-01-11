@@ -18,7 +18,7 @@ const cache = new Map<string, CacheEntry<unknown>>();
 export async function getCachedOrFetch<T>(
   key: string,
   fetcher: () => T | Promise<T>,
-  ttl: number = 30_000
+  ttl: number = 30_000,
 ): Promise<T> {
   const cached = cache.get(key) as CacheEntry<T> | undefined;
   const now = Date.now();
@@ -38,11 +38,7 @@ export async function getCachedOrFetch<T>(
  * @param fetcher - Function to fetch fresh data (sync)
  * @param ttl - Time to live in milliseconds (default: 30 seconds)
  */
-export function getCachedOrFetchSync<T>(
-  key: string,
-  fetcher: () => T,
-  ttl: number = 30_000
-): T {
+export function getCachedOrFetchSync<T>(key: string, fetcher: () => T, ttl: number = 30_000): T {
   const cached = cache.get(key) as CacheEntry<T> | undefined;
   const now = Date.now();
 
