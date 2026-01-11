@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, type BranchNamingRule, type RepoPin, type WorktreeSettings } from "../lib/api";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export default function SettingsPage() {
+  useDocumentTitle("設定");
+
   const [searchParams] = useSearchParams();
   const repoIdParam = searchParams.get("repoId");
 
