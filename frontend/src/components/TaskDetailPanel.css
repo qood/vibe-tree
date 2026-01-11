@@ -284,6 +284,20 @@
   background: #4b5563;
 }
 
+.task-detail-panel__delete-btn--warning {
+  background: #d97706;
+}
+
+.task-detail-panel__delete-btn--warning:hover:not(:disabled) {
+  background: #b45309;
+}
+
+.task-detail-panel__delete-btn--warning:disabled {
+  background: #4b5563;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .task-detail-panel__status-text {
   font-size: 11px;
   color: #9ca3af;
@@ -310,7 +324,6 @@
   font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
-
 }
 
 .task-detail-panel__add-link-btn {
@@ -551,7 +564,6 @@
   font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
-
 }
 
 .task-detail-panel__edit-btn {
@@ -658,7 +670,6 @@
   font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
-
 }
 
 .task-detail-panel__chat-header-actions {
@@ -975,7 +986,8 @@
   border-color: #7f1d1d;
 }
 
-.task-detail-panel__instruction-edit-proposal--rejected .task-detail-panel__diff-header {
+.task-detail-panel__instruction-edit-proposal--rejected
+  .task-detail-panel__diff-header {
   background: #7f1d1d;
   color: #f87171;
 }
@@ -1244,8 +1256,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Refresh button */
@@ -1488,6 +1505,15 @@
   font-size: 12px;
 }
 
+.task-detail-panel__modal-warning--strong {
+  color: #f97316;
+  font-size: 12px;
+  background: rgba(249, 115, 22, 0.1);
+  padding: 8px;
+  border-radius: 4px;
+  border-left: 3px solid #f97316;
+}
+
 .task-detail-panel__modal-confirm--danger {
   background: #dc2626;
 }
@@ -1595,7 +1621,9 @@
   border-radius: 6px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .task-detail-panel__sync-option:hover {
