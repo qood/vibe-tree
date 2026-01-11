@@ -14,8 +14,6 @@ import {
   type BranchLinkPRInfo,
 } from "../lib/github-api";
 
-export const branchLinksRouter = new Hono();
-
 // Cached versions of GitHub GraphQL API calls (60 second TTL)
 const GITHUB_CACHE_TTL = 60_000;
 
@@ -57,38 +55,50 @@ const updateBranchLinkSchema = z.object({
 });
 
 // GET /api/branch-links?repoId=...&branchName=...
-branchLinksRouter.get("/", async (c) => {
-  const query = validateOrThrow(getBranchLinksSchema, {
-    repoId: c.req.query("repoId"),
-    branchName: c.req.query("branchName"),
-  });
+export const branchLinksRouter = new Hono()
+  .get("/", async (c) => {
+    const query = validateOrThrow(getBranchLinksSchema, {
+      repoId: c.req.query("repoId"),
+      branchName: c.req.query("branchName"),
+    });
 
-  const links = await db
-    .select()
-    .from(schema.branchLinks)
-    .where(
-      and(
-        eq(schema.branchLinks.repoId, query.repoId),
-        eq(schema.branchLinks.branchName, query.branchName),
-      ),
-    )
-    .orderBy(desc(schema.branchLinks.createdAt));
+    const links = await db
+      .select()
+      .from(schema.branchLinks)
+      .where(
+        and(
+          eq(schema.branchLinks.repoId, query.repoId),
+          eq(schema.branchLinks.branchName, query.branchName),
+        ),
+      )
+      .orderBy(desc(schema.branchLinks.createdAt));
 
-  return c.json(links);
-});
+    return c.json(links);
+  })
+  // POST /api/branch-links
+  .post("/", async (c) => {
+    const perf = PERF_ENABLED ? new PerfTimer() : null;
 
-// POST /api/branch-links
-branchLinksRouter.post("/", async (c) => {
-  const perf = PERF_ENABLED ? new PerfTimer() : null;
+    const body = await c.req.json();
+    const input = validateOrThrow(createBranchLinkSchema, body);
+    const now = new Date().toISOString();
 
-  const body = await c.req.json();
-  const input = validateOrThrow(createBranchLinkSchema, body);
-  const now = new Date().toISOString();
-
-  // Check for duplicate
-  const [existing] = await (perf
-    ? perf.measureDb("check-duplicate", () =>
-        db
+    // Check for duplicate
+    const [existing] = await (perf
+      ? perf.measureDb("check-duplicate", () =>
+          db
+            .select()
+            .from(schema.branchLinks)
+            .where(
+              and(
+                eq(schema.branchLinks.repoId, input.repoId),
+                eq(schema.branchLinks.branchName, input.branchName),
+                eq(schema.branchLinks.url, input.url),
+              ),
+            )
+            .limit(1),
+        )
+      : db
           .select()
           .from(schema.branchLinks)
           .where(
@@ -98,102 +108,111 @@ branchLinksRouter.post("/", async (c) => {
               eq(schema.branchLinks.url, input.url),
             ),
           )
-          .limit(1),
-      )
-    : db
-        .select()
-        .from(schema.branchLinks)
-        .where(
-          and(
-            eq(schema.branchLinks.repoId, input.repoId),
-            eq(schema.branchLinks.branchName, input.branchName),
-            eq(schema.branchLinks.url, input.url),
-          ),
-        )
-        .limit(1));
+          .limit(1));
 
-  if (existing) {
-    // Update existing link instead of creating duplicate
-    await (perf
-      ? perf.measureDb("update-existing", () =>
-          db
+    if (existing) {
+      // Update existing link instead of creating duplicate
+      await (perf
+        ? perf.measureDb("update-existing", () =>
+            db
+              .update(schema.branchLinks)
+              .set({
+                title: input.title ?? existing.title,
+                status: input.status ?? existing.status,
+                updatedAt: now,
+              })
+              .where(eq(schema.branchLinks.id, existing.id)),
+          )
+        : db
             .update(schema.branchLinks)
             .set({
               title: input.title ?? existing.title,
               status: input.status ?? existing.status,
               updatedAt: now,
             })
-            .where(eq(schema.branchLinks.id, existing.id)),
-        )
-      : db
-          .update(schema.branchLinks)
-          .set({
-            title: input.title ?? existing.title,
-            status: input.status ?? existing.status,
-            updatedAt: now,
-          })
-          .where(eq(schema.branchLinks.id, existing.id)));
+            .where(eq(schema.branchLinks.id, existing.id)));
 
-    const [updated] = await db
-      .select()
-      .from(schema.branchLinks)
-      .where(eq(schema.branchLinks.id, existing.id));
+      const [updated] = await db
+        .select()
+        .from(schema.branchLinks)
+        .where(eq(schema.branchLinks.id, existing.id));
 
-    broadcast({
-      type: "branchLink.updated",
-      repoId: input.repoId,
-      data: updated,
-    });
+      broadcast({
+        type: "branchLink.updated",
+        repoId: input.repoId,
+        data: updated,
+      });
 
-    perf?.log("POST /api/branch-links (update existing)");
-    return c.json(updated);
-  }
+      perf?.log("POST /api/branch-links (update existing)");
+      return c.json(updated);
+    }
 
-  // Fetch info from GitHub if we have a number
-  let title = input.title ?? null;
-  let status = input.status ?? null;
-  let checksStatus: string | null = null;
-  let reviewDecision: string | null = null;
-  let checks: string | null = null;
-  let labels: string | null = null;
-  let reviewers: string | null = null;
-  let projectStatus: string | null = null;
+    // Fetch info from GitHub if we have a number
+    let title = input.title ?? null;
+    let status = input.status ?? null;
+    let checksStatus: string | null = null;
+    let reviewDecision: string | null = null;
+    let checks: string | null = null;
+    let labels: string | null = null;
+    let reviewers: string | null = null;
+    let projectStatus: string | null = null;
 
-  if (input.number) {
-    if (input.linkType === "issue") {
-      const issueInfo = perf
-        ? await perf.measureGitHubAsync("fetch-issue", () =>
-            fetchGitHubIssueInfoCached(input.repoId, input.number!),
-          )
-        : await fetchGitHubIssueInfoCached(input.repoId, input.number);
-      if (issueInfo) {
-        title = issueInfo.title;
-        status = issueInfo.status;
-        labels = JSON.stringify(issueInfo.labels);
-        projectStatus = issueInfo.projectStatus ?? null;
-      }
-    } else if (input.linkType === "pr") {
-      const prInfo = perf
-        ? await perf.measureGitHubAsync("fetch-pr", () =>
-            fetchGitHubPRInfoCached(input.repoId, input.number!),
-          )
-        : await fetchGitHubPRInfoCached(input.repoId, input.number);
-      if (prInfo) {
-        title = prInfo.title;
-        status = prInfo.status;
-        checksStatus = prInfo.checksStatus;
-        reviewDecision = prInfo.reviewDecision;
-        checks = JSON.stringify(prInfo.checks);
-        labels = JSON.stringify(prInfo.labels);
-        reviewers = JSON.stringify(prInfo.reviewers);
-        projectStatus = prInfo.projectStatus ?? null;
+    if (input.number) {
+      if (input.linkType === "issue") {
+        const issueInfo = perf
+          ? await perf.measureGitHubAsync("fetch-issue", () =>
+              fetchGitHubIssueInfoCached(input.repoId, input.number!),
+            )
+          : await fetchGitHubIssueInfoCached(input.repoId, input.number);
+        if (issueInfo) {
+          title = issueInfo.title;
+          status = issueInfo.status;
+          labels = JSON.stringify(issueInfo.labels);
+          projectStatus = issueInfo.projectStatus ?? null;
+        }
+      } else if (input.linkType === "pr") {
+        const prInfo = perf
+          ? await perf.measureGitHubAsync("fetch-pr", () =>
+              fetchGitHubPRInfoCached(input.repoId, input.number!),
+            )
+          : await fetchGitHubPRInfoCached(input.repoId, input.number);
+        if (prInfo) {
+          title = prInfo.title;
+          status = prInfo.status;
+          checksStatus = prInfo.checksStatus;
+          reviewDecision = prInfo.reviewDecision;
+          checks = JSON.stringify(prInfo.checks);
+          labels = JSON.stringify(prInfo.labels);
+          reviewers = JSON.stringify(prInfo.reviewers);
+          projectStatus = prInfo.projectStatus ?? null;
+        }
       }
     }
-  }
 
-  const result = await (perf
-    ? perf.measureDb("insert-link", () =>
-        db
+    const result = await (perf
+      ? perf.measureDb("insert-link", () =>
+          db
+            .insert(schema.branchLinks)
+            .values({
+              repoId: input.repoId,
+              branchName: input.branchName,
+              linkType: input.linkType,
+              url: input.url,
+              number: input.number ?? null,
+              title,
+              status,
+              checksStatus,
+              reviewDecision,
+              checks,
+              labels,
+              reviewers,
+              projectStatus,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning(),
+        )
+      : db
           .insert(schema.branchLinks)
           .values({
             repoId: input.repoId,
@@ -212,191 +231,185 @@ branchLinksRouter.post("/", async (c) => {
             createdAt: now,
             updatedAt: now,
           })
-          .returning(),
-      )
-    : db
-        .insert(schema.branchLinks)
-        .values({
-          repoId: input.repoId,
-          branchName: input.branchName,
-          linkType: input.linkType,
-          url: input.url,
-          number: input.number ?? null,
-          title,
-          status,
-          checksStatus,
-          reviewDecision,
-          checks,
-          labels,
-          reviewers,
-          projectStatus,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning());
+          .returning());
 
-  const link = result[0];
-  if (!link) {
-    throw new BadRequestError("Failed to create branch link");
-  }
+    const link = result[0];
+    if (!link) {
+      throw new BadRequestError("Failed to create branch link");
+    }
 
-  broadcast({
-    type: "branchLink.created",
-    repoId: input.repoId,
-    data: link,
-  });
+    broadcast({
+      type: "branchLink.created",
+      repoId: input.repoId,
+      data: link,
+    });
 
-  perf?.log("POST /api/branch-links (create new)");
-  return c.json(link, 201);
-});
+    perf?.log("POST /api/branch-links (create new)");
+    return c.json(link, 201);
+  })
+  // PATCH /api/branch-links/:id
+  .patch("/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+      throw new BadRequestError("Invalid id");
+    }
 
-// PATCH /api/branch-links/:id
-branchLinksRouter.patch("/:id", async (c) => {
-  const id = parseInt(c.req.param("id"), 10);
-  if (isNaN(id)) {
-    throw new BadRequestError("Invalid id");
-  }
+    const body = await c.req.json();
+    const input = validateOrThrow(updateBranchLinkSchema, body);
+    const now = new Date().toISOString();
 
-  const body = await c.req.json();
-  const input = validateOrThrow(updateBranchLinkSchema, body);
-  const now = new Date().toISOString();
+    const [existing] = await db
+      .select()
+      .from(schema.branchLinks)
+      .where(eq(schema.branchLinks.id, id))
+      .limit(1);
 
-  const [existing] = await db
-    .select()
-    .from(schema.branchLinks)
-    .where(eq(schema.branchLinks.id, id))
-    .limit(1);
+    if (!existing) {
+      throw new NotFoundError("Branch link not found");
+    }
 
-  if (!existing) {
-    throw new NotFoundError("Branch link not found");
-  }
+    await db
+      .update(schema.branchLinks)
+      .set({
+        title: input.title ?? existing.title,
+        status: input.status ?? existing.status,
+        updatedAt: now,
+      })
+      .where(eq(schema.branchLinks.id, id));
 
-  await db
-    .update(schema.branchLinks)
-    .set({
-      title: input.title ?? existing.title,
-      status: input.status ?? existing.status,
-      updatedAt: now,
-    })
-    .where(eq(schema.branchLinks.id, id));
+    const [updated] = await db
+      .select()
+      .from(schema.branchLinks)
+      .where(eq(schema.branchLinks.id, id));
 
-  const [updated] = await db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id));
+    broadcast({
+      type: "branchLink.updated",
+      repoId: existing.repoId,
+      data: updated,
+    });
 
-  broadcast({
-    type: "branchLink.updated",
-    repoId: existing.repoId,
-    data: updated,
-  });
+    return c.json(updated);
+  })
+  // DELETE /api/branch-links/:id
+  .delete("/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+      throw new BadRequestError("Invalid id");
+    }
 
-  return c.json(updated);
-});
+    const [existing] = await db
+      .select()
+      .from(schema.branchLinks)
+      .where(eq(schema.branchLinks.id, id))
+      .limit(1);
 
-// DELETE /api/branch-links/:id
-branchLinksRouter.delete("/:id", async (c) => {
-  const id = parseInt(c.req.param("id"), 10);
-  if (isNaN(id)) {
-    throw new BadRequestError("Invalid id");
-  }
+    if (!existing) {
+      throw new NotFoundError("Branch link not found");
+    }
 
-  const [existing] = await db
-    .select()
-    .from(schema.branchLinks)
-    .where(eq(schema.branchLinks.id, id))
-    .limit(1);
+    await db.delete(schema.branchLinks).where(eq(schema.branchLinks.id, id));
 
-  if (!existing) {
-    throw new NotFoundError("Branch link not found");
-  }
+    broadcast({
+      type: "branchLink.deleted",
+      repoId: existing.repoId,
+      data: { id },
+    });
 
-  await db.delete(schema.branchLinks).where(eq(schema.branchLinks.id, id));
+    return c.json({ success: true });
+  })
+  // POST /api/branch-links/:id/refresh - Re-fetch data from GitHub
+  // Use ?force=true to bypass cache
+  .post("/:id/refresh", async (c) => {
+    const perf = PERF_ENABLED ? new PerfTimer() : null;
+    const forceRefresh = c.req.query("force") === "true";
 
-  broadcast({
-    type: "branchLink.deleted",
-    repoId: existing.repoId,
-    data: { id },
-  });
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+      throw new BadRequestError("Invalid id");
+    }
 
-  return c.json({ success: true });
-});
+    const [existing] = await (perf
+      ? perf.measureDb("fetch-existing", () =>
+          db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id)).limit(1),
+        )
+      : db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id)).limit(1));
 
-// POST /api/branch-links/:id/refresh - Re-fetch data from GitHub
-// Use ?force=true to bypass cache
-branchLinksRouter.post("/:id/refresh", async (c) => {
-  const perf = PERF_ENABLED ? new PerfTimer() : null;
-  const forceRefresh = c.req.query("force") === "true";
+    if (!existing) {
+      throw new NotFoundError("Branch link not found");
+    }
 
-  const id = parseInt(c.req.param("id"), 10);
-  if (isNaN(id)) {
-    throw new BadRequestError("Invalid id");
-  }
+    if (!existing.number) {
+      throw new BadRequestError("Cannot refresh link without number");
+    }
 
-  const [existing] = await (perf
-    ? perf.measureDb("fetch-existing", () =>
-        db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id)).limit(1),
-      )
-    : db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id)).limit(1));
+    // Invalidate cache if force refresh
+    if (forceRefresh) {
+      if (existing.linkType === "issue") {
+        invalidateCache(`github:issue:${existing.repoId}:${existing.number}`);
+      } else {
+        invalidateCache(`github:pr:${existing.repoId}:${existing.number}`);
+      }
+      perf?.recordCacheMiss();
+    }
 
-  if (!existing) {
-    throw new NotFoundError("Branch link not found");
-  }
+    const now = new Date().toISOString();
+    let title = existing.title;
+    let status = existing.status;
+    let checksStatus = existing.checksStatus;
+    let reviewDecision = existing.reviewDecision;
+    let checks = existing.checks;
+    let labels = existing.labels;
+    let reviewers = existing.reviewers;
+    let projectStatus = existing.projectStatus;
 
-  if (!existing.number) {
-    throw new BadRequestError("Cannot refresh link without number");
-  }
-
-  // Invalidate cache if force refresh
-  if (forceRefresh) {
     if (existing.linkType === "issue") {
-      invalidateCache(`github:issue:${existing.repoId}:${existing.number}`);
-    } else {
-      invalidateCache(`github:pr:${existing.repoId}:${existing.number}`);
+      const issueInfo = perf
+        ? await perf.measureGitHubAsync("refresh-issue", () =>
+            fetchGitHubIssueInfoCached(existing.repoId, existing.number!),
+          )
+        : await fetchGitHubIssueInfoCached(existing.repoId, existing.number);
+      if (issueInfo) {
+        title = issueInfo.title;
+        status = issueInfo.status;
+        labels = JSON.stringify(issueInfo.labels);
+        projectStatus = issueInfo.projectStatus ?? null;
+      }
+    } else if (existing.linkType === "pr") {
+      const prInfo = perf
+        ? await perf.measureGitHubAsync("refresh-pr", () =>
+            fetchGitHubPRInfoCached(existing.repoId, existing.number!),
+          )
+        : await fetchGitHubPRInfoCached(existing.repoId, existing.number);
+      if (prInfo) {
+        title = prInfo.title;
+        status = prInfo.status;
+        checksStatus = prInfo.checksStatus;
+        reviewDecision = prInfo.reviewDecision;
+        checks = JSON.stringify(prInfo.checks);
+        labels = JSON.stringify(prInfo.labels);
+        reviewers = JSON.stringify(prInfo.reviewers);
+        projectStatus = prInfo.projectStatus ?? null;
+      }
     }
-    perf?.recordCacheMiss();
-  }
 
-  const now = new Date().toISOString();
-  let title = existing.title;
-  let status = existing.status;
-  let checksStatus = existing.checksStatus;
-  let reviewDecision = existing.reviewDecision;
-  let checks = existing.checks;
-  let labels = existing.labels;
-  let reviewers = existing.reviewers;
-  let projectStatus = existing.projectStatus;
-
-  if (existing.linkType === "issue") {
-    const issueInfo = perf
-      ? await perf.measureGitHubAsync("refresh-issue", () =>
-          fetchGitHubIssueInfoCached(existing.repoId, existing.number!),
+    await (perf
+      ? perf.measureDb("update-link", () =>
+          db
+            .update(schema.branchLinks)
+            .set({
+              title,
+              status,
+              checksStatus,
+              reviewDecision,
+              checks,
+              labels,
+              reviewers,
+              projectStatus,
+              updatedAt: now,
+            })
+            .where(eq(schema.branchLinks.id, id)),
         )
-      : await fetchGitHubIssueInfoCached(existing.repoId, existing.number);
-    if (issueInfo) {
-      title = issueInfo.title;
-      status = issueInfo.status;
-      labels = JSON.stringify(issueInfo.labels);
-      projectStatus = issueInfo.projectStatus ?? null;
-    }
-  } else if (existing.linkType === "pr") {
-    const prInfo = perf
-      ? await perf.measureGitHubAsync("refresh-pr", () =>
-          fetchGitHubPRInfoCached(existing.repoId, existing.number!),
-        )
-      : await fetchGitHubPRInfoCached(existing.repoId, existing.number);
-    if (prInfo) {
-      title = prInfo.title;
-      status = prInfo.status;
-      checksStatus = prInfo.checksStatus;
-      reviewDecision = prInfo.reviewDecision;
-      checks = JSON.stringify(prInfo.checks);
-      labels = JSON.stringify(prInfo.labels);
-      reviewers = JSON.stringify(prInfo.reviewers);
-      projectStatus = prInfo.projectStatus ?? null;
-    }
-  }
-
-  await (perf
-    ? perf.measureDb("update-link", () =>
-        db
+      : db
           .update(schema.branchLinks)
           .set({
             title,
@@ -409,31 +422,19 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
             projectStatus,
             updatedAt: now,
           })
-          .where(eq(schema.branchLinks.id, id)),
-      )
-    : db
-        .update(schema.branchLinks)
-        .set({
-          title,
-          status,
-          checksStatus,
-          reviewDecision,
-          checks,
-          labels,
-          reviewers,
-          projectStatus,
-          updatedAt: now,
-        })
-        .where(eq(schema.branchLinks.id, id)));
+          .where(eq(schema.branchLinks.id, id)));
 
-  const [updated] = await db.select().from(schema.branchLinks).where(eq(schema.branchLinks.id, id));
+    const [updated] = await db
+      .select()
+      .from(schema.branchLinks)
+      .where(eq(schema.branchLinks.id, id));
 
-  broadcast({
-    type: "branchLink.updated",
-    repoId: existing.repoId,
-    data: updated,
+    broadcast({
+      type: "branchLink.updated",
+      repoId: existing.repoId,
+      data: updated,
+    });
+
+    perf?.log(`POST /api/branch-links/${id}/refresh`);
+    return c.json(updated);
   });
-
-  perf?.log(`POST /api/branch-links/${id}/refresh`);
-  return c.json(updated);
-});
