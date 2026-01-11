@@ -1,5 +1,53 @@
 const API_BASE = "/api";
 
+// API Error types
+interface ApiErrorResponse {
+  error?: string;
+  code?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+}
+
+export class ApiError extends Error {
+  public readonly statusCode: number;
+  public readonly code?: string;
+  public readonly details?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    statusCode: number,
+    code?: string,
+    details?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
+  }
+
+  /**
+   * Check if error is a specific HTTP status
+   */
+  isStatus(status: number): boolean {
+    return this.statusCode === status;
+  }
+
+  /**
+   * Check if error is a client error (4xx)
+   */
+  isClientError(): boolean {
+    return this.statusCode >= 400 && this.statusCode < 500;
+  }
+
+  /**
+   * Check if error is a server error (5xx)
+   */
+  isServerError(): boolean {
+    return this.statusCode >= 500;
+  }
+}
+
 // Repo from GitHub (fetched via gh CLI)
 export interface Repo {
   id: string; // owner/name format
@@ -372,8 +420,13 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.error || `HTTP error: ${res.status}`);
+    const errorData: ApiErrorResponse = await res.json().catch(() => ({}));
+    throw new ApiError(
+      errorData.error || errorData.message || `HTTP error: ${res.status}`,
+      res.status,
+      errorData.code,
+      errorData.details,
+    );
   }
   return res.json();
 }

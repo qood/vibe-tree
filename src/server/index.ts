@@ -21,6 +21,7 @@ import { errorHandler } from "./middleware/error-handler";
 import { perfLoggerMiddleware } from "./middleware/perf-logger";
 import { ptyManager } from "./pty-manager";
 import { handleWsMessage, addClient, removeClient, type WSClient } from "./ws";
+import { startCacheGC } from "./lib/cache";
 
 const app = new Hono();
 
@@ -185,3 +186,7 @@ Bun.serve<WsData>({
 
 console.log(`Server running at http://localhost:${port}`);
 console.log(`WebSocket available at ws://localhost:${port}/ws`);
+
+// Start cache garbage collector
+startCacheGC();
+console.log("Cache garbage collector started");

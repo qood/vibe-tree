@@ -56,7 +56,13 @@ reposRouter.get("/", async (c) => {
     return c.json(repos);
   } catch (error) {
     console.error("Failed to fetch repos from gh:", error);
-    return c.json([]);
+    return c.json(
+      {
+        error: "Failed to fetch repositories from GitHub CLI",
+        code: "GH_FETCH_ERROR",
+      },
+      500,
+    );
   }
 });
 
