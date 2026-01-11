@@ -23,22 +23,6 @@ export interface BranchInfo {
   lastCommitAt: string;
 }
 
-interface GhPR {
-  number: number;
-  title: string;
-  state: string;
-  url: string;
-  headRefName: string;
-  isDraft: boolean;
-  labels: { name: string }[];
-  assignees: { login: string }[];
-  reviewDecision: string;
-  statusCheckRollup?: { conclusion?: string }[];
-  additions: number;
-  deletions: number;
-  changedFiles: number;
-}
-
 export function getDefaultBranch(repoPath: string, branchNames: string[]): string {
   // 1. Try to get origin's HEAD (most reliable)
   try {
