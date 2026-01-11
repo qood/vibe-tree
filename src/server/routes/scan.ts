@@ -12,6 +12,7 @@ import {
 } from "../../shared/validation";
 import { BadRequestError } from "../middleware/error-handler";
 import type { BranchNamingRule, ScanSnapshot, TreeSpec } from "../../shared/types";
+import { getCache, setCache } from "../lib/cache";
 import {
   getDefaultBranch,
   getBranches,
@@ -26,6 +27,9 @@ import {
 
 export const scanRouter = new Hono();
 
+// Cache TTL for scan results (15 seconds)
+const SCAN_CACHE_TTL = 15_000;
+
 // POST /api/scan
 scanRouter.post("/", async (c) => {
   const body = await c.req.json();
@@ -35,6 +39,19 @@ scanRouter.post("/", async (c) => {
   // Verify local path exists
   if (!existsSync(localPath)) {
     throw new BadRequestError(`Local path does not exist: ${localPath}`);
+  }
+
+  // Check cache first (scan is expensive ~1.7-3s)
+  const cacheKey = `scan:${localPath}`;
+  const cached = getCache<ScanSnapshot>(cacheKey, SCAN_CACHE_TTL);
+  if (cached) {
+    // Broadcast cached result and return
+    broadcast({
+      type: "scan.updated",
+      repoId: cached.repoId,
+      data: cached,
+    });
+    return c.json(cached);
   }
 
   // Get repo info from gh CLI
@@ -307,6 +324,9 @@ scanRouter.post("/", async (c) => {
     restart,
     ...(treeSpec && { treeSpec }),
   };
+
+  // Cache the result for subsequent requests
+  setCache(cacheKey, snapshot);
 
   // Broadcast scan result
   broadcast({
