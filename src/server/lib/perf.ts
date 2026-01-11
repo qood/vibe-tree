@@ -89,6 +89,27 @@ export class PerfTimer {
   }
 
   /**
+   * Measure an async GitHub API call (for GraphQL fetch)
+   */
+  async measureGitHubAsync<T>(
+    name: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    const start = performance.now();
+    try {
+      return await fn();
+    } finally {
+      const duration = performance.now() - start;
+      this.githubTime += duration;
+      this.operations.push({
+        name: `github:${name}`,
+        start,
+        end: performance.now(),
+      });
+    }
+  }
+
+  /**
    * Record a cache hit
    */
   recordCacheHit(): void {

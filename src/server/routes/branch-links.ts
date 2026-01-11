@@ -1,177 +1,44 @@
 import { Hono } from "hono";
-import { execSync } from "child_process";
 import { db, schema } from "../../db";
 import { eq, and, desc } from "drizzle-orm";
 import { broadcast } from "../ws";
 import { z } from "zod";
 import { validateOrThrow } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
-import { getCachedOrFetchSync, invalidateCache } from "../lib/cache";
+import { getCachedOrFetch, invalidateCache } from "../lib/cache";
 import { PerfTimer, PERF_ENABLED } from "../lib/perf";
+import {
+  fetchIssueGraphQL,
+  fetchPRGraphQL,
+  type BranchLinkIssueInfo,
+  type BranchLinkPRInfo,
+} from "../lib/github-api";
 
 export const branchLinksRouter = new Hono();
 
-// Helper: Fetch Issue info from GitHub
-interface GitHubIssueInfo {
-  number: number;
-  title: string;
-  status: string;
-  labels: string[];
-  projectStatus?: string;
-}
-
-function fetchGitHubIssueInfo(repoId: string, issueNumber: number): GitHubIssueInfo | null {
-  try {
-    // Basic issue info
-    const result = execSync(
-      `gh issue view ${issueNumber} --repo "${repoId}" --json number,title,state,labels,projectItems`,
-      { encoding: "utf-8", timeout: 10000 }
-    ).trim();
-    const data = JSON.parse(result);
-
-    // Extract project status if available
-    let projectStatus: string | undefined;
-    if (data.projectItems && data.projectItems.length > 0) {
-      const item = data.projectItems[0];
-      if (item.status) {
-        projectStatus = item.status.name || item.status;
-      }
-    }
-
-    return {
-      number: data.number,
-      title: data.title,
-      status: data.state?.toLowerCase() || "open",
-      labels: (data.labels || []).map((l: { name: string }) => l.name),
-      ...(projectStatus !== undefined && { projectStatus }),
-    };
-  } catch (err) {
-    console.error(`Failed to fetch issue #${issueNumber}:`, err);
-    return null;
-  }
-}
-
-// Helper: Fetch PR info from GitHub
-interface GitHubCheck {
-  name: string;
-  status: string;
-  conclusion: string | null;
-  detailsUrl: string | null;
-}
-
-interface GitHubLabel {
-  name: string;
-  color: string;
-}
-
-interface GitHubPRInfo {
-  number: number;
-  title: string;
-  status: string;
-  reviewDecision: string | null;
-  checksStatus: string;
-  checks: GitHubCheck[];
-  labels: GitHubLabel[];
-  reviewers: string[];
-  projectStatus?: string;
-}
-
-function fetchGitHubPRInfo(repoId: string, prNumber: number): GitHubPRInfo | null {
-  try {
-    const result = execSync(
-      `gh pr view ${prNumber} --repo "${repoId}" --json number,title,state,reviewDecision,statusCheckRollup,labels,reviewRequests,reviews,projectItems`,
-      { encoding: "utf-8", timeout: 10000 }
-    ).trim();
-    const data = JSON.parse(result);
-
-    // Extract individual checks - deduplicate by name, keeping only the latest
-    const checksMap = new Map<string, GitHubCheck>();
-    let checksStatus = "pending";
-    if (data.statusCheckRollup && data.statusCheckRollup.length > 0) {
-      for (const c of data.statusCheckRollup) {
-        const name = c.name || c.context || "Unknown";
-        // Later entries in the array are newer, so they overwrite older ones
-        checksMap.set(name, {
-          name,
-          status: c.status || "COMPLETED",
-          conclusion: c.conclusion || null,
-          detailsUrl: c.detailsUrl || c.targetUrl || null,
-        });
-      }
-      const checks = Array.from(checksMap.values());
-      const hasFailure = checks.some((c) =>
-        c.conclusion === "FAILURE" || c.conclusion === "ERROR"
-      );
-      const allSuccess = checks.every((c) => c.conclusion === "SUCCESS" || c.conclusion === "SKIPPED");
-      if (hasFailure) checksStatus = "failure";
-      else if (allSuccess) checksStatus = "success";
-    }
-    const checks = Array.from(checksMap.values());
-
-    // Extract reviewers
-    const reviewers: string[] = [];
-    if (data.reviewRequests) {
-      for (const r of data.reviewRequests) {
-        if (r.login) reviewers.push(r.login);
-      }
-    }
-    if (data.reviews) {
-      for (const r of data.reviews) {
-        if (r.author?.login && !reviewers.includes(r.author.login)) {
-          reviewers.push(r.author.login);
-        }
-      }
-    }
-
-    // Extract project status
-    let projectStatus: string | undefined;
-    if (data.projectItems && data.projectItems.length > 0) {
-      const item = data.projectItems[0];
-      if (item.status) {
-        projectStatus = item.status.name || item.status;
-      }
-    }
-
-    return {
-      number: data.number,
-      title: data.title,
-      status: data.state?.toLowerCase() || "open",
-      reviewDecision: data.reviewDecision || null,
-      checksStatus,
-      checks,
-      labels: (data.labels || []).map((l: { name: string; color: string }) => ({ name: l.name, color: l.color })),
-      reviewers,
-      ...(projectStatus !== undefined && { projectStatus }),
-    };
-  } catch (err) {
-    console.error(`Failed to fetch PR #${prNumber}:`, err);
-    return null;
-  }
-}
-
-// Cached versions of GitHub API calls (60 second TTL)
+// Cached versions of GitHub GraphQL API calls (60 second TTL)
 const GITHUB_CACHE_TTL = 60_000;
 
-function fetchGitHubIssueInfoCached(
+async function fetchGitHubIssueInfoCached(
   repoId: string,
   issueNumber: number
-): GitHubIssueInfo | null {
+): Promise<BranchLinkIssueInfo | null> {
   const cacheKey = `github:issue:${repoId}:${issueNumber}`;
-  return getCachedOrFetchSync(
+  return getCachedOrFetch(
     cacheKey,
-    () => fetchGitHubIssueInfo(repoId, issueNumber),
+    () => fetchIssueGraphQL(repoId, issueNumber),
     GITHUB_CACHE_TTL
   );
 }
 
-function fetchGitHubPRInfoCached(
+async function fetchGitHubPRInfoCached(
   repoId: string,
   prNumber: number
-): GitHubPRInfo | null {
+): Promise<BranchLinkPRInfo | null> {
   const cacheKey = `github:pr:${repoId}:${prNumber}`;
-  return getCachedOrFetchSync(
+  return getCachedOrFetch(
     cacheKey,
-    () => fetchGitHubPRInfo(repoId, prNumber),
+    () => fetchPRGraphQL(repoId, prNumber),
     GITHUB_CACHE_TTL
   );
 }
@@ -303,10 +170,10 @@ branchLinksRouter.post("/", async (c) => {
   if (input.number) {
     if (input.linkType === "issue") {
       const issueInfo = perf
-        ? perf.measureGitHub("fetch-issue", () =>
+        ? await perf.measureGitHubAsync("fetch-issue", () =>
             fetchGitHubIssueInfoCached(input.repoId, input.number!)
           )
-        : fetchGitHubIssueInfoCached(input.repoId, input.number);
+        : await fetchGitHubIssueInfoCached(input.repoId, input.number);
       if (issueInfo) {
         title = issueInfo.title;
         status = issueInfo.status;
@@ -315,10 +182,10 @@ branchLinksRouter.post("/", async (c) => {
       }
     } else if (input.linkType === "pr") {
       const prInfo = perf
-        ? perf.measureGitHub("fetch-pr", () =>
+        ? await perf.measureGitHubAsync("fetch-pr", () =>
             fetchGitHubPRInfoCached(input.repoId, input.number!)
           )
-        : fetchGitHubPRInfoCached(input.repoId, input.number);
+        : await fetchGitHubPRInfoCached(input.repoId, input.number);
       if (prInfo) {
         title = prInfo.title;
         status = prInfo.status;
@@ -518,10 +385,10 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
 
   if (existing.linkType === "issue") {
     const issueInfo = perf
-      ? perf.measureGitHub("refresh-issue", () =>
+      ? await perf.measureGitHubAsync("refresh-issue", () =>
           fetchGitHubIssueInfoCached(existing.repoId, existing.number!)
         )
-      : fetchGitHubIssueInfoCached(existing.repoId, existing.number);
+      : await fetchGitHubIssueInfoCached(existing.repoId, existing.number);
     if (issueInfo) {
       title = issueInfo.title;
       status = issueInfo.status;
@@ -530,10 +397,10 @@ branchLinksRouter.post("/:id/refresh", async (c) => {
     }
   } else if (existing.linkType === "pr") {
     const prInfo = perf
-      ? perf.measureGitHub("refresh-pr", () =>
+      ? await perf.measureGitHubAsync("refresh-pr", () =>
           fetchGitHubPRInfoCached(existing.repoId, existing.number!)
         )
-      : fetchGitHubPRInfoCached(existing.repoId, existing.number);
+      : await fetchGitHubPRInfoCached(existing.repoId, existing.number);
     if (prInfo) {
       title = prInfo.title;
       status = prInfo.status;
