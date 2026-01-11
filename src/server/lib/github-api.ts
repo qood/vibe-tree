@@ -83,9 +83,12 @@ interface GitHubGraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
-// Cache for GitHub token (5 minutes TTL)
+// Cache for GitHub token
+// TTL is set to 5 minutes as a balance between:
+// - Reducing process spawn overhead (gh auth token)
+// - Picking up token changes if user re-authenticates with gh auth login
 let cachedToken: { value: string | null; timestamp: number } | null = null;
-const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const TOKEN_CACHE_TTL = 5 * 60 * 1000;
 
 /**
  * Get GitHub auth token from gh CLI (cached)
