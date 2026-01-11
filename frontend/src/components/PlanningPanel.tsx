@@ -619,7 +619,7 @@ export function PlanningPanel({
       const updatedNodes = [...selectedSession.nodes, newNode];
 
       // Find parent by label if specified
-      let updatedEdges = [...selectedSession.edges];
+      const updatedEdges = [...selectedSession.edges];
       if (suggestion.parentLabel) {
         const parentNode = selectedSession.nodes.find(
           (n) => n.title.toLowerCase() === suggestion.parentLabel?.toLowerCase(),

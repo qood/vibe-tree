@@ -1,7 +1,7 @@
 import React from "react";
 
 // URL regex pattern - matches http/https URLs
-const URL_REGEX = /(https?:\/\/[^\s<>\[\]()]+[^\s<>\[\]().,;:'"!?])/g;
+const URL_REGEX = /(https?:\/\/[^\s<>[\]()]+[^\s<>[\]().,;:'"!?])/g;
 
 /**
  * Convert text with URLs into React elements with clickable links
