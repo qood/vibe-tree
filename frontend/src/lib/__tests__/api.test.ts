@@ -221,4 +221,43 @@ describe('api', () => {
       await expect(api.health()).rejects.toThrow('HTTP error: 500');
     });
   });
+
+  describe('selectDirectory', () => {
+    it('should return selected path when user selects a directory', async () => {
+      const response = { cancelled: false, path: '/Users/test/project' };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(response),
+      });
+
+      const result = await api.selectDirectory();
+      expect(result).toEqual(response);
+      expect(mockFetch).toHaveBeenCalledWith('/api/system/select-directory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    it('should return cancelled: true when user cancels the dialog', async () => {
+      const response = { cancelled: true, path: null };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(response),
+      });
+
+      const result = await api.selectDirectory();
+      expect(result.cancelled).toBe(true);
+      expect(result.path).toBeNull();
+    });
+
+    it('should throw error when dialog fails', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ error: 'Failed to open directory picker' }),
+      });
+
+      await expect(api.selectDirectory()).rejects.toThrow('Failed to open directory picker');
+    });
+  });
 });
