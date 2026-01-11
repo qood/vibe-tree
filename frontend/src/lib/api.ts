@@ -431,13 +431,16 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export const api = {
-  // Health
-  health: () => fetchJson<{ status: string }>(`${API_BASE}/health`),
+// Import RPC functions
+import { healthRpc, getReposRpc, getRepoRpc } from "./rpc";
 
-  // Repos (fetched from gh CLI)
-  getRepos: () => fetchJson<Repo[]>(`${API_BASE}/repos`),
-  getRepo: (owner: string, name: string) => fetchJson<Repo>(`${API_BASE}/repos/${owner}/${name}`),
+export const api = {
+  // Health (via RPC)
+  health: healthRpc,
+
+  // Repos (via RPC)
+  getRepos: getReposRpc,
+  getRepo: getRepoRpc,
 
   // Branch Naming
   getBranchNaming: (repoId: string) =>
