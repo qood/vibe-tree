@@ -36,6 +36,7 @@ class MockWebSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_url: string) {
     setTimeout(() => {
       if (this.onopen) {
@@ -44,6 +45,7 @@ class MockWebSocket {
     }, 0);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   send(_data: string) {
     // Mock send
   }
