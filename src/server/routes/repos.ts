@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { execSync } from "child_process";
 import { NotFoundError } from "../middleware/error-handler";
+import { getCachedOrFetchSync } from "../lib/cache";
 
 interface GhRepo {
   name: string;
@@ -28,22 +29,29 @@ reposRouter.get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? "30");
 
   try {
-    const output = execSync(
-      `gh repo list --json name,nameWithOwner,url,description,isPrivate,defaultBranchRef --limit ${limit}`,
-      { encoding: "utf-8" }
+    // Cache repos list for 5 minutes (gh repo list is slow ~3s)
+    const repos = getCachedOrFetchSync<RepoInfo[]>(
+      `repos:list:${limit}`,
+      () => {
+        const output = execSync(
+          `gh repo list --json name,nameWithOwner,url,description,isPrivate,defaultBranchRef --limit ${limit}`,
+          { encoding: "utf-8" }
+        );
+
+        const ghRepos: GhRepo[] = JSON.parse(output);
+
+        return ghRepos.map((r) => ({
+          id: r.nameWithOwner,
+          name: r.name,
+          fullName: r.nameWithOwner,
+          url: r.url,
+          description: r.description ?? "",
+          isPrivate: r.isPrivate,
+          defaultBranch: r.defaultBranchRef?.name ?? "main",
+        }));
+      },
+      5 * 60 * 1000 // 5 minutes TTL
     );
-
-    const ghRepos: GhRepo[] = JSON.parse(output);
-
-    const repos: RepoInfo[] = ghRepos.map((r) => ({
-      id: r.nameWithOwner,
-      name: r.name,
-      fullName: r.nameWithOwner,
-      url: r.url,
-      description: r.description ?? "",
-      isPrivate: r.isPrivate,
-      defaultBranch: r.defaultBranchRef?.name ?? "main",
-    }));
 
     return c.json(repos);
   } catch (error) {
