@@ -18,6 +18,7 @@ import { planningSessionsRouter } from "./routes/planning-sessions";
 import { branchLinksRouter } from "./routes/branch-links";
 import { systemRouter } from "./routes/system";
 import { errorHandler } from "./middleware/error-handler";
+import { perfLoggerMiddleware } from "./middleware/perf-logger";
 import { ptyManager } from "./pty-manager";
 import { handleWsMessage, addClient, removeClient, type WSClient } from "./ws";
 
@@ -26,11 +27,8 @@ const app = new Hono();
 // Logging
 app.use("*", logger());
 
-// Debug: Log all incoming requests
-app.use("*", async (c, next) => {
-  console.log(`[${new Date().toISOString()}] ${c.req.method} ${c.req.path}`);
-  await next();
-});
+// Performance logging (enabled with PERF_DEBUG=true)
+app.use("*", perfLoggerMiddleware);
 
 // Error handling
 app.use("*", errorHandler);
