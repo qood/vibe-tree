@@ -1,6 +1,9 @@
-import { execSync } from "child_process";
+import { execSync, exec } from "child_process";
+import { promisify } from "util";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+
+const execAsync = promisify(exec);
 import type {
   BranchNamingRule,
   TreeNode,
@@ -95,7 +98,7 @@ export function getBranches(repoPath: string): BranchInfo[] {
   }
 }
 
-export function getWorktrees(repoPath: string): WorktreeInfo[] {
+export async function getWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
   try {
     const output = execSync(
       `cd "${repoPath}" && git worktree list --porcelain`,
@@ -116,34 +119,35 @@ export function getWorktrees(repoPath: string): WorktreeInfo[] {
     }
     if (current.path) worktrees.push(current as WorktreeInfo);
 
-    // Check dirty status and heartbeat for each worktree
-    for (const wt of worktrees) {
-      try {
-        const status = execSync(`cd "${wt.path}" && git status --porcelain`, {
-          encoding: "utf-8",
-        });
-        wt.dirty = status.trim().length > 0;
-      } catch {
-        wt.dirty = false;
-      }
-
-      // Check heartbeat
-      const heartbeatPath = join(wt.path, ".vibetree", "heartbeat.json");
-      if (existsSync(heartbeatPath)) {
+    // Check dirty status and heartbeat for each worktree (in parallel)
+    await Promise.all(
+      worktrees.map(async (wt) => {
+        // Check dirty status asynchronously
         try {
-          const heartbeat = JSON.parse(readFileSync(heartbeatPath, "utf-8"));
-          const lastUpdate = new Date(heartbeat.updatedAt).getTime();
-          const now = Date.now();
-          // Active if updated within last 30 seconds
-          if (now - lastUpdate < 30000) {
-            wt.isActive = true;
-            wt.activeAgent = heartbeat.agent;
-          }
+          const { stdout } = await execAsync(`cd "${wt.path}" && git status --porcelain`);
+          wt.dirty = stdout.trim().length > 0;
         } catch {
-          // Ignore parse errors
+          wt.dirty = false;
         }
-      }
-    }
+
+        // Check heartbeat (sync is fine for file reads)
+        const heartbeatPath = join(wt.path, ".vibetree", "heartbeat.json");
+        if (existsSync(heartbeatPath)) {
+          try {
+            const heartbeat = JSON.parse(readFileSync(heartbeatPath, "utf-8"));
+            const lastUpdate = new Date(heartbeat.updatedAt).getTime();
+            const now = Date.now();
+            // Active if updated within last 30 seconds
+            if (now - lastUpdate < 30000) {
+              wt.isActive = true;
+              wt.activeAgent = heartbeat.agent;
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      })
+    );
 
     return worktrees;
   } catch (err) {
@@ -242,7 +246,35 @@ export function findBestParent(
         // Ignore
       }
 
-      for (const candidate of allBranches) {
+      // Filter candidates to reduce git commands - only check branches that might be related
+      // 1. Branches that share a common prefix (e.g., "feat/", "fix/")
+      // 2. Branches where one name contains part of the other
+      const branchParts = branchName.split(/[-_/]/);
+      const branchPrefix = branchParts[0] || "";
+
+      const filteredCandidates = allBranches.filter((candidate) => {
+        if (candidate === branchName) return false;
+        if (candidate === defaultBranch) return false;
+
+        // Check if they share a common prefix
+        const candidateParts = candidate.split(/[-_/]/);
+        const candidatePrefix = candidateParts[0] || "";
+        if (branchPrefix && candidatePrefix && branchPrefix === candidatePrefix) {
+          return true;
+        }
+
+        // Check if branch name contains candidate or vice versa
+        if (branchName.includes(candidate) || candidate.includes(branchParts[0] || "")) {
+          return true;
+        }
+
+        return false;
+      });
+
+      // If no filtered candidates, use all branches (fallback)
+      const candidates = filteredCandidates.length > 0 ? filteredCandidates : allBranches;
+
+      for (const candidate of candidates) {
         if (candidate === branchName) continue;
         if (candidate === defaultBranch) continue;
 
@@ -360,71 +392,74 @@ export function buildTree(
  * Calculate ahead/behind for each node based on its parent in the edges.
  * This should be called after edges are finalized (including planning session edges).
  */
-export function calculateAheadBehind(
+export async function calculateAheadBehind(
   nodes: TreeNode[],
   edges: TreeEdge[],
   repoPath: string,
   defaultBranch: string
-): void {
+): Promise<void> {
   // Build a map of child -> parent from edges
   const parentMap = new Map<string, string>();
   for (const edge of edges) {
     parentMap.set(edge.child, edge.parent);
   }
 
-  for (const node of nodes) {
-    if (node.branchName === defaultBranch) continue;
+  // Process all nodes in parallel
+  await Promise.all(
+    nodes.map(async (node) => {
+      if (node.branchName === defaultBranch) return;
 
-    const parentBranch = parentMap.get(node.branchName) || defaultBranch;
+      const parentBranch = parentMap.get(node.branchName) || defaultBranch;
 
-    try {
-      const output = execSync(
-        `cd "${repoPath}" && git rev-list --left-right --count "${parentBranch}"..."${node.branchName}"`,
-        { encoding: "utf-8" }
-      );
-      const parts = output.trim().split(/\s+/);
-      const behind = parseInt(parts[0] ?? "0", 10);
-      const ahead = parseInt(parts[1] ?? "0", 10);
-      node.aheadBehind = { ahead, behind };
-    } catch {
-      // Ignore errors (branch might not exist, etc.)
-    }
-  }
+      try {
+        const { stdout } = await execAsync(
+          `cd "${repoPath}" && git rev-list --left-right --count "${parentBranch}"..."${node.branchName}"`
+        );
+        const parts = stdout.trim().split(/\s+/);
+        const behind = parseInt(parts[0] ?? "0", 10);
+        const ahead = parseInt(parts[1] ?? "0", 10);
+        node.aheadBehind = { ahead, behind };
+      } catch {
+        // Ignore errors (branch might not exist, etc.)
+      }
+    })
+  );
 }
 
 /**
  * Calculate ahead/behind for each node relative to its remote tracking branch (origin).
  */
-export function calculateRemoteAheadBehind(
+export async function calculateRemoteAheadBehind(
   nodes: TreeNode[],
   repoPath: string
-): void {
-  for (const node of nodes) {
-    try {
-      // Check if there's a remote tracking branch
-      const upstream = execSync(
-        `cd "${repoPath}" && git rev-parse --abbrev-ref "${node.branchName}@{upstream}" 2>/dev/null`,
-        { encoding: "utf-8" }
-      ).trim();
+): Promise<void> {
+  // Process all nodes in parallel
+  await Promise.all(
+    nodes.map(async (node) => {
+      try {
+        // Check if there's a remote tracking branch
+        const { stdout: upstream } = await execAsync(
+          `cd "${repoPath}" && git rev-parse --abbrev-ref "${node.branchName}@{upstream}" 2>/dev/null`
+        );
 
-      if (!upstream) continue;
+        if (!upstream.trim()) return;
 
-      // Get ahead/behind count relative to upstream
-      const output = execSync(
-        `cd "${repoPath}" && git rev-list --left-right --count "${upstream}"..."${node.branchName}"`,
-        { encoding: "utf-8" }
-      );
-      const parts = output.trim().split(/\s+/);
-      const behind = parseInt(parts[0] ?? "0", 10);
-      const ahead = parseInt(parts[1] ?? "0", 10);
+        // Get ahead/behind count relative to upstream
+        const { stdout } = await execAsync(
+          `cd "${repoPath}" && git rev-list --left-right --count "${upstream.trim()}"..."${node.branchName}"`
+        );
+        const parts = stdout.trim().split(/\s+/);
+        const behind = parseInt(parts[0] ?? "0", 10);
+        const ahead = parseInt(parts[1] ?? "0", 10);
 
-      if (ahead > 0 || behind > 0) {
-        node.remoteAheadBehind = { ahead, behind };
+        if (ahead > 0 || behind > 0) {
+          node.remoteAheadBehind = { ahead, behind };
+        }
+      } catch {
+        // No upstream or error - skip
       }
-    } catch {
-      // No upstream or error - skip
-    }
-  }
+    })
+  );
 }
 
 export function calculateWarnings(
