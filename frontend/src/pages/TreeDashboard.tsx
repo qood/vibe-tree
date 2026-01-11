@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   PointerSensor,
   useSensor,
@@ -126,6 +127,17 @@ export default function TreeDashboard() {
 
   // Get selected pin
   const selectedPin = repoPins.find((p) => p.id === selectedPinId) ?? null;
+
+  // Dynamic page title
+  const pageTitle = useMemo(() => {
+    if (!urlPinId) return "ダッシュボード";
+    if (selectedPin) {
+      if (selectedPin.label) return selectedPin.label;
+      return selectedPin.repoId.split("/").pop() || selectedPin.repoId;
+    }
+    return null;
+  }, [urlPinId, selectedPin]);
+  useDocumentTitle(pageTitle);
 
   // Define handleScan before useEffects that use it
   const handleScan = useCallback(async (localPath: string) => {
