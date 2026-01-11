@@ -9,7 +9,7 @@
     "test": "bun test",
     "test:frontend": "cd frontend && bun run test",
     "test:all": "bun run test && cd frontend && bun run test",
-    "typecheck": "bunx tsc --noEmit && cd frontend && bunx tsc --noEmit",
+    "typecheck": "tsc --noEmit && cd frontend && tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

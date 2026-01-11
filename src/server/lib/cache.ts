@@ -91,3 +91,27 @@ export function getCacheStats(): { size: number; keys: string[] } {
     keys: Array.from(cache.keys()),
   };
 }
+
+/**
+ * Get data from cache if not expired
+ * @param key - Cache key
+ * @param ttl - Time to live in milliseconds
+ * @returns Cached data or undefined if expired/missing
+ */
+export function getCache<T>(key: string, ttl: number): T | undefined {
+  const cached = cache.get(key) as CacheEntry<T> | undefined;
+  const now = Date.now();
+  if (cached && now - cached.timestamp < ttl) {
+    return cached.data;
+  }
+  return undefined;
+}
+
+/**
+ * Set data in cache
+ * @param key - Cache key
+ * @param data - Data to cache
+ */
+export function setCache<T>(key: string, data: T): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
