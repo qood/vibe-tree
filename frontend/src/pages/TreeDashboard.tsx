@@ -91,6 +91,9 @@ export default function TreeDashboard() {
   const [settingsCategory, setSettingsCategory] = useState<
     "branch" | "worktree" | "cleanup"
   >("branch");
+
+  // Sidebar collapsed state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{
     chatSessions: number;
@@ -852,7 +855,9 @@ export default function TreeDashboard() {
   return (
     <div className="dashboard dashboard--with-sidebar">
       {/* Left Sidebar */}
-      <aside className="sidebar">
+      <aside
+        className={`sidebar ${sidebarCollapsed ? "sidebar--collapsed" : ""}`}
+      >
         <div className="sidebar__header">
           <button
             className="sidebar__back"
@@ -861,21 +866,30 @@ export default function TreeDashboard() {
               setSnapshot(null);
             }}
           >
-            ← Projects
+            {!sidebarCollapsed && "← Projects"}
+          </button>
+          <button
+            className="sidebar__toggle"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
+          >
+            {sidebarCollapsed ? "»" : "«"}
           </button>
         </div>
 
         {/* Current Project */}
-        <div className="sidebar__section">
-          <h3>Project</h3>
-          <div className="sidebar__project-name">
-            {selectedPin?.label || selectedPin?.repoId}
+        {!sidebarCollapsed && (
+          <div className="sidebar__section">
+            <h3>Project</h3>
+            <div className="sidebar__project-name">
+              {selectedPin?.label || selectedPin?.repoId}
+            </div>
+            <div className="sidebar__path">{selectedPin?.localPath}</div>
           </div>
-          <div className="sidebar__path">{selectedPin?.localPath}</div>
-        </div>
+        )}
 
         {/* Worktrees */}
-        {snapshot && snapshot.worktrees.length > 0 && (
+        {!sidebarCollapsed && snapshot && snapshot.worktrees.length > 0 && (
           <div className="sidebar__section">
             <h3>Worktrees</h3>
             <div className="sidebar__worktrees">
@@ -944,19 +958,21 @@ export default function TreeDashboard() {
         )}
 
         {/* Menu */}
-        <div className="sidebar__menu">
-          <button className="sidebar__menu-item sidebar__menu-item--active">
-            <FontAwesomeIcon icon={faFolder} className="sidebar__menu-icon" />
-            <span>Workspace</span>
-          </button>
-          <button className="sidebar__menu-item" onClick={handleOpenSettings}>
-            <FontAwesomeIcon icon={faGear} className="sidebar__menu-icon" />
-            <span>Settings</span>
-          </button>
-        </div>
+        {!sidebarCollapsed && (
+          <div className="sidebar__menu">
+            <button className="sidebar__menu-item sidebar__menu-item--active">
+              <FontAwesomeIcon icon={faFolder} className="sidebar__menu-icon" />
+              <span>Workspace</span>
+            </button>
+            <button className="sidebar__menu-item" onClick={handleOpenSettings}>
+              <FontAwesomeIcon icon={faGear} className="sidebar__menu-icon" />
+              <span>Settings</span>
+            </button>
+          </div>
+        )}
 
         {/* Plan Info */}
-        {plan && (
+        {!sidebarCollapsed && plan && (
           <div className="sidebar__section">
             <h3>Plan</h3>
             <div className="sidebar__plan">
@@ -978,7 +994,7 @@ export default function TreeDashboard() {
         <div className="sidebar__spacer" />
 
         {/* Warnings - always at bottom */}
-        {snapshot && snapshot.warnings.length > 0 && (
+        {!sidebarCollapsed && snapshot && snapshot.warnings.length > 0 && (
           <div className="sidebar__section sidebar__section--bottom">
             <button
               className="sidebar__warnings-btn"
@@ -1923,10 +1939,36 @@ export default function TreeDashboard() {
           position: sticky;
           top: 0;
           overflow-y: auto;
+          transition: width 0.2s ease, min-width 0.2s ease;
+        }
+        .sidebar--collapsed {
+          width: 48px;
+          min-width: 48px;
         }
         .sidebar__header {
           padding: 16px 20px;
           border-bottom: 1px solid #374151;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .sidebar--collapsed .sidebar__header {
+          padding: 16px 8px;
+          justify-content: center;
+        }
+        .sidebar__toggle {
+          background: none;
+          border: none;
+          color: #9ca3af;
+          font-size: 16px;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 4px;
+          transition: all 0.15s;
+        }
+        .sidebar__toggle:hover {
+          background: #1f2937;
+          color: #e5e7eb;
         }
         .sidebar__header h1 {
           margin: 0;
