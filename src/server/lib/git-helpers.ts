@@ -74,7 +74,7 @@ export function getDefaultBranch(repoPath: string, branchNames: string[]): strin
 export function getBranches(repoPath: string): BranchInfo[] {
   try {
     const output = execSync(
-      `cd "${repoPath}" && git for-each-ref --sort=-committerdate --format='%(refname:short)|%(objectname:short)|%(committerdate:iso8601)' refs/heads/`,
+      `cd "${repoPath}" && git for-each-ref --sort=-committerdate --format='%(refname:short)|%(objectname)|%(committerdate:iso8601)' refs/heads/`,
       { encoding: "utf-8" }
     );
     return output
@@ -190,7 +190,8 @@ export function findBestParent(
   branchName: string,
   allBranches: string[],
   defaultBranch: string,
-  repoPath?: string
+  repoPath?: string,
+  commitHashMap?: Map<string, string>
 ): { parent: string; confidence: "high" | "medium" | "low" } {
   let bestMatch = defaultBranch;
   let bestMatchLength = 0;
@@ -253,10 +254,16 @@ export function findBestParent(
             { encoding: "utf-8" }
           ).trim();
 
-          const candidateTip = execSync(
-            `cd "${repoPath}" && git rev-parse "${candidate}" 2>/dev/null`,
-            { encoding: "utf-8" }
-          ).trim();
+          // Use pre-computed commit hash from map, fallback to git rev-parse
+          let candidateTip: string;
+          if (commitHashMap && commitHashMap.has(candidate)) {
+            candidateTip = commitHashMap.get(candidate)!;
+          } else {
+            candidateTip = execSync(
+              `cd "${repoPath}" && git rev-parse "${candidate}" 2>/dev/null`,
+              { encoding: "utf-8" }
+            ).trim();
+          }
 
           if (mergeBase === candidateTip) {
             // candidate is an ancestor of branchName
@@ -303,6 +310,12 @@ export function buildTree(
   const edges: TreeEdge[] = [];
   const branchNames = branches.map((b) => b.name);
 
+  // Build commit hash map from branches to avoid individual git rev-parse calls
+  const commitHashMap = new Map<string, string>();
+  for (const branch of branches) {
+    commitHashMap.set(branch.name, branch.commit);
+  }
+
   const baseBranch = branches.find((b) => b.name === defaultBranch);
 
   for (const branch of branches) {
@@ -331,7 +344,7 @@ export function buildTree(
     nodes.push(node);
 
     if (baseBranch && branch.name !== defaultBranch) {
-      const { parent, confidence } = findBestParent(branch.name, branchNames, defaultBranch, repoPath);
+      const { parent, confidence } = findBestParent(branch.name, branchNames, defaultBranch, repoPath, commitHashMap);
       edges.push({
         parent,
         child: branch.name,
