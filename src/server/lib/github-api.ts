@@ -158,7 +158,7 @@ export async function fetchPRsGraphQL(repoId: string): Promise<PRInfo[]> {
       return [];
     }
 
-    const result: GitHubGraphQLResponse = await response.json();
+    const result = (await response.json()) as GitHubGraphQLResponse;
 
     if (result.errors) {
       console.error("GraphQL errors:", result.errors);
