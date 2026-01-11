@@ -501,7 +501,7 @@ branchRouter.post("/create-worktree", async (c) => {
   let actualWorktreePath: string;
   try {
     // Get worktree settings
-    const repoId = getRepoId(localPath);
+    const repoId = getRepoId(localPath) ?? "";
     const wtSettings = await getWorktreeSettings(repoId);
 
     // Create worktree with optional custom script
@@ -513,7 +513,7 @@ branchRouter.post("/create-worktree", async (c) => {
     }
 
     // Run custom worktree create command if configured
-    if (wtSettings.worktreeCreateCommand) {
+    if (wtSettings.worktreeCreateCommand && repoId) {
       runCustomCommand(wtSettings.worktreeCreateCommand, {
         repoId,
         branchName,
@@ -1134,7 +1134,7 @@ branchRouter.post("/delete", async (c) => {
   const worktreePath = getWorktreePath(localPath, branchName);
   if (worktreePath) {
     // Get worktree settings before removal for custom command
-    const repoIdForWorktree = getRepoId(localPath);
+    const repoIdForWorktree = getRepoId(localPath) ?? "";
     const wtSettings = await getWorktreeSettings(repoIdForWorktree);
 
     try {
@@ -1143,7 +1143,7 @@ branchRouter.post("/delete", async (c) => {
         console.warn(`Failed to remove worktree for branch ${branchName}`);
       } else {
         // Run custom worktree delete command if configured
-        if (wtSettings.worktreeDeleteCommand) {
+        if (wtSettings.worktreeDeleteCommand && repoIdForWorktree) {
           runCustomCommand(wtSettings.worktreeDeleteCommand, {
             repoId: repoIdForWorktree,
             branchName,
@@ -1181,7 +1181,7 @@ branchRouter.post("/delete", async (c) => {
     }
 
     // Reparent children of deleted branch in both treeSpecs and planningSessions
-    const repoId = getRepoId(localPath);
+    const repoId = getRepoId(localPath) ?? "";
     if (repoId) {
       // 1. Update treeSpecs (Branch Graph structure - highest priority)
       try {
@@ -1368,7 +1368,7 @@ branchRouter.post("/cleanup-orphaned", async (c) => {
     throw new BadRequestError("localPath is required");
   }
 
-  const localPath = normalizePath(rawLocalPath);
+  const localPath = expandTilde(rawLocalPath);
   const repoId = getRepoId(localPath);
   if (!repoId) {
     throw new BadRequestError("Could not determine repo ID");
@@ -1406,8 +1406,8 @@ branchRouter.post("/cleanup-orphaned", async (c) => {
       if (session.branchName && !branchSet.has(session.branchName)) {
         // Delete related data
         await db.delete(schema.chatSummaries).where(eq(schema.chatSummaries.sessionId, session.id));
-        const msgResult = await db.delete(schema.chatMessages).where(eq(schema.chatMessages.sessionId, session.id));
-        cleaned.chatMessages += msgResult.changes;
+        const msgResult = await db.delete(schema.chatMessages).where(eq(schema.chatMessages.sessionId, session.id)) as unknown as { changes: number };
+        cleaned.chatMessages += msgResult.changes ?? 0;
         await db.delete(schema.agentRuns).where(eq(schema.agentRuns.sessionId, session.id));
         await db.delete(schema.chatSessions).where(eq(schema.chatSessions.id, session.id));
         cleaned.chatSessions += 1;
@@ -1527,7 +1527,7 @@ branchRouter.post("/delete-worktree", async (c) => {
   }
 
   // Run post-delete script if configured
-  const repoId = getRepoId(localPath);
+  const repoId = getRepoId(localPath) ?? "";
   const wtSettings = await getWorktreeSettings(repoId);
   if (wtSettings.postDeleteScript) {
     runPostDeleteScript(localPath, wtSettings.postDeleteScript);

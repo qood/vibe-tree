@@ -955,16 +955,15 @@ async function buildPrompt(
     } else {
       // Refinement tab: Task breakdown mode
       // Add branch naming rules FIRST for planning sessions (most important)
-      if (branchNaming && branchNaming.pattern) {
+      if (branchNaming && branchNaming.patterns.length > 0) {
         parts.push(`# ブランチ命名規則【厳守】
 
 ブランチ名は以下のパターンに従ってください:
 
-${branchNaming.pattern}
+${branchNaming.patterns.join("\n")}
 
 {} で囲まれた部分をタスクに応じて置換してください。
 ※ {issueId} がパターンに含まれていても、Issue番号がない場合は省略してください。
-${branchNaming.examples?.length ? `\n例: ${branchNaming.examples.join(", ")}` : ""}
 `);
       }
 
@@ -982,7 +981,7 @@ ${branchNaming.examples?.length ? `\n例: ${branchNaming.examples.join(", ")}` :
 - Repository: ${session.repoId}
 
 ## Project Rules
-${branchNaming ? `- Branch naming: \`${branchNaming.pattern}\`` : "- No specific rules configured"}
+${branchNaming ? `- Branch naming: ${branchNaming.patterns.map((p) => `\`${p}\``).join(", ")}` : "- No specific rules configured"}
 `);
   }
 
@@ -1241,10 +1240,12 @@ function extractGitHubPrUrls(text: string): Array<{ url: string; number: number 
   let match: RegExpExecArray | null;
 
   while ((match = prUrlRegex.exec(text)) !== null) {
-    results.push({
-      url: match[0],
-      number: parseInt(match[1], 10),
-    });
+    if (match[1]) {
+      results.push({
+        url: match[0],
+        number: parseInt(match[1], 10),
+      });
+    }
   }
 
   return results;
@@ -1333,7 +1334,7 @@ function fetchGitHubPRInfo(repoId: string, prNumber: number): {
       checks,
       labels: (data.labels || []).map((l: { name: string; color: string }) => ({ name: l.name, color: l.color })),
       reviewers,
-      projectStatus,
+      ...(projectStatus !== undefined && { projectStatus }),
     };
   } catch (err) {
     console.error(`[Chat] Failed to fetch PR #${prNumber}:`, err);

@@ -131,10 +131,7 @@ async function generatePrompt(
 
   if (branchNaming) {
     parts.push(`\n## Branch Naming Convention`);
-    parts.push(`- Pattern: \`${branchNaming.pattern}\``);
-    if (branchNaming.examples?.length) {
-      parts.push(`- Examples: ${branchNaming.examples.join(", ")}`);
-    }
+    parts.push(`- Patterns: ${branchNaming.patterns.map((p) => `\`${p}\``).join(", ")}`);
   }
 
   if (plan) {
