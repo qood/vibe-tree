@@ -83,13 +83,26 @@ interface GitHubGraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
+// Cache for GitHub token (5 minutes TTL)
+let cachedToken: { value: string | null; timestamp: number } | null = null;
+const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
- * Get GitHub auth token from gh CLI
+ * Get GitHub auth token from gh CLI (cached)
  */
 function getGitHubToken(): string | null {
+  const now = Date.now();
+
+  if (cachedToken && now - cachedToken.timestamp < TOKEN_CACHE_TTL) {
+    return cachedToken.value;
+  }
+
   try {
-    return execSync("gh auth token", { encoding: "utf-8" }).trim();
+    const token = execSync("gh auth token", { encoding: "utf-8" }).trim();
+    cachedToken = { value: token, timestamp: now };
+    return token;
   } catch {
+    cachedToken = { value: null, timestamp: now };
     return null;
   }
 }
