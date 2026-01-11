@@ -70,10 +70,10 @@ scanRouter.post("/", async (c) => {
     : getDefaultBranch(localPath, branchNames);
 
   // 3. Get worktrees with heartbeat
-  const worktrees = getWorktrees(localPath);
+  const worktrees = await getWorktrees(localPath);
 
-  // 4. Get PRs with detailed info
-  const prs = getPRs(localPath);
+  // 4. Get PRs with detailed info (using GitHub GraphQL API)
+  const prs = await getPRs(repoId);
 
   // 5. Build tree (infer parent-child relationships)
   const { nodes, edges } = buildTree(branches, worktrees, prs, localPath, defaultBranch);
@@ -281,10 +281,10 @@ scanRouter.post("/", async (c) => {
   }
 
   // 9. Calculate ahead/behind based on finalized edges (parent branch, not default)
-  calculateAheadBehind(nodes, edges, localPath, defaultBranch);
+  await calculateAheadBehind(nodes, edges, localPath, defaultBranch);
 
   // 9.5. Calculate ahead/behind relative to remote (origin)
-  calculateRemoteAheadBehind(nodes, localPath);
+  await calculateRemoteAheadBehind(nodes, localPath);
 
   // 10. Calculate warnings (including tree divergence)
   const warnings = calculateWarnings(nodes, edges, branchNaming, defaultBranch, treeSpec);
