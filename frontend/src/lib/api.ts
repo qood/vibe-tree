@@ -411,7 +411,68 @@ export interface BranchLink {
   updatedAt: string;
 }
 
+// API Performance Metrics
+interface ApiMetrics {
+  totalCalls: number;
+  callsByEndpoint: Map<string, number>;
+  callTimestamps: Array<{ endpoint: string; timestamp: number; duration?: number }>;
+}
+
+const apiMetrics: ApiMetrics = {
+  totalCalls: 0,
+  callsByEndpoint: new Map(),
+  callTimestamps: [],
+};
+
+// Global flag to enable/disable metrics collection
+let metricsEnabled = false;
+
+export function enableApiMetrics() {
+  metricsEnabled = true;
+  apiMetrics.totalCalls = 0;
+  apiMetrics.callsByEndpoint.clear();
+  apiMetrics.callTimestamps = [];
+  console.log("📊 API metrics collection enabled");
+}
+
+export function disableApiMetrics() {
+  metricsEnabled = false;
+}
+
+export function getApiMetrics() {
+  return {
+    totalCalls: apiMetrics.totalCalls,
+    callsByEndpoint: Object.fromEntries(apiMetrics.callsByEndpoint),
+    recentCalls: apiMetrics.callTimestamps.slice(-20),
+  };
+}
+
+export function logApiMetrics() {
+  console.log("📊 API Performance Metrics:");
+  console.log(`Total API calls: ${apiMetrics.totalCalls}`);
+  console.log("Calls by endpoint:");
+  Array.from(apiMetrics.callsByEndpoint.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([endpoint, count]) => {
+      console.log(`  ${endpoint}: ${count} calls`);
+    });
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const startTime = performance.now();
+
+  // Extract endpoint name for metrics
+  const endpoint = url.replace(API_BASE, "").split("?")[0];
+
+  if (metricsEnabled) {
+    apiMetrics.totalCalls++;
+    apiMetrics.callsByEndpoint.set(
+      endpoint,
+      (apiMetrics.callsByEndpoint.get(endpoint) || 0) + 1,
+    );
+    apiMetrics.callTimestamps.push({ endpoint, timestamp: Date.now() });
+  }
+
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -419,6 +480,17 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
       ...options?.headers,
     },
   });
+
+  const duration = performance.now() - startTime;
+
+  if (metricsEnabled) {
+    const lastCall = apiMetrics.callTimestamps[apiMetrics.callTimestamps.length - 1];
+    if (lastCall) {
+      lastCall.duration = duration;
+    }
+    console.log(`API: ${options?.method || "GET"} ${endpoint} (${duration.toFixed(0)}ms)`);
+  }
+
   if (!res.ok) {
     const errorData: ApiErrorResponse = await res.json().catch(() => ({}));
     throw new ApiError(

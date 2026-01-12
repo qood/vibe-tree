@@ -344,19 +344,9 @@ export function TaskDetailPanel({
           }
         }
 
-        // Auto-refresh all links from GitHub when panel opens (non-blocking)
-        for (const link of links) {
-          if (link.number) {
-            api
-              .refreshBranchLink(link.id)
-              .then((refreshed) => {
-                setBranchLinks((prev) => prev.map((l) => (l.id === refreshed.id ? refreshed : l)));
-              })
-              .catch((err) => {
-                console.error(`Failed to refresh link ${link.id}:`, err);
-              });
-          }
-        }
+        // PERFORMANCE OPTIMIZATION: Removed auto-refresh loop
+        // Links are now refreshed only when user clicks the refresh button (↻)
+        // This eliminates 5-10 GitHub API calls on panel open
       } catch (err) {
         console.error("Failed to load branch links:", err);
       }
@@ -385,10 +375,14 @@ export function TaskDetailPanel({
     checkDeletable();
   }, [localPath, branchName, parentBranch, isDefaultBranch]);
 
-  // Poll CI status for PRs every 30 seconds
+  // PERFORMANCE OPTIMIZATION: Poll CI status only when checks are running
   useEffect(() => {
     const pr = branchLinks.find((l) => l.linkType === "pr");
     if (!pr?.number) return;
+
+    // Only poll if CI is actively running (pending or in_progress)
+    const isRunning = pr.checksStatus === "pending" || pr.checksStatus === "in_progress";
+    if (!isRunning) return;
 
     const pollCI = async () => {
       try {
@@ -399,7 +393,8 @@ export function TaskDetailPanel({
       }
     };
 
-    const interval = setInterval(pollCI, 30000);
+    // Increased interval from 30s to 60s to reduce API load
+    const interval = setInterval(pollCI, 60000);
     return () => clearInterval(interval);
   }, [branchLinks]);
 
@@ -440,7 +435,14 @@ export function TaskDetailPanel({
 
         if (existing) {
           setChatSessionId(existing.id);
-          const msgs = await api.getChatMessages(existing.id);
+          // PERFORMANCE OPTIMIZATION: Parallel API calls
+          const [msgs, runningStatus] = await Promise.all([
+            api.getChatMessages(existing.id),
+            api.checkChatRunning(existing.id).catch((err) => {
+              console.error("Failed to check running chat:", err);
+              return { isRunning: false };
+            }),
+          ]);
           setMessages(msgs);
           // Load edit statuses from messages
           const statuses = new Map<number, InstructionEditStatus>();
@@ -451,13 +453,8 @@ export function TaskDetailPanel({
           }
           setEditStatuses(statuses);
           // Check if there's a running chat to restore Thinking state
-          try {
-            const { isRunning } = await api.checkChatRunning(existing.id);
-            if (isRunning) {
-              setChatLoading(true);
-            }
-          } catch (err) {
-            console.error("Failed to check running chat:", err);
+          if (runningStatus.isRunning) {
+            setChatLoading(true);
           }
         } else {
           // Create new session for this branch
