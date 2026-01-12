@@ -38,10 +38,10 @@ export function getDefaultBranch(repoPath: string, branchNames: string[]): strin
     // Ignore - try fallback methods
   }
 
-  // 2. Try gh repo view to get default branch
+  // 2. Try to get default branch from remote (git remote show origin)
   try {
     const output = execSync(
-      `cd "${repoPath}" && gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`,
+      `cd "${repoPath}" && git remote show origin 2>/dev/null | grep "HEAD branch" | cut -d: -f2`,
       { encoding: "utf-8" },
     ).trim();
     if (output && branchNames.includes(output)) {

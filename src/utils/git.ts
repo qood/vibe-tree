@@ -67,7 +67,7 @@ export function getWorktreePath(repoPath: string, branch: string): string | null
 
 /**
  * Get the default branch of a repository.
- * Tries origin/HEAD, then gh repo view, then falls back to common defaults.
+ * Tries origin/HEAD, then falls back to common defaults.
  */
 export function getDefaultBranch(repoPath: string): string {
   // 1. Try to get origin's HEAD (most reliable)
@@ -84,13 +84,13 @@ export function getDefaultBranch(repoPath: string): string {
     // Ignore - try fallback methods
   }
 
-  // 2. Try gh repo view to get default branch
+  // 2. Try to get default branch from remote (git remote show origin)
   try {
     const output = execSync(
-      `cd "${repoPath}" && gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`,
+      `cd "${repoPath}" && git remote show origin 2>/dev/null | grep "HEAD branch" | cut -d: -f2`,
       { encoding: "utf-8" },
     ).trim();
-    if (output) {
+    if (output && branchExists(repoPath, output)) {
       return output;
     }
   } catch {

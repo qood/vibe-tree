@@ -17,6 +17,7 @@ import {
 } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import type { ChatSession, ChatMessage, ChatSummary, BranchNamingRule } from "../../shared/types";
+import { fetchPRDetailGraphQL, type PRCheck, type PRLabel } from "../lib/github-api";
 
 // Helper to convert DB row to ChatSession
 function toSession(row: typeof schema.chatSessions.$inferSelect): ChatSession {
@@ -472,22 +473,14 @@ function extractGitHubPrUrls(text: string): Array<{ url: string; number: number 
 }
 
 // Helper: Fetch PR info from GitHub
-interface GitHubCheck {
-  name: string;
-  status: string;
-  conclusion: string | null;
-  detailsUrl: string | null;
-}
+// GitHub check and label types for local use
+type GitHubCheck = PRCheck;
+type GitHubLabel = PRLabel;
 
-interface GitHubLabel {
-  name: string;
-  color: string;
-}
-
-function fetchGitHubPRInfo(
+async function fetchGitHubPRInfo(
   repoId: string,
   prNumber: number,
-): {
+): Promise<{
   title: string;
   status: string;
   checksStatus: string;
@@ -495,72 +488,19 @@ function fetchGitHubPRInfo(
   labels: GitHubLabel[];
   reviewers: string[];
   projectStatus?: string;
-} | null {
+} | null> {
   try {
-    const result = execSync(
-      `gh pr view ${prNumber} --repo "${repoId}" --json number,title,state,statusCheckRollup,labels,reviewRequests,reviews,projectItems`,
-      { encoding: "utf-8", timeout: 10000 },
-    ).trim();
-    const data = JSON.parse(result);
-
-    // Extract individual checks - deduplicate by name, keeping only the latest
-    const checksMap = new Map<string, GitHubCheck>();
-    let checksStatus = "pending";
-    if (data.statusCheckRollup && data.statusCheckRollup.length > 0) {
-      for (const c of data.statusCheckRollup) {
-        const name = c.name || c.context || "Unknown";
-        checksMap.set(name, {
-          name,
-          status: c.status || "COMPLETED",
-          conclusion: c.conclusion || null,
-          detailsUrl: c.detailsUrl || c.targetUrl || null,
-        });
-      }
-      const checks = Array.from(checksMap.values());
-      const hasFailure = checks.some((c) => c.conclusion === "FAILURE" || c.conclusion === "ERROR");
-      const allSuccess = checks.every(
-        (c) => c.conclusion === "SUCCESS" || c.conclusion === "SKIPPED",
-      );
-      if (hasFailure) checksStatus = "failure";
-      else if (allSuccess) checksStatus = "success";
-    }
-    const checks = Array.from(checksMap.values());
-
-    // Extract reviewers
-    const reviewers: string[] = [];
-    if (data.reviewRequests) {
-      for (const r of data.reviewRequests) {
-        if (r.login) reviewers.push(r.login);
-      }
-    }
-    if (data.reviews) {
-      for (const r of data.reviews) {
-        if (r.author?.login && !reviewers.includes(r.author.login)) {
-          reviewers.push(r.author.login);
-        }
-      }
-    }
-
-    // Extract project status
-    let projectStatus: string | undefined;
-    if (data.projectItems && data.projectItems.length > 0) {
-      const item = data.projectItems[0];
-      if (item.status) {
-        projectStatus = item.status.name || item.status;
-      }
-    }
+    const prDetail = await fetchPRDetailGraphQL(repoId, prNumber);
+    if (!prDetail) return null;
 
     return {
-      title: data.title,
-      status: data.state?.toLowerCase() || "open",
-      checksStatus,
-      checks,
-      labels: (data.labels || []).map((l: { name: string; color: string }) => ({
-        name: l.name,
-        color: l.color,
-      })),
-      reviewers,
-      ...(projectStatus !== undefined && { projectStatus }),
+      title: prDetail.title,
+      status: prDetail.state,
+      checksStatus: prDetail.checksStatus,
+      checks: prDetail.checks,
+      labels: prDetail.labels,
+      reviewers: prDetail.reviewers,
+      ...(prDetail.projectStatus !== undefined && { projectStatus: prDetail.projectStatus }),
     };
   } catch (err) {
     console.error(`[Chat] Failed to fetch PR #${prNumber}:`, err);
@@ -592,7 +532,7 @@ async function savePrLink(
 
   if (existing.length === 0) {
     // Fetch full PR info from GitHub
-    const prInfo = fetchGitHubPRInfo(repoId, prNumber);
+    const prInfo = await fetchGitHubPRInfo(repoId, prNumber);
 
     await db.insert(schema.branchLinks).values({
       repoId,
