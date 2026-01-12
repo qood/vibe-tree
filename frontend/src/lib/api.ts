@@ -355,6 +355,23 @@ export interface PlanningSession {
   updatedAt: string;
 }
 
+export interface ConfirmPlanningSessionResult extends PlanningSession {
+  worktreePath?: string;
+  branchName?: string;
+  branchResults?: Array<{
+    taskId: string;
+    branchName: string;
+    parentBranch: string;
+    success: boolean;
+    error?: string;
+  }>;
+  summary?: {
+    total: number;
+    success: number;
+    failed: number;
+  };
+}
+
 // Task Instruction types
 export interface TaskInstruction {
   id: number | null;

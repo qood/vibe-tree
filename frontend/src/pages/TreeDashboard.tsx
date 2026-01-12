@@ -1201,6 +1201,14 @@ export default function TreeDashboard() {
                   onSessionSelect={handlePlanningSessionSelect}
                   pendingPlanning={pendingPlanning}
                   onPlanningStarted={() => setPendingPlanning(null)}
+                  onOpenTerminal={(worktreePath, taskContext) => {
+                    setTerminalWorktreePath(worktreePath);
+                    setTerminalTaskContext(taskContext);
+                    setTerminalAutoRunClaude(true);
+                    setShowTerminal(true);
+                    // Rescan to update tree view with new worktree
+                    handleScan(selectedPin!.localPath);
+                  }}
                 />
               </div>
             </div>

@@ -200,6 +200,10 @@ interface PlanningPanelProps {
   onSessionSelect?: (session: PlanningSession | null) => void;
   pendingPlanning?: { branchName: string; instruction: string | null } | null;
   onPlanningStarted?: () => void;
+  onOpenTerminal?: (
+    worktreePath: string,
+    taskContext?: { title: string; description?: string },
+  ) => void;
 }
 
 export function PlanningPanel({
@@ -210,6 +214,7 @@ export function PlanningPanel({
   onSessionSelect,
   pendingPlanning,
   onPlanningStarted,
+  onOpenTerminal,
 }: PlanningPanelProps) {
   const [sessions, setSessions] = useState<PlanningSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<PlanningSession | null>(null);
@@ -524,13 +529,22 @@ export function PlanningPanel({
     }
     setLoading(true);
     try {
-      const updated = await api.confirmPlanningSession(selectedSession.id, {
+      const result = await api.confirmPlanningSession(selectedSession.id, {
         singleBranch: singleBranchMode,
       });
-      setSelectedSession(updated);
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-      onSessionSelect?.(updated);
+      setSelectedSession(result);
+      setSessions((prev) => prev.map((s) => (s.id === result.id ? result : s)));
+      onSessionSelect?.(result);
       setSingleBranchMode(false); // Reset after confirm
+
+      // Open terminal with the worktree if available
+      if (result.worktreePath && onOpenTerminal) {
+        const taskContext = {
+          title: selectedSession.title,
+          description: selectedSession.nodes.map((n) => n.title).join("\n"),
+        };
+        onOpenTerminal(result.worktreePath, taskContext);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {

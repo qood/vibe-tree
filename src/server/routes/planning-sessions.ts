@@ -6,9 +6,74 @@ import { z } from "zod";
 import { validateOrThrow } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import { broadcast } from "../ws";
-import { execSync } from "child_process";
-import { existsSync } from "fs";
+import { execSync, exec } from "child_process";
+import { existsSync, mkdirSync } from "fs";
+import { dirname, join } from "path";
 import { fetchIssueGraphQL, fetchIssueDetailGraphQL } from "../lib/github-api";
+import type { WorktreeSettings } from "../../shared/types";
+
+// Helper to get worktree settings for a repo
+async function getWorktreeSettings(repoId: string): Promise<WorktreeSettings> {
+  const rules = await db
+    .select()
+    .from(schema.projectRules)
+    .where(
+      and(
+        eq(schema.projectRules.repoId, repoId),
+        eq(schema.projectRules.ruleType, "worktree"),
+        eq(schema.projectRules.isActive, true),
+      ),
+    );
+
+  if (!rules[0]) {
+    return {
+      createScript: "",
+      postCreateScript: "",
+      postDeleteScript: "",
+      checkoutPreference: "main",
+    };
+  }
+
+  return JSON.parse(rules[0].ruleJson) as WorktreeSettings;
+}
+
+// Helper to run post-creation script (async, fire-and-forget)
+function runPostCreateScript(worktreePath: string, script: string): void {
+  if (!script || !script.trim()) return;
+  exec(`cd "${worktreePath}" && ${script}`, { shell: "/bin/bash" }, (error) => {
+    if (error) {
+      console.error(`[Worktree] Post-create script failed:`, error.message);
+    }
+  });
+}
+
+// Helper to create worktree
+function createWorktree(
+  localPath: string,
+  worktreePath: string,
+  branchName: string,
+  createScript?: string,
+): string {
+  // Ensure parent directory exists
+  const parentDir = dirname(worktreePath);
+  if (!existsSync(parentDir)) {
+    mkdirSync(parentDir, { recursive: true });
+  }
+
+  if (createScript && createScript.trim()) {
+    const script = createScript
+      .replace(/\{worktreePath\}/g, worktreePath)
+      .replace(/\{branchName\}/g, branchName)
+      .replace(/\{repoPath\}/g, localPath);
+    execSync(`cd "${localPath}" && ${script}`, { encoding: "utf-8", shell: "/bin/bash" });
+    return worktreePath;
+  } else {
+    execSync(`cd "${localPath}" && git worktree add "${worktreePath}" "${branchName}"`, {
+      encoding: "utf-8",
+    });
+    return worktreePath;
+  }
+}
 
 // Types
 interface TaskNode {
@@ -407,6 +472,41 @@ URLやドキュメント（Notion、GitHub Issue、Figma など）があれば�
           updatedAt: now,
         });
 
+        // Create worktree for the branch
+        const repoName = localPath.split("/").pop() || "repo";
+        const parentDir = dirname(localPath);
+        const worktreesDir = join(parentDir, `${repoName}-worktrees`);
+        const worktreeName = branchName.replace(/\//g, "-");
+        const worktreePath = join(worktreesDir, worktreeName);
+
+        // Get worktree settings
+        const wtSettings = await getWorktreeSettings(session.repoId);
+
+        // Create worktree
+        const actualWorktreePath = createWorktree(
+          localPath,
+          worktreePath,
+          branchName,
+          wtSettings.createScript,
+        );
+
+        // Run post-create script if configured
+        if (wtSettings.postCreateScript) {
+          runPostCreateScript(actualWorktreePath, wtSettings.postCreateScript);
+        }
+
+        // Update chat session's worktreePath to point to the worktree
+        if (session.chatSessionId) {
+          await db
+            .update(schema.chatSessions)
+            .set({
+              worktreePath: actualWorktreePath,
+              branchName,
+              updatedAt: now,
+            })
+            .where(eq(schema.chatSessions.id, session.chatSessionId));
+        }
+
         // Link issues from all tasks
         for (const task of nodes) {
           if (task.issueUrl) {
@@ -488,6 +588,8 @@ URLやドキュメント（Notion、GitHub Issue、Figma など）があれば�
           data: {
             ...toSession(updated!),
             branchResults: results,
+            worktreePath: actualWorktreePath,
+            branchName,
           },
         });
 
@@ -497,9 +599,22 @@ URLやドキュメント（Notion、GitHub Issue、Figma など）があれば�
           data: { reason: "planning_confirmed" },
         });
 
+        // Broadcast worktree created event
+        broadcast({
+          type: "worktree.created",
+          repoId: updated!.repoId,
+          data: {
+            worktreePath: actualWorktreePath,
+            branchName,
+            planningSessionId: id,
+          },
+        });
+
         return c.json({
           ...toSession(updated!),
           branchResults: results,
+          worktreePath: actualWorktreePath,
+          branchName,
           summary: {
             total: nodes.length,
             success: nodes.length,
