@@ -466,10 +466,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
   if (metricsEnabled) {
     apiMetrics.totalCalls++;
-    apiMetrics.callsByEndpoint.set(
-      endpoint,
-      (apiMetrics.callsByEndpoint.get(endpoint) || 0) + 1,
-    );
+    apiMetrics.callsByEndpoint.set(endpoint, (apiMetrics.callsByEndpoint.get(endpoint) || 0) + 1);
     apiMetrics.callTimestamps.push({ endpoint, timestamp: Date.now() });
   }
 
