@@ -715,23 +715,40 @@ export default function BranchGraph({
             badges.push({ label: `↓${node.remoteAheadBehind.behind}`, color: "#f59e0b" });
           }
           if (badges.length === 0) return null;
-          const badgeWidth = 22;
           const badgeGap = 2;
+          const baseBadgeWidth = 22;
+          const charWidth = 6; // Approximate width per character
           const startX = x + 4; // Left-aligned
+
+          // Calculate badge widths based on label length
+          const badgeWidths = badges.map((badge) =>
+            Math.max(baseBadgeWidth, badge.label.length * charWidth + 8),
+          );
+
+          // Calculate x positions for each badge
+          const badgePositions = badgeWidths.reduce<number[]>((acc, _width, i) => {
+            if (i === 0) {
+              acc.push(startX);
+            } else {
+              acc.push(acc[i - 1] + badgeWidths[i - 1] + badgeGap);
+            }
+            return acc;
+          }, []);
+
           return (
             <g>
               {badges.map((badge, i) => (
                 <g key={i}>
                   <rect
-                    x={startX + i * (badgeWidth + badgeGap)}
+                    x={badgePositions[i]}
                     y={y + nodeHeight + 3}
-                    width={badgeWidth}
+                    width={badgeWidths[i]}
                     height={14}
                     rx={3}
                     fill={badge.color}
                   />
                   <text
-                    x={startX + i * (badgeWidth + badgeGap) + badgeWidth / 2}
+                    x={badgePositions[i] + badgeWidths[i] / 2}
                     y={y + nodeHeight + 11}
                     textAnchor="middle"
                     dominantBaseline="middle"
