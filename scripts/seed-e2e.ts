@@ -214,8 +214,7 @@ Implement user authentication with email/password.
     {
       sessionId: chatSessionId,
       role: "assistant",
-      content:
-        "I'll help you implement user authentication. Let me create a plan...",
+      content: "I'll help you implement user authentication. Let me create a plan...",
       chatMode: "planning",
       createdAt: now,
     },
@@ -340,9 +339,7 @@ async function main() {
     console.log("\n📊 Summary:");
     console.log("   - Database: " + DB_PATH);
     console.log("   - Mode: " + (shouldClean ? "Clean + Seed" : "Seed"));
-    console.log(
-      "\n💡 Tip: Run with --clean to clear existing data before seeding"
-    );
+    console.log("\n💡 Tip: Run with --clean to clear existing data before seeding");
   } catch (error) {
     console.error("❌ Error seeding data:", error);
     process.exit(1);

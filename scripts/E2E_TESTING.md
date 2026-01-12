@@ -64,11 +64,11 @@ bun run scripts/seed-e2e.ts --clean
 将来的にPlaywrightを導入する場合、`playwright.config.ts`に以下のような設定を追加できます：
 
 ```typescript
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   // グローバルセットアップ
-  globalSetup: './scripts/playwright-setup.ts',
+  globalSetup: "./scripts/playwright-setup.ts",
 
   // その他の設定...
 });
@@ -79,8 +79,8 @@ export default defineConfig({
 ```typescript
 async function globalSetup() {
   // テスト実行前にシードデータを準備
-  const { execSync } = await import('child_process');
-  execSync('bun run db:seed:clean', { stdio: 'inherit' });
+  const { execSync } = await import("child_process");
+  execSync("bun run db:seed:clean", { stdio: "inherit" });
 }
 
 export default globalSetup;
@@ -93,7 +93,7 @@ Cypressを使用する場合、`cypress/support/e2e.ts`に以下を追加：
 ```typescript
 before(() => {
   // テストスイート開始前にシードデータを準備
-  cy.exec('bun run db:seed:clean');
+  cy.exec("bun run db:seed:clean");
 });
 ```
 
