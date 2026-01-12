@@ -834,6 +834,18 @@ export async function createPlanningSessionRpc(
   return unwrap<PlanningSession>(res);
 }
 
+export async function createPlanningSessionFromIssueRpc(
+  repoId: string,
+  issueInput: string,
+  baseBranch: string,
+): Promise<PlanningSession> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await (rpc["planning-sessions"] as any)["from-issue"].$post({
+    json: { repoId, issueInput, baseBranch },
+  });
+  return unwrap<PlanningSession>(res);
+}
+
 export async function updatePlanningSessionRpc(
   id: string,
   data: {
