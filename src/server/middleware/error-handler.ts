@@ -1,4 +1,4 @@
-import type { Context, Next } from "hono";
+import type { ErrorHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ValidationError } from "../../shared/validation";
 
@@ -31,30 +31,31 @@ export class BadRequestError extends AppError {
   }
 }
 
-export async function errorHandler(c: Context, next: Next): Promise<Response | void> {
-  try {
-    await next();
-  } catch (error) {
-    console.error("Error:", error);
+// Hono onError handler
+export const onErrorHandler: ErrorHandler = (error, c) => {
+  console.error("Error:", error);
 
-    if (error instanceof ValidationError) {
-      return c.json<ApiError>({ error: error.message, code: "VALIDATION_ERROR" }, 400);
-    }
-
-    if (error instanceof AppError) {
-      return c.json<ApiError>(
-        { error: error.message, code: error.code ?? "APP_ERROR" },
-        error.statusCode,
-      );
-    }
-
-    if (error instanceof Error) {
-      // Don't expose internal errors in production
-      const message =
-        process.env.NODE_ENV === "production" ? "Internal server error" : error.message;
-      return c.json<ApiError>({ error: message, code: "INTERNAL_ERROR" }, 500);
-    }
-
-    return c.json<ApiError>({ error: "Unknown error occurred", code: "UNKNOWN_ERROR" }, 500);
+  if (error instanceof ValidationError) {
+    return c.json<ApiError>({ error: error.message, code: "VALIDATION_ERROR" }, 400);
   }
-}
+
+  // Use duck typing as instanceof can fail with certain bundlers/module systems
+  if (
+    error instanceof AppError ||
+    (error instanceof Error && "statusCode" in error && "code" in error)
+  ) {
+    const appError = error as AppError;
+    return c.json<ApiError>(
+      { error: appError.message, code: appError.code ?? "APP_ERROR" },
+      appError.statusCode,
+    );
+  }
+
+  if (error instanceof Error) {
+    // Don't expose internal errors in production
+    const message = process.env.NODE_ENV === "production" ? "Internal server error" : error.message;
+    return c.json<ApiError>({ error: message, code: "INTERNAL_ERROR" }, 500);
+  }
+
+  return c.json<ApiError>({ error: "Unknown error occurred", code: "UNKNOWN_ERROR" }, 500);
+};
