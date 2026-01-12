@@ -1236,34 +1236,95 @@ export function PlanningPanel({
           {!isPlanningSession && (
             <div className="planning-panel__tasks">
               <h4>Tasks ({selectedSession.nodes.length})</h4>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-              >
-                {selectedSession.nodes.map((task) => (
-                  <DraggableTaskItem
-                    key={task.id}
-                    task={task}
-                    parentName={getParentName(task.id)}
-                    depth={getTaskDepth(task.id)}
-                    isDraft={selectedSession.status === "draft"}
-                    onRemove={() => handleRemoveTask(task.id)}
-                    onRemoveParent={() => handleRemoveParent(task.id)}
-                    onBranchNameChange={(newName) => handleBranchNameChange(task.id, newName)}
-                  />
-                ))}
-                <DragOverlay>
-                  {activeDragId && (
-                    <div className="planning-panel__task-item planning-panel__task-item--dragging">
-                      {selectedSession.nodes.find((t) => t.id === activeDragId)?.title}
-                    </div>
+
+              {/* Single branch mode preview */}
+              {singleBranchMode && selectedSession.nodes.length > 0 ? (
+                <div
+                  style={{
+                    background: "#1e3a5f",
+                    border: "1px solid #3b82f6",
+                    borderRadius: 8,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "#60a5fa" }}>
+                      🔀 1ブランチにまとめて実行
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "#f3f4f6",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {selectedSession.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#9ca3af",
+                      fontFamily: "monospace",
+                      marginBottom: 12,
+                    }}
+                  >
+                    task/
+                    {selectedSession.title
+                      .toLowerCase()
+                      .replace(/\s+/g, "-")
+                      .replace(/[^a-z0-9-]/g, "")
+                      .substring(0, 50)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#9ca3af" }}>含まれるタスク:</div>
+                  <ul style={{ margin: "4px 0 0 0", paddingLeft: 20 }}>
+                    {selectedSession.nodes.map((task) => (
+                      <li key={task.id} style={{ fontSize: 12, color: "#d1d5db", marginBottom: 2 }}>
+                        {task.title}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  >
+                    {selectedSession.nodes.map((task) => (
+                      <DraggableTaskItem
+                        key={task.id}
+                        task={task}
+                        parentName={getParentName(task.id)}
+                        depth={getTaskDepth(task.id)}
+                        isDraft={selectedSession.status === "draft"}
+                        onRemove={() => handleRemoveTask(task.id)}
+                        onRemoveParent={() => handleRemoveParent(task.id)}
+                        onBranchNameChange={(newName) => handleBranchNameChange(task.id, newName)}
+                      />
+                    ))}
+                    <DragOverlay>
+                      {activeDragId && (
+                        <div className="planning-panel__task-item planning-panel__task-item--dragging">
+                          {selectedSession.nodes.find((t) => t.id === activeDragId)?.title}
+                        </div>
+                      )}
+                    </DragOverlay>
+                  </DndContext>
+                  {selectedSession.nodes.length === 0 && (
+                    <div className="planning-panel__tasks-empty">Chat with AI to suggest tasks</div>
                   )}
-                </DragOverlay>
-              </DndContext>
-              {selectedSession.nodes.length === 0 && (
-                <div className="planning-panel__tasks-empty">Chat with AI to suggest tasks</div>
+                </>
               )}
             </div>
           )}
