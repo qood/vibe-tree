@@ -41,10 +41,15 @@ export async function errorHandler(c: Context, next: Next): Promise<Response | v
       return c.json<ApiError>({ error: error.message, code: "VALIDATION_ERROR" }, 400);
     }
 
-    if (error instanceof AppError) {
+    // Use duck typing as instanceof can fail with certain bundlers/module systems
+    if (
+      error instanceof AppError ||
+      (error instanceof Error && "statusCode" in error && "code" in error)
+    ) {
+      const appError = error as AppError;
       return c.json<ApiError>(
-        { error: error.message, code: error.code ?? "APP_ERROR" },
-        error.statusCode,
+        { error: appError.message, code: appError.code ?? "APP_ERROR" },
+        appError.statusCode,
       );
     }
 
