@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { errorHandler } from "./middleware/error-handler";
+import { onErrorHandler } from "./middleware/error-handler";
 import { perfLoggerMiddleware } from "./middleware/perf-logger";
 import { ptyManager } from "./pty-manager";
 import { handleWsMessage, addClient, removeClient, type WSClient } from "./ws";
@@ -12,14 +12,14 @@ import { apiRoutes } from "./api";
 const baseApp = new Hono()
   .use("*", logger())
   .use("*", perfLoggerMiddleware)
-  .use("*", errorHandler)
   .use(
     "/api/*",
     cors({
       origin: ["http://localhost:5173", "http://localhost:3000"],
       credentials: true,
     }),
-  );
+  )
+  .onError(onErrorHandler);
 
 // Mount API routes
 const app = baseApp.route("/api", apiRoutes);
