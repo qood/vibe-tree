@@ -231,6 +231,7 @@ export function PlanningPanel({
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBaseBranch, setNewBaseBranch] = useState(defaultBranch);
+  const [newIssue, setNewIssue] = useState("");
 
   // External links for selected session
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
@@ -428,17 +429,29 @@ export function PlanningPanel({
     setCreating(true);
     setError(null);
     try {
-      const session = await api.createPlanningSession(
-        repoId,
-        newBaseBranch.trim(),
-        newTitle.trim() || undefined,
-      );
+      let session: PlanningSession;
+      if (newIssue.trim()) {
+        // Create session from GitHub issue
+        session = await api.createPlanningSessionFromIssue(
+          repoId,
+          newIssue.trim(),
+          newBaseBranch.trim(),
+        );
+      } else {
+        // Create regular session
+        session = await api.createPlanningSession(
+          repoId,
+          newBaseBranch.trim(),
+          newTitle.trim() || undefined,
+        );
+      }
       // State will be updated via WebSocket planning.created event
       setSelectedSession(session);
       onSessionSelect?.(session);
       setShowNewForm(false);
       setNewTitle("");
       setNewBaseBranch(defaultBranch);
+      setNewIssue("");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -864,11 +877,20 @@ export function PlanningPanel({
           >
             <input
               type="text"
-              placeholder="Title (optional)"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="#123 or issue URL (optional)"
+              value={newIssue}
+              onChange={(e) => setNewIssue(e.target.value)}
               className="planning-panel__input"
             />
+            {!newIssue.trim() && (
+              <input
+                type="text"
+                placeholder="Title (optional)"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                className="planning-panel__input"
+              />
+            )}
             <select
               value={newBaseBranch}
               onChange={(e) => setNewBaseBranch(e.target.value)}

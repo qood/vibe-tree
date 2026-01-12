@@ -8,7 +8,7 @@ import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import { broadcast } from "../ws";
 import { execSync } from "child_process";
 import { existsSync } from "fs";
-import { fetchIssueGraphQL } from "../lib/github-api";
+import { fetchIssueGraphQL, fetchIssueDetailGraphQL } from "../lib/github-api";
 
 // Types
 interface TaskNode {
@@ -58,6 +58,12 @@ const createSessionSchema = z.object({
   repoId: z.string().min(1),
   baseBranch: z.string().min(1),
   title: z.string().optional(),
+});
+
+const createSessionFromIssueSchema = z.object({
+  repoId: z.string().min(1),
+  issueInput: z.string().min(1), // URL or "#123" or "123"
+  baseBranch: z.string().min(1),
 });
 
 const updateSessionSchema = z.object({
@@ -160,6 +166,109 @@ export const planningSessionsRouter = new Hono()
       : `こんにちは！何を作りたいですか？
 
 URLやドキュメント（Notion、GitHub Issue、Figma など）があれば共有してください。内容を確認して、タスクを分解するお手伝いをします。`;
+
+    await db.insert(schema.chatMessages).values({
+      sessionId: chatSessionId,
+      role: "assistant",
+      content: initialMessage,
+      createdAt: now,
+    });
+
+    const [session] = await db
+      .select()
+      .from(schema.planningSessions)
+      .where(eq(schema.planningSessions.id, sessionId));
+
+    broadcast({
+      type: "planning.created",
+      repoId,
+      data: toSession(session!),
+    });
+
+    return c.json(toSession(session!), 201);
+  })
+  // POST /api/planning-sessions/from-issue - Create session from GitHub issue
+  .post("/from-issue", async (c) => {
+    const body = await c.req.json();
+    const { repoId, issueInput, baseBranch } = validateOrThrow(createSessionFromIssueSchema, body);
+
+    // Parse issue number from input (URL, "#123", or "123")
+    let issueNumber: number | null = null;
+    const urlMatch = issueInput.match(/\/issues\/(\d+)/);
+    if (urlMatch?.[1]) {
+      issueNumber = parseInt(urlMatch[1], 10);
+    } else {
+      const numMatch = issueInput.match(/^#?(\d+)$/);
+      if (numMatch?.[1]) {
+        issueNumber = parseInt(numMatch[1], 10);
+      }
+    }
+
+    if (!issueNumber) {
+      throw new BadRequestError("Invalid issue input. Use URL, #123, or 123 format.");
+    }
+
+    // Fetch issue detail from GitHub
+    const issueDetail = await fetchIssueDetailGraphQL(repoId, issueNumber);
+    if (!issueDetail) {
+      throw new BadRequestError(`Issue #${issueNumber} not found`);
+    }
+
+    const now = new Date().toISOString();
+    const sessionId = randomUUID();
+    const chatSessionId = randomUUID();
+
+    // Build issue URL
+    const issueUrl = `https://github.com/${repoId}/issues/${issueNumber}`;
+
+    // Create planning session
+    await db.insert(schema.planningSessions).values({
+      id: sessionId,
+      repoId,
+      title: issueDetail.title,
+      baseBranch,
+      status: "draft",
+      nodesJson: "[]",
+      edgesJson: "[]",
+      chatSessionId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Create linked chat session
+    await db.insert(schema.chatSessions).values({
+      id: chatSessionId,
+      repoId,
+      worktreePath: `planning:${sessionId}`,
+      branchName: null,
+      planId: null,
+      status: "active",
+      lastUsedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Add issue to external links
+    await db.insert(schema.externalLinks).values({
+      planningSessionId: sessionId,
+      linkType: "github_issue",
+      url: issueUrl,
+      title: issueDetail.title,
+      contentCache: issueDetail.body,
+      lastFetchedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Add initial assistant message with issue context
+    const issueContext = issueDetail.body
+      ? `\n\n---\n**Issue内容:**\n${issueDetail.body}`
+      : "";
+    const initialMessage = `GitHub Issue #${issueNumber} をもとにプランニングを開始します。
+
+**${issueDetail.title}**${issueContext}
+
+この内容を確認して、必要なタスクを一緒に整理していきましょう。`;
 
     await db.insert(schema.chatMessages).values({
       sessionId: chatSessionId,
