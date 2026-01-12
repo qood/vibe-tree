@@ -292,6 +292,15 @@ URLやドキュメント（Notion、GitHub Issue、Figma など）があれば�
   .post("/:id/confirm", async (c) => {
     const id = c.req.param("id");
 
+    // Parse optional body for singleBranch option
+    let singleBranch = false;
+    try {
+      const body = await c.req.json();
+      singleBranch = body?.singleBranch === true;
+    } catch {
+      // No body or invalid JSON, use default
+    }
+
     const [session] = await db
       .select()
       .from(schema.planningSessions)
@@ -343,6 +352,168 @@ URLやドキュメント（Notion、GitHub Issue、Figma など）があれば�
       error?: string;
     }> = [];
 
+    // Single branch mode: create one branch for all tasks
+    if (singleBranch) {
+      const branchName =
+        `task/${session.title
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, "")
+          .substring(0, 50)}` || "task/combined";
+
+      try {
+        // Check if branch already exists
+        const existingBranches = execSync(
+          `cd "${localPath}" && git branch --list "${branchName}"`,
+          {
+            encoding: "utf-8",
+          },
+        ).trim();
+
+        if (!existingBranches) {
+          let actualParent = session.baseBranch;
+          try {
+            execSync(
+              `cd "${localPath}" && git rev-parse --verify "${session.baseBranch}" 2>/dev/null`,
+              {
+                encoding: "utf-8",
+              },
+            );
+          } catch {
+            actualParent = `origin/${session.baseBranch}`;
+          }
+          execSync(`cd "${localPath}" && git branch "${branchName}" "${actualParent}"`, {
+            encoding: "utf-8",
+          });
+        }
+
+        // Create combined instruction from all tasks
+        const instructionMd = [
+          `# ${session.title}`,
+          "",
+          "## タスク一覧",
+          "",
+          ...nodes.map((task, i) =>
+            [`### ${i + 1}. ${task.title}`, "", task.description || "", ""].flat(),
+          ),
+        ].join("\n");
+
+        await db.insert(schema.taskInstructions).values({
+          repoId: session.repoId,
+          taskId: nodes[0]?.id || "combined",
+          branchName,
+          instructionMd,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        // Link issues from all tasks
+        for (const task of nodes) {
+          if (task.issueUrl) {
+            const issueMatch = task.issueUrl.match(/\/issues\/(\d+)/);
+            if (issueMatch?.[1]) {
+              const issueNumber = parseInt(issueMatch[1], 10);
+              const [existingLink] = await db
+                .select()
+                .from(schema.branchLinks)
+                .where(
+                  and(
+                    eq(schema.branchLinks.repoId, session.repoId),
+                    eq(schema.branchLinks.branchName, branchName),
+                    eq(schema.branchLinks.linkType, "issue"),
+                    eq(schema.branchLinks.number, issueNumber),
+                  ),
+                )
+                .limit(1);
+
+              if (!existingLink) {
+                let title: string | null = null;
+                let status: string | null = null;
+                try {
+                  const issueData = await fetchIssueGraphQL(session.repoId, issueNumber);
+                  if (issueData) {
+                    title = issueData.title;
+                    status = issueData.status;
+                  }
+                } catch {
+                  // Ignore fetch errors
+                }
+
+                await db.insert(schema.branchLinks).values({
+                  repoId: session.repoId,
+                  branchName,
+                  linkType: "issue",
+                  url: task.issueUrl,
+                  number: issueNumber,
+                  title,
+                  status,
+                  createdAt: now,
+                  updatedAt: now,
+                });
+              }
+            }
+          }
+
+          results.push({
+            taskId: task.id,
+            branchName,
+            parentBranch: session.baseBranch,
+            success: true,
+          });
+        }
+
+        // Update all nodes with the same branch name
+        const updatedNodes = nodes.map((node) => ({
+          ...node,
+          branchName,
+        }));
+
+        await db
+          .update(schema.planningSessions)
+          .set({
+            status: "confirmed",
+            nodesJson: JSON.stringify(updatedNodes),
+            updatedAt: now,
+          })
+          .where(eq(schema.planningSessions.id, id));
+
+        const [updated] = await db
+          .select()
+          .from(schema.planningSessions)
+          .where(eq(schema.planningSessions.id, id));
+
+        broadcast({
+          type: "planning.confirmed",
+          repoId: updated!.repoId,
+          data: {
+            ...toSession(updated!),
+            branchResults: results,
+          },
+        });
+
+        broadcast({
+          type: "branches.changed",
+          repoId: updated!.repoId,
+          data: { reason: "planning_confirmed" },
+        });
+
+        return c.json({
+          ...toSession(updated!),
+          branchResults: results,
+          summary: {
+            total: nodes.length,
+            success: nodes.length,
+            failed: 0,
+          },
+        });
+      } catch (err) {
+        throw new BadRequestError(
+          `Failed to create branch: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // Multi-branch mode: create separate branch for each task
     // Process nodes in order (parents first)
     const processed = new Set<string>();
     const taskBranchMap = new Map<string, string>(); // taskId -> branchName

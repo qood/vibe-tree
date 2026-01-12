@@ -251,6 +251,9 @@ export function PlanningPanel({
   const [instructionSaving, setInstructionSaving] = useState(false);
   const [instructionDirty, setInstructionDirty] = useState(false);
 
+  // Single branch mode option
+  const [singleBranchMode, setSingleBranchMode] = useState(false);
+
   // Session notifications (unread counts, thinking state)
   const chatSessionIds = sessions
     .filter((s) => s.chatSessionId)
@@ -521,10 +524,13 @@ export function PlanningPanel({
     }
     setLoading(true);
     try {
-      const updated = await api.confirmPlanningSession(selectedSession.id);
+      const updated = await api.confirmPlanningSession(selectedSession.id, {
+        singleBranch: singleBranchMode,
+      });
       setSelectedSession(updated);
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       onSessionSelect?.(updated);
+      setSingleBranchMode(false); // Reset after confirm
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1301,22 +1307,45 @@ export function PlanningPanel({
 
           {/* Actions in sidebar */}
           {selectedSession.status === "draft" && (
-            <div className="planning-panel__actions">
-              <button
-                className="planning-panel__discard-btn"
-                onClick={handleDiscard}
-                disabled={loading}
-              >
-                Discard
-              </button>
-              <button
-                className="planning-panel__confirm-btn"
-                onClick={handleConfirm}
-                disabled={loading || selectedSession.nodes.length === 0}
-              >
-                Confirm
-              </button>
-            </div>
+            <>
+              {selectedSession.nodes.length > 1 && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                    color: "#9ca3af",
+                    marginBottom: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={singleBranchMode}
+                    onChange={(e) => setSingleBranchMode(e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <span>まとめて1つのブランチで実行</span>
+                </label>
+              )}
+              <div className="planning-panel__actions">
+                <button
+                  className="planning-panel__discard-btn"
+                  onClick={handleDiscard}
+                  disabled={loading}
+                >
+                  Discard
+                </button>
+                <button
+                  className="planning-panel__confirm-btn"
+                  onClick={handleConfirm}
+                  disabled={loading || selectedSession.nodes.length === 0}
+                >
+                  Confirm
+                </button>
+              </div>
+            </>
           )}
 
           {selectedSession.status === "confirmed" && (
