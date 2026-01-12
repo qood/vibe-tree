@@ -1,12 +1,17 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { execSync } from "child_process";
 import { db } from "../../db";
 import { externalLinks } from "../../db/schema";
 import { z } from "zod";
 import { validateOrThrow } from "../../shared/validation";
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import { broadcast } from "../ws";
+import {
+  fetchIssueDetailGraphQL,
+  fetchPRDetailGraphQL,
+  fetchTrackedIssuesGraphQL,
+  fetchIssuesTrackingThisGraphQL,
+} from "../lib/github-api";
 
 export const externalLinksRouter = new Hono();
 
@@ -42,36 +47,36 @@ interface SubIssue {
   body: string;
 }
 
-// Fetch a single GitHub issue/PR
-function fetchSingleGitHubItem(
+// Fetch a single GitHub issue/PR using GraphQL API
+async function fetchSingleGitHubItem(
   owner: string,
   repo: string,
   type: "issue" | "pr",
   number: string,
-): GitHubItemData | null {
+): Promise<GitHubItemData | null> {
   try {
-    const ghType = type === "pr" ? "pr" : "issue";
-    const cmd = `gh ${ghType} view ${number} --repo ${owner}/${repo} --json title,body,state,author`;
+    const repoId = `${owner}/${repo}`;
+    const numberInt = parseInt(number, 10);
 
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      timeout: 30000,
-      env: { ...process.env, GH_PROMPT_DISABLED: "1" },
-    });
-
-    const data = JSON.parse(output) as {
-      title?: string;
-      body?: string;
-      state?: string;
-      author?: { login?: string };
-    };
-
-    return {
-      title: data.title || "",
-      body: data.body || "",
-      state: data.state || "unknown",
-      author: data.author?.login || "unknown",
-    };
+    if (type === "pr") {
+      const pr = await fetchPRDetailGraphQL(repoId, numberInt);
+      if (!pr) return null;
+      return {
+        title: pr.title,
+        body: pr.body,
+        state: pr.state,
+        author: pr.author,
+      };
+    } else {
+      const issue = await fetchIssueDetailGraphQL(repoId, numberInt);
+      if (!issue) return null;
+      return {
+        title: issue.title,
+        body: issue.body,
+        state: issue.state,
+        author: issue.author,
+      };
+    }
   } catch (error) {
     console.error(`Failed to fetch GitHub ${type} #${number}:`, error);
     return null;
@@ -79,62 +84,17 @@ function fetchSingleGitHubItem(
 }
 
 // Fetch sub-issues using GraphQL trackedIssues
-function fetchTrackedSubIssues(owner: string, repo: string, issueNumber: string): SubIssue[] {
+async function fetchTrackedSubIssues(
+  owner: string,
+  repo: string,
+  issueNumber: string,
+): Promise<SubIssue[]> {
   try {
+    const repoId = `${owner}/${repo}`;
+    const numberInt = parseInt(issueNumber, 10);
+
     // Try direct trackedIssues first
-    const query = `
-      query {
-        repository(owner: "${owner}", name: "${repo}") {
-          issue(number: ${issueNumber}) {
-            trackedIssues(first: 50) {
-              nodes {
-                number
-                title
-                state
-                body
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    const cmd = `gh api graphql -f query='${query.replace(/'/g, "'\\''")}'`;
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      timeout: 30000,
-      env: { ...process.env, GH_PROMPT_DISABLED: "1" },
-    });
-
-    const data = JSON.parse(output) as {
-      data?: {
-        repository?: {
-          issue?: {
-            trackedIssues?: {
-              nodes?: Array<{
-                number?: number;
-                title?: string;
-                state?: string;
-                body?: string;
-              }>;
-            };
-          };
-        };
-      };
-    };
-
-    const nodes = data?.data?.repository?.issue?.trackedIssues?.nodes || [];
-    const results = nodes
-      .filter(
-        (n): n is { number: number; title: string; state: string; body: string } =>
-          n?.number !== undefined && n?.title !== undefined,
-      )
-      .map((n) => ({
-        number: n.number,
-        title: n.title || "",
-        state: n.state || "OPEN",
-        body: n.body || "",
-      }));
+    const results = await fetchTrackedIssuesGraphQL(repoId, numberInt);
 
     if (results.length > 0) {
       return results;
@@ -142,7 +102,7 @@ function fetchTrackedSubIssues(owner: string, repo: string, issueNumber: string)
 
     // If no trackedIssues found, try reverse lookup: find issues that track THIS issue
     console.log(`[GitHub] No direct trackedIssues, trying reverse lookup...`);
-    return fetchIssuesTrackingThis(owner, repo, issueNumber);
+    return await fetchIssuesTrackingThisLocal(owner, repo, issueNumber);
   } catch (error) {
     console.error("Failed to fetch tracked sub-issues via GraphQL:", error);
     return [];
@@ -150,78 +110,19 @@ function fetchTrackedSubIssues(owner: string, repo: string, issueNumber: string)
 }
 
 // Fetch issues that are tracking the given issue (reverse lookup)
-function fetchIssuesTrackingThis(
+async function fetchIssuesTrackingThisLocal(
   owner: string,
   repo: string,
   parentIssueNumber: string,
-): SubIssue[] {
+): Promise<SubIssue[]> {
   try {
-    // Get all open issues in the repo and check which ones track this issue
-    const query = `
-      query {
-        repository(owner: "${owner}", name: "${repo}") {
-          issues(first: 50, states: OPEN) {
-            nodes {
-              number
-              title
-              state
-              body
-              trackedInIssues(first: 10) {
-                nodes {
-                  number
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    const cmd = `gh api graphql -f query='${query.replace(/'/g, "'\\''")}'`;
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      timeout: 30000,
-      env: { ...process.env, GH_PROMPT_DISABLED: "1" },
-    });
-
-    const data = JSON.parse(output) as {
-      data?: {
-        repository?: {
-          issues?: {
-            nodes?: Array<{
-              number?: number;
-              title?: string;
-              state?: string;
-              body?: string;
-              trackedInIssues?: {
-                nodes?: Array<{ number?: number }>;
-              };
-            }>;
-          };
-        };
-      };
-    };
-
-    const allIssues = data?.data?.repository?.issues?.nodes || [];
+    const repoId = `${owner}/${repo}`;
     const parentNum = parseInt(parentIssueNumber, 10);
 
-    // Filter issues that are tracked by the parent issue
-    const subIssues = allIssues.filter((issue) => {
-      if (!issue || issue.number === parentNum) return false;
-      const trackedIn = issue.trackedInIssues?.nodes || [];
-      return trackedIn.some((t) => t?.number === parentNum);
-    });
+    const results = await fetchIssuesTrackingThisGraphQL(repoId, parentNum);
+    console.log(`[GitHub] Found ${results.length} issues tracking #${parentIssueNumber}`);
 
-    console.log(`[GitHub] Found ${subIssues.length} issues tracking #${parentIssueNumber}`);
-
-    return subIssues
-      .filter((n) => n?.number !== undefined && n?.title !== undefined)
-      .map((n) => ({
-        number: n.number as number,
-        title: n.title || "",
-        state: n.state || "OPEN",
-        body: n.body || "",
-      }));
+    return results;
   } catch (error) {
     console.error("Failed to fetch issues tracking this issue:", error);
     return [];
@@ -322,16 +223,16 @@ function extractSubIssueRefs(
   return refs;
 }
 
-// Fetch GitHub content using gh command (with sub-issues support)
-function fetchGitHubContent(
+// Fetch GitHub content using GraphQL API (with sub-issues support)
+async function fetchGitHubContent(
   owner: string,
   repo: string,
   type: "issue" | "pr",
   number: string,
-): { title?: string; content?: string } {
+): Promise<{ title?: string; content?: string }> {
   try {
     // Fetch main issue/PR
-    const mainItem = fetchSingleGitHubItem(owner, repo, type, number);
+    const mainItem = await fetchSingleGitHubItem(owner, repo, type, number);
     if (!mainItem) {
       console.log(`[GitHub] Failed to fetch ${type} #${number} from ${owner}/${repo}`);
       return {};
@@ -347,7 +248,7 @@ function fetchGitHubContent(
     if (type === "issue") {
       // First, try to get tracked sub-issues via GraphQL
       console.log(`[GitHub] Checking for tracked sub-issues...`);
-      const trackedSubIssues = fetchTrackedSubIssues(owner, repo, number);
+      const trackedSubIssues = await fetchTrackedSubIssues(owner, repo, number);
       console.log(`[GitHub] Found ${trackedSubIssues.length} tracked sub-issues via GraphQL`);
 
       if (trackedSubIssues.length > 0) {
@@ -374,7 +275,7 @@ function fetchGitHubContent(
           content += `\n\n---\n\n## Sub-Issues (${subIssueRefs.length}件)\n`;
 
           for (const ref of subIssueRefs) {
-            const subItem = fetchSingleGitHubItem(ref.owner, ref.repo, "issue", ref.number);
+            const subItem = await fetchSingleGitHubItem(ref.owner, ref.repo, "issue", ref.number);
             if (subItem) {
               const subRepo =
                 ref.owner === owner && ref.repo === repo ? "" : `${ref.owner}/${ref.repo}`;
@@ -398,7 +299,7 @@ function fetchGitHubContent(
     if (mainItem.title) result.title = mainItem.title;
     return result;
   } catch (error) {
-    console.error("Failed to fetch GitHub content via gh command:", error);
+    console.error("Failed to fetch GitHub content:", error);
     return {};
   }
 }

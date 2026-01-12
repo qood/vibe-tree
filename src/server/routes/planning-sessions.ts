@@ -8,6 +8,7 @@ import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import { broadcast } from "../ws";
 import { execSync } from "child_process";
 import { existsSync } from "fs";
+import { fetchIssueGraphQL } from "../lib/github-api";
 
 export const planningSessionsRouter = new Hono();
 
@@ -396,17 +397,15 @@ planningSessionsRouter.post("/:id/confirm", async (c) => {
             .limit(1);
 
           if (!existingLink) {
-            // Fetch issue info from GitHub
+            // Fetch issue info from GitHub using GraphQL API
             let title: string | null = null;
             let status: string | null = null;
             try {
-              const issueResult = execSync(
-                `gh issue view ${issueNumber} --repo "${session.repoId}" --json title,state`,
-                { encoding: "utf-8", timeout: 10000 },
-              ).trim();
-              const issueData = JSON.parse(issueResult);
-              title = issueData.title;
-              status = issueData.state?.toLowerCase();
+              const issueData = await fetchIssueGraphQL(session.repoId, issueNumber);
+              if (issueData) {
+                title = issueData.title;
+                status = issueData.status;
+              }
             } catch {
               // Ignore fetch errors
             }

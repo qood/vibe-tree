@@ -13,21 +13,9 @@ export function expandTilde(path: string): string {
   return path;
 }
 
-// Get repo ID from local path using gh CLI or git remote
+// Get repo ID from local path using git remote URL
 export function getRepoId(repoPath: string): string | null {
-  // 1. Try gh CLI first (works for GitHub repos)
-  try {
-    const output = execSync(
-      `cd "${repoPath}" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null`,
-      { encoding: "utf-8" },
-    );
-    const trimmed = output.trim();
-    if (trimmed) return trimmed;
-  } catch {
-    // Ignore - try fallback
-  }
-
-  // 2. Try git remote origin URL
+  // 1. Try git remote origin URL (most reliable and doesn't require gh CLI)
   try {
     const output = execSync(`cd "${repoPath}" && git remote get-url origin 2>/dev/null`, {
       encoding: "utf-8",
@@ -40,7 +28,7 @@ export function getRepoId(repoPath: string): string | null {
     // Ignore - try fallback
   }
 
-  // 3. Fallback: use folder name as local repo ID
+  // 2. Fallback: use folder name as local repo ID
   try {
     const folderName = repoPath.split("/").filter(Boolean).pop();
     if (folderName) {

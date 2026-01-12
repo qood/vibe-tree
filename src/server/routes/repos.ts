@@ -1,62 +1,27 @@
 import { Hono } from "hono";
-import { execSync } from "child_process";
 import { NotFoundError } from "../middleware/error-handler";
-import { getCachedOrFetchSync } from "../lib/cache";
-
-interface GhRepo {
-  name: string;
-  nameWithOwner: string;
-  url: string;
-  description: string;
-  isPrivate: boolean;
-  defaultBranchRef: { name: string } | null;
-}
-
-interface RepoInfo {
-  id: string;
-  name: string;
-  fullName: string;
-  url: string;
-  description: string;
-  isPrivate: boolean;
-  defaultBranch: string;
-}
+import { getCachedOrFetch } from "../lib/cache";
+import { fetchReposListGraphQL, fetchRepoViewGraphQL } from "../lib/github-api";
+import type { RepoInfo } from "../lib/github-api";
 
 // GET /api/repos - List repos from GitHub
 const listRepos = new Hono().get("/", async (c) => {
   const limit = parseInt(c.req.query("limit") ?? "30");
 
   try {
-    // Cache repos list for 5 minutes (gh repo list is slow ~3s)
-    const repos = getCachedOrFetchSync<RepoInfo[]>(
+    // Cache repos list for 5 minutes (GraphQL API call)
+    const repos = await getCachedOrFetch<RepoInfo[]>(
       `repos:list:${limit}`,
-      () => {
-        const output = execSync(
-          `gh repo list --json name,nameWithOwner,url,description,isPrivate,defaultBranchRef --limit ${limit}`,
-          { encoding: "utf-8" },
-        );
-
-        const ghRepos: GhRepo[] = JSON.parse(output);
-
-        return ghRepos.map((r) => ({
-          id: r.nameWithOwner,
-          name: r.name,
-          fullName: r.nameWithOwner,
-          url: r.url,
-          description: r.description ?? "",
-          isPrivate: r.isPrivate,
-          defaultBranch: r.defaultBranchRef?.name ?? "main",
-        }));
-      },
+      () => fetchReposListGraphQL(limit),
       5 * 60 * 1000, // 5 minutes TTL
     );
 
     return c.json(repos);
   } catch (error) {
-    console.error("Failed to fetch repos from gh:", error);
+    console.error("Failed to fetch repos:", error);
     return c.json(
       {
-        error: "Failed to fetch repositories from GitHub CLI",
+        error: "Failed to fetch repositories from GitHub API",
         code: "GH_FETCH_ERROR",
       },
       500,
@@ -70,28 +35,13 @@ const getRepo = new Hono().get("/:owner/:name", async (c) => {
   const name = c.req.param("name");
   const fullName = `${owner}/${name}`;
 
-  try {
-    const output = execSync(
-      `gh repo view ${fullName} --json name,nameWithOwner,url,description,isPrivate,defaultBranchRef`,
-      { encoding: "utf-8" },
-    );
+  const repo = await fetchRepoViewGraphQL(fullName);
 
-    const r: GhRepo = JSON.parse(output);
-
-    const repo: RepoInfo = {
-      id: r.nameWithOwner,
-      name: r.name,
-      fullName: r.nameWithOwner,
-      url: r.url,
-      description: r.description ?? "",
-      isPrivate: r.isPrivate,
-      defaultBranch: r.defaultBranchRef?.name ?? "main",
-    };
-
-    return c.json(repo);
-  } catch {
+  if (!repo) {
     throw new NotFoundError("Repo");
   }
+
+  return c.json(repo);
 });
 
 // Export chained router for RPC type inference

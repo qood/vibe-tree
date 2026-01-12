@@ -10,6 +10,7 @@ import { BadRequestError } from "../middleware/error-handler";
 import { db, schema } from "../../db";
 import type { WorktreeSettings } from "../../shared/types";
 import { getWorktreePath, removeWorktree } from "../../utils/git";
+import { getPRByBranchGraphQL, createPRGraphQL } from "../lib/github-api";
 
 // Helper to get worktree settings for a repo
 async function getWorktreeSettings(repoId: string): Promise<WorktreeSettings> {
@@ -222,47 +223,41 @@ interface TaskResult {
   error?: string;
 }
 
-// Check if PR already exists for branch
-function getExistingPr(
-  localPath: string,
+// Check if PR already exists for branch using GraphQL API
+async function getExistingPr(
+  repoId: string,
   branchName: string,
-): { url: string; number: number } | null {
+): Promise<{ url: string; number: number } | null> {
   try {
-    const result = execSync(
-      `cd "${localPath}" && gh pr view "${branchName}" --json url,number 2>/dev/null || true`,
-      { encoding: "utf-8" },
-    ).trim();
-    if (result) {
-      const pr = JSON.parse(result);
-      return { url: pr.url, number: pr.number };
-    }
+    return await getPRByBranchGraphQL(repoId, branchName);
   } catch {
     // No existing PR
   }
   return null;
 }
 
-// Create PR for branch
-function createPr(
+// Create PR for branch using GraphQL API
+async function createPr(
   localPath: string,
+  repoId: string,
   branchName: string,
   baseBranch: string,
   title: string,
   body: string,
-): { url: string; number: number } {
+): Promise<{ url: string; number: number }> {
   // First push the branch
   execSync(`cd "${localPath}" && git push -u origin "${branchName}"`, {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  // Create PR
-  const result = execSync(
-    `cd "${localPath}" && gh pr create --head "${branchName}" --base "${baseBranch}" --title "${title.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --json url,number`,
-    { encoding: "utf-8" },
-  ).trim();
+  // Create PR using GraphQL API
+  const pr = await createPRGraphQL(repoId, baseBranch, branchName, title, body);
 
-  const pr = JSON.parse(result);
+  if (!pr) {
+    throw new Error("Failed to create PR via GraphQL API");
+  }
+
   return { url: pr.url, number: pr.number };
 }
 
@@ -375,7 +370,7 @@ branchRouter.post("/create-tree", async (c) => {
       if (input.createPrs) {
         try {
           // Check for existing PR
-          const existingPr = getExistingPr(localPath, task.branchName);
+          const existingPr = await getExistingPr(input.repoId, task.branchName);
           if (existingPr) {
             result.prUrl = existingPr.url;
             result.prNumber = existingPr.number;
@@ -394,7 +389,14 @@ branchRouter.post("/create-tree", async (c) => {
               .filter(Boolean)
               .join("\n");
 
-            const pr = createPr(localPath, task.branchName, task.parentBranch, prTitle, prBody);
+            const pr = await createPr(
+              localPath,
+              input.repoId,
+              task.branchName,
+              task.parentBranch,
+              prTitle,
+              prBody,
+            );
             result.prUrl = pr.url;
             result.prNumber = pr.number;
             console.log(`Created PR for ${task.branchName}: ${pr.url}`);

@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { db, schema } from "../../db";
 import { eq, and, desc } from "drizzle-orm";
 import { broadcast } from "../ws";
-import { execSync } from "child_process";
 import {
   repoIdQuerySchema,
   startPlanSchema,
@@ -12,6 +11,8 @@ import {
 } from "../../shared/validation";
 import { NotFoundError } from "../middleware/error-handler";
 import type { BranchNamingRule } from "../../shared/types";
+import { createIssueGraphQL } from "../lib/github-api";
+import { getRepoId } from "../utils";
 
 export const planRouter = new Hono();
 
@@ -129,16 +130,17 @@ planRouter.post("/commit", async (c) => {
   let issueUrl: string | null = null;
 
   try {
-    const escapedTitle = plan.title.replace(/"/g, '\\"');
-    const escapedBody = issueBody.replace(/"/g, '\\"').replace(/\n/g, "\\n");
-    const result = execSync(
-      `cd "${input.localPath}" && gh issue create --title "${escapedTitle}" --body "${escapedBody}"`,
-      { encoding: "utf-8" },
-    );
-    issueUrl = result.trim();
+    // Get repo ID from local path
+    const repoId = getRepoId(input.localPath);
+    if (repoId && !repoId.startsWith("local/")) {
+      const result = await createIssueGraphQL(repoId, plan.title, issueBody);
+      if (result) {
+        issueUrl = result.url;
+      }
+    }
   } catch (error) {
     console.error("Failed to create GitHub issue:", error);
-    // Continue even if gh fails (might not be in a gh-configured repo)
+    // Continue even if API fails (might not be a GitHub repo)
   }
 
   // Update plan status
