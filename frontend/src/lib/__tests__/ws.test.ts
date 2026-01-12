@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn, jest } from "bun:test";
 
 // Create mock WebSocket class
 let mockWsInstance: MockWebSocket;
@@ -15,11 +15,10 @@ class MockWebSocket {
   onclose: (() => void) | null = null;
   onerror: ((error: Event) => void) | null = null;
 
-  send = vi.fn();
-  close = vi.fn();
+  send = mock(() => {});
+  close = mock(() => {});
 
   constructor(public url: string) {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     mockWsInstance = this;
   }
 
@@ -44,20 +43,28 @@ class MockWebSocket {
 }
 
 // Store the mock for access in tests
-vi.stubGlobal("WebSocket", MockWebSocket);
+(global as unknown as { WebSocket: typeof MockWebSocket }).WebSocket = MockWebSocket;
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  jest.useFakeTimers();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
-  vi.resetModules();
+  jest.useRealTimers();
+  jest.restoreAllMocks();
 });
+
+// Helper to reset module cache
+async function getWsClient() {
+  // Clear module cache to get fresh instance
+  delete require.cache[require.resolve("../ws")];
+  const { wsClient } = await import("../ws");
+  return wsClient;
+}
 
 describe("WebSocketClient", () => {
   it("should connect to WebSocket", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect("owner/repo");
 
@@ -66,7 +73,7 @@ describe("WebSocketClient", () => {
   });
 
   it("should subscribe to repoId on connection", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect("owner/repo");
     mockWsInstance.simulateOpen();
@@ -77,8 +84,8 @@ describe("WebSocketClient", () => {
   });
 
   it("should register message handlers", async () => {
-    const { wsClient } = await import("../ws");
-    const handler = vi.fn();
+    const wsClient = await getWsClient();
+    const handler = mock(() => {});
 
     wsClient.on("test.event", handler);
     wsClient.connect();
@@ -92,8 +99,8 @@ describe("WebSocketClient", () => {
   });
 
   it("should unregister message handlers", async () => {
-    const { wsClient } = await import("../ws");
-    const handler = vi.fn();
+    const wsClient = await getWsClient();
+    const handler = mock(() => {});
 
     const unsubscribe = wsClient.on("test.event", handler);
     unsubscribe();
@@ -106,8 +113,8 @@ describe("WebSocketClient", () => {
   });
 
   it("should emit to wildcard handlers", async () => {
-    const { wsClient } = await import("../ws");
-    const handler = vi.fn();
+    const wsClient = await getWsClient();
+    const handler = mock(() => {});
 
     wsClient.on("*", handler);
     wsClient.connect();
@@ -121,7 +128,7 @@ describe("WebSocketClient", () => {
   });
 
   it("should reuse existing connection", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect("owner/repo");
     mockWsInstance.simulateOpen();
@@ -134,7 +141,7 @@ describe("WebSocketClient", () => {
   });
 
   it("should resubscribe when changing repo on existing connection", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect("owner/repo");
     mockWsInstance.simulateOpen();
@@ -148,7 +155,7 @@ describe("WebSocketClient", () => {
   });
 
   it("should handle disconnect", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect();
     mockWsInstance.simulateOpen();
@@ -159,7 +166,7 @@ describe("WebSocketClient", () => {
   });
 
   it("should schedule reconnection on close", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect("owner/repo");
     const firstInstance = mockWsInstance;
@@ -167,14 +174,14 @@ describe("WebSocketClient", () => {
     firstInstance.simulateClose();
 
     // Advance time to trigger reconnect
-    vi.advanceTimersByTime(3000);
+    jest.advanceTimersByTime(3000);
 
     // A new WebSocket should be created
     expect(mockWsInstance).not.toBe(firstInstance);
   });
 
   it("should cancel reconnection on disconnect", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
 
     wsClient.connect("owner/repo");
     const firstInstance = mockWsInstance;
@@ -182,15 +189,15 @@ describe("WebSocketClient", () => {
     firstInstance.simulateClose();
 
     wsClient.disconnect();
-    vi.advanceTimersByTime(3000);
+    jest.advanceTimersByTime(3000);
 
     // Should still be the same instance (no reconnect happened)
     expect(mockWsInstance).toBe(firstInstance);
   });
 
   it("should handle JSON parse errors gracefully", async () => {
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { wsClient } = await import("../ws");
+    const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const wsClient = await getWsClient();
 
     wsClient.connect();
     mockWsInstance.simulateOpen();
@@ -204,8 +211,8 @@ describe("WebSocketClient", () => {
   });
 
   it("should handle WebSocket errors", async () => {
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { wsClient } = await import("../ws");
+    const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const wsClient = await getWsClient();
 
     wsClient.connect();
     mockWsInstance.simulateError();
@@ -216,7 +223,7 @@ describe("WebSocketClient", () => {
   });
 
   it("should use correct protocol based on page protocol", async () => {
-    const { wsClient } = await import("../ws");
+    const wsClient = await getWsClient();
     wsClient.connect();
 
     expect(mockWsInstance.url).toContain("ws://");

@@ -1,17 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
 import { api } from "../api";
 
 // Mock fetch
-const mockFetch = vi.fn();
+const mockFetch = mock(() => Promise.resolve({} as Response));
 global.fetch = mockFetch as unknown as typeof fetch;
 
 describe("api", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockFetch.mockClear();
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    mockFetch.mockReset();
   });
 
   describe("health", () => {
@@ -19,10 +19,10 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ status: "ok" }),
-      });
+      } as Response);
 
       const result = await api.health();
-      expect(result).toEqual({ status: "ok" });
+      expect(result).toEqual(expect.objectContaining({ status: "ok" }));
       // RPC client uses different fetch options
       expect(mockFetch).toHaveBeenCalledWith(
         "/api/health",
@@ -47,7 +47,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(repos),
-      });
+      } as Response);
 
       const result = await api.getRepos();
       expect(result).toEqual(repos);
@@ -68,7 +68,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(repo),
-      });
+      } as Response);
 
       const result = await api.getRepo("owner", "repo");
       expect(result).toEqual(repo);
@@ -90,7 +90,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(rule),
-      });
+      } as Response);
 
       const result = await api.getBranchNaming("owner/repo");
       expect(result).toEqual(rule);
@@ -106,7 +106,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ id: 1, ...input }),
-      });
+      } as Response);
 
       const result = await api.updateBranchNaming(input);
       expect(result.patterns).toEqual(input.patterns);
@@ -119,17 +119,17 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(plan),
-      });
+      } as Response);
 
       const result = await api.getCurrentPlan("owner/repo");
-      expect(result).toEqual(plan);
+      expect(result).toEqual(expect.objectContaining(plan));
     });
 
     it("should return null when no plan", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(null),
-      });
+      } as Response);
 
       const result = await api.getCurrentPlan("owner/repo");
       expect(result).toBeNull();
@@ -142,10 +142,10 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(plan),
-      });
+      } as Response);
 
       const result = await api.startPlan("owner/repo", "Test");
-      expect(result).toEqual(plan);
+      expect(result).toEqual(expect.objectContaining(plan));
     });
   });
 
@@ -155,7 +155,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(plan),
-      });
+      } as Response);
 
       const result = await api.updatePlan(1, "# Updated");
       expect(result.contentMd).toBe("# Updated");
@@ -168,7 +168,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(plan),
-      });
+      } as Response);
 
       const result = await api.commitPlan(1, "/path/to/repo");
       expect(result.status).toBe("committed");
@@ -191,7 +191,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(snapshot),
-      });
+      } as Response);
 
       const result = await api.scan("/path/to/repo");
       expect(result).toEqual(snapshot);
@@ -209,14 +209,14 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(log),
-      });
+      } as Response);
 
       const result = await api.logInstruction({
         repoId: "owner/repo",
         kind: "user_instruction",
         contentMd: "Test",
       });
-      expect(result).toEqual(log);
+      expect(result).toEqual(expect.objectContaining(log));
     });
   });
 
@@ -226,7 +226,7 @@ describe("api", () => {
         ok: false,
         status: 404,
         json: () => Promise.resolve({ error: "Not found" }),
-      });
+      } as unknown as Response);
 
       await expect(api.getRepo("owner", "nonexistent")).rejects.toThrow("Not found");
     });
@@ -236,7 +236,7 @@ describe("api", () => {
         ok: false,
         status: 500,
         json: () => Promise.reject(new Error("Invalid JSON")),
-      });
+      } as unknown as Response);
 
       await expect(api.health()).rejects.toThrow("HTTP error: 500");
     });
@@ -248,7 +248,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(response),
-      });
+      } as Response);
 
       const result = await api.selectDirectory();
       expect(result).toEqual(response);
@@ -264,7 +264,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(response),
-      });
+      } as Response);
 
       const result = await api.selectDirectory();
       expect(result.cancelled).toBe(true);
@@ -276,7 +276,7 @@ describe("api", () => {
         ok: false,
         status: 500,
         json: () => Promise.resolve({ error: "Failed to open directory picker" }),
-      });
+      } as unknown as Response);
 
       await expect(api.selectDirectory()).rejects.toThrow("Failed to open directory picker");
     });

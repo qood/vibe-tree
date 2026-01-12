@@ -1,25 +1,31 @@
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+
+// Register happy-dom globally
+GlobalRegistrator.register();
+
 import "@testing-library/jest-dom";
-import { vi } from "vitest";
+import { mock } from "bun:test";
 
 // Mock window.matchMedia
 Object.defineProperty(window, "matchMedia", {
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
+  value: mock((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
+    addListener: mock(() => {}),
+    removeListener: mock(() => {}),
+    addEventListener: mock(() => {}),
+    removeEventListener: mock(() => {}),
+    dispatchEvent: mock(() => false),
   })),
 });
 
 // Mock clipboard API
-Object.assign(navigator, {
-  clipboard: {
-    writeText: vi.fn().mockResolvedValue(undefined),
+Object.defineProperty(navigator, "clipboard", {
+  writable: true,
+  value: {
+    writeText: mock(() => Promise.resolve(undefined)),
   },
 });
 
@@ -36,7 +42,6 @@ class MockWebSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_url: string) {
     setTimeout(() => {
       if (this.onopen) {
@@ -45,7 +50,6 @@ class MockWebSocket {
     }, 0);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   send(_data: string) {
     // Mock send
   }
