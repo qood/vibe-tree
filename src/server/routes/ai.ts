@@ -11,8 +11,6 @@ import { aiStartSchema, aiStopSchema, validateOrThrow } from "../../shared/valid
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import type { BranchNamingRule, Plan, AgentSession } from "../../shared/types";
 
-export const aiRouter = new Hono();
-
 // Track running agents: sessionId -> { process, heartbeatInterval, session }
 interface RunningAgent {
   process: ChildProcess;
@@ -187,317 +185,321 @@ async function updateSessionStatus(
 }
 
 // POST /api/ai/start - Start Claude agent
-aiRouter.post("/start", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(aiStartSchema, body);
-  const localPath = expandTilde(input.localPath);
+export const aiRouter = new Hono()
+  .post("/start", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(aiStartSchema, body);
+    const localPath = expandTilde(input.localPath);
 
-  // Verify path exists
-  if (!existsSync(localPath)) {
-    throw new BadRequestError(`Local path does not exist: ${localPath}`);
-  }
-
-  // Get repo ID
-  const repoId = getRepoId(localPath);
-  if (!repoId) {
-    throw new BadRequestError(`Could not detect GitHub repo at: ${localPath}`);
-  }
-
-  // Check if already running for this path
-  for (const [sessionId, agent] of runningAgents) {
-    if (agent.session.worktreePath === localPath && agent.session.status === "running") {
-      return c.json({
-        status: "already_running",
-        sessionId,
-        pid: agent.session.pid,
-        repoId: agent.session.repoId,
-        startedAt: agent.session.startedAt,
-      });
+    // Verify path exists
+    if (!existsSync(localPath)) {
+      throw new BadRequestError(`Local path does not exist: ${localPath}`);
     }
-  }
 
-  // Generate prompt
-  const prompt = await generatePrompt(repoId, localPath, input.planId, input.branch);
-
-  // Get current branch
-  let branch: string | null = input.branch ?? null;
-  if (!branch) {
-    try {
-      branch =
-        execSync(`cd "${localPath}" && git branch --show-current`, {
-          encoding: "utf-8",
-        }).trim() || null;
-    } catch {
-      branch = null;
+    // Get repo ID
+    const repoId = getRepoId(localPath);
+    if (!repoId) {
+      throw new BadRequestError(`Could not detect GitHub repo at: ${localPath}`);
     }
-  }
 
-  // Start Claude process
-  const sessionId = randomUUID();
-  const startedAt = new Date().toISOString();
+    // Check if already running for this path
+    for (const [sessionId, agent] of runningAgents) {
+      if (agent.session.worktreePath === localPath && agent.session.status === "running") {
+        return c.json({
+          status: "already_running",
+          sessionId,
+          pid: agent.session.pid,
+          repoId: agent.session.repoId,
+          startedAt: agent.session.startedAt,
+        });
+      }
+    }
 
-  const claudeProcess = spawn("claude", ["-p", prompt], {
-    cwd: localPath,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
-  });
+    // Generate prompt
+    const prompt = await generatePrompt(repoId, localPath, input.planId, input.branch);
 
-  if (!claudeProcess.pid) {
-    throw new BadRequestError("Failed to start Claude process");
-  }
+    // Get current branch
+    let branch: string | null = input.branch ?? null;
+    if (!branch) {
+      try {
+        branch =
+          execSync(`cd "${localPath}" && git branch --show-current`, {
+            encoding: "utf-8",
+          }).trim() || null;
+      } catch {
+        branch = null;
+      }
+    }
 
-  const pid = claudeProcess.pid;
+    // Start Claude process
+    const sessionId = randomUUID();
+    const startedAt = new Date().toISOString();
 
-  // Create session object
-  const session: AgentSession = {
-    id: sessionId,
-    repoId,
-    worktreePath: localPath,
-    branch,
-    status: "running",
-    pid,
-    startedAt,
-    lastSeenAt: startedAt,
-    endedAt: null,
-    exitCode: null,
-  };
+    const claudeProcess = spawn("claude", ["-p", prompt], {
+      cwd: localPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
 
-  // Save session to DB
-  await db.insert(schema.agentSessions).values({
-    id: sessionId,
-    repoId,
-    worktreePath: localPath,
-    branch,
-    status: "running",
-    pid,
-    startedAt,
-    lastSeenAt: startedAt,
-  });
+    if (!claudeProcess.pid) {
+      throw new BadRequestError("Failed to start Claude process");
+    }
 
-  // Write initial heartbeat
-  writeHeartbeat(localPath, pid);
+    const pid = claudeProcess.pid;
 
-  // Start heartbeat updater (every 5 seconds)
-  const heartbeatInterval = setInterval(async () => {
+    // Create session object
+    const session: AgentSession = {
+      id: sessionId,
+      repoId,
+      worktreePath: localPath,
+      branch,
+      status: "running",
+      pid,
+      startedAt,
+      lastSeenAt: startedAt,
+      endedAt: null,
+      exitCode: null,
+    };
+
+    // Save session to DB
+    await db.insert(schema.agentSessions).values({
+      id: sessionId,
+      repoId,
+      worktreePath: localPath,
+      branch,
+      status: "running",
+      pid,
+      startedAt,
+      lastSeenAt: startedAt,
+    });
+
+    // Write initial heartbeat
     writeHeartbeat(localPath, pid);
-    // Update lastSeenAt in DB
-    await db
-      .update(schema.agentSessions)
-      .set({ lastSeenAt: new Date().toISOString() })
-      .where(eq(schema.agentSessions.id, sessionId));
-  }, 5000);
 
-  // Track the running agent
-  runningAgents.set(sessionId, {
-    process: claudeProcess,
-    heartbeatInterval,
-    session,
-  });
+    // Start heartbeat updater (every 5 seconds)
+    const heartbeatInterval = setInterval(async () => {
+      writeHeartbeat(localPath, pid);
+      // Update lastSeenAt in DB
+      await db
+        .update(schema.agentSessions)
+        .set({ lastSeenAt: new Date().toISOString() })
+        .where(eq(schema.agentSessions.id, sessionId));
+    }, 5000);
 
-  // Log start instruction
-  await logInstruction(
-    repoId,
-    input.planId ?? null,
-    localPath,
-    "system_note",
-    `Claude agent started (session: ${sessionId})`,
-  );
-
-  // Broadcast start event
-  broadcast({
-    type: "agent.started",
-    repoId,
-    data: { sessionId, pid, startedAt, localPath, branch },
-  });
-
-  // Stream stdout
-  claudeProcess.stdout?.on("data", (data) => {
-    const output = data.toString();
-    broadcast({
-      type: "agent.output",
-      repoId,
-      data: {
-        sessionId,
-        stream: "stdout",
-        data: output,
-        timestamp: new Date().toISOString(),
-      },
+    // Track the running agent
+    runningAgents.set(sessionId, {
+      process: claudeProcess,
+      heartbeatInterval,
+      session,
     });
-  });
 
-  // Stream stderr
-  claudeProcess.stderr?.on("data", (data) => {
-    const output = data.toString();
-    broadcast({
-      type: "agent.output",
+    // Log start instruction
+    await logInstruction(
       repoId,
-      data: {
-        sessionId,
-        stream: "stderr",
-        data: output,
-        timestamp: new Date().toISOString(),
-      },
+      input.planId ?? null,
+      localPath,
+      "system_note",
+      `Claude agent started (session: ${sessionId})`,
+    );
+
+    // Broadcast start event
+    broadcast({
+      type: "agent.started",
+      repoId,
+      data: { sessionId, pid, startedAt, localPath, branch },
     });
-  });
 
-  // Handle process exit
-  claudeProcess.on("exit", async (code) => {
-    const agent = runningAgents.get(sessionId);
-    if (agent) {
-      clearInterval(agent.heartbeatInterval);
-      removeHeartbeat(localPath);
-      runningAgents.delete(sessionId);
-
-      // Update session in DB
-      await updateSessionStatus(sessionId, "exited", code ?? undefined);
-
-      // Log finish instruction
-      await logInstruction(
-        repoId,
-        input.planId ?? null,
-        localPath,
-        "system_note",
-        `Claude agent finished with exit code ${code} (session: ${sessionId})`,
-      );
-
-      // Broadcast finish event
+    // Stream stdout
+    claudeProcess.stdout?.on("data", (data) => {
+      const output = data.toString();
       broadcast({
-        type: "agent.finished",
-        repoId,
-        data: { sessionId, pid, exitCode: code, finishedAt: new Date().toISOString() },
-      });
-    }
-  });
-
-  claudeProcess.on("error", async (err) => {
-    const agent = runningAgents.get(sessionId);
-    if (agent) {
-      clearInterval(agent.heartbeatInterval);
-      removeHeartbeat(localPath);
-      runningAgents.delete(sessionId);
-
-      // Update session in DB
-      await updateSessionStatus(sessionId, "exited", -1);
-
-      // Log error
-      await logInstruction(
-        repoId,
-        input.planId ?? null,
-        localPath,
-        "system_note",
-        `Claude agent error: ${err.message} (session: ${sessionId})`,
-      );
-
-      broadcast({
-        type: "agent.finished",
+        type: "agent.output",
         repoId,
         data: {
           sessionId,
-          pid,
-          exitCode: -1,
-          error: err.message,
-          finishedAt: new Date().toISOString(),
+          stream: "stdout",
+          data: output,
+          timestamp: new Date().toISOString(),
         },
       });
+    });
+
+    // Stream stderr
+    claudeProcess.stderr?.on("data", (data) => {
+      const output = data.toString();
+      broadcast({
+        type: "agent.output",
+        repoId,
+        data: {
+          sessionId,
+          stream: "stderr",
+          data: output,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    });
+
+    // Handle process exit
+    claudeProcess.on("exit", async (code) => {
+      const agent = runningAgents.get(sessionId);
+      if (agent) {
+        clearInterval(agent.heartbeatInterval);
+        removeHeartbeat(localPath);
+        runningAgents.delete(sessionId);
+
+        // Update session in DB
+        await updateSessionStatus(sessionId, "exited", code ?? undefined);
+
+        // Log finish instruction
+        await logInstruction(
+          repoId,
+          input.planId ?? null,
+          localPath,
+          "system_note",
+          `Claude agent finished with exit code ${code} (session: ${sessionId})`,
+        );
+
+        // Broadcast finish event
+        broadcast({
+          type: "agent.finished",
+          repoId,
+          data: { sessionId, pid, exitCode: code, finishedAt: new Date().toISOString() },
+        });
+      }
+    });
+
+    claudeProcess.on("error", async (err) => {
+      const agent = runningAgents.get(sessionId);
+      if (agent) {
+        clearInterval(agent.heartbeatInterval);
+        removeHeartbeat(localPath);
+        runningAgents.delete(sessionId);
+
+        // Update session in DB
+        await updateSessionStatus(sessionId, "exited", -1);
+
+        // Log error
+        await logInstruction(
+          repoId,
+          input.planId ?? null,
+          localPath,
+          "system_note",
+          `Claude agent error: ${err.message} (session: ${sessionId})`,
+        );
+
+        broadcast({
+          type: "agent.finished",
+          repoId,
+          data: {
+            sessionId,
+            pid,
+            exitCode: -1,
+            error: err.message,
+            finishedAt: new Date().toISOString(),
+          },
+        });
+      }
+    });
+
+    return c.json({
+      status: "started",
+      sessionId,
+      pid,
+      repoId,
+      startedAt,
+      localPath,
+      branch,
+    });
+  })
+
+  // POST /api/ai/stop - Stop a running Claude agent
+  .post("/stop", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(aiStopSchema, body);
+
+    // Find agent by pid
+    let targetSessionId: string | null = null;
+    let targetAgent: RunningAgent | null = null;
+
+    for (const [sessionId, agent] of runningAgents) {
+      if (agent.session.pid === input.pid) {
+        targetSessionId = sessionId;
+        targetAgent = agent;
+        break;
+      }
     }
-  });
 
-  return c.json({
-    status: "started",
-    sessionId,
-    pid,
-    repoId,
-    startedAt,
-    localPath,
-    branch,
-  });
-});
-
-// POST /api/ai/stop - Stop a running Claude agent
-aiRouter.post("/stop", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(aiStopSchema, body);
-
-  // Find agent by pid
-  let targetSessionId: string | null = null;
-  let targetAgent: RunningAgent | null = null;
-
-  for (const [sessionId, agent] of runningAgents) {
-    if (agent.session.pid === input.pid) {
-      targetSessionId = sessionId;
-      targetAgent = agent;
-      break;
+    if (!targetSessionId || !targetAgent) {
+      throw new NotFoundError(`No running agent with pid: ${input.pid}`);
     }
-  }
 
-  if (!targetSessionId || !targetAgent) {
-    throw new NotFoundError(`No running agent with pid: ${input.pid}`);
-  }
+    // Clean up
+    clearInterval(targetAgent.heartbeatInterval);
+    removeHeartbeat(targetAgent.session.worktreePath);
 
-  // Clean up
-  clearInterval(targetAgent.heartbeatInterval);
-  removeHeartbeat(targetAgent.session.worktreePath);
-
-  // Kill the process
-  try {
-    targetAgent.process.kill("SIGTERM");
-  } catch {
+    // Kill the process
     try {
-      targetAgent.process.kill("SIGKILL");
+      targetAgent.process.kill("SIGTERM");
     } catch {
-      // Ignore
+      try {
+        targetAgent.process.kill("SIGKILL");
+      } catch {
+        // Ignore
+      }
     }
-  }
 
-  runningAgents.delete(targetSessionId);
+    runningAgents.delete(targetSessionId);
 
-  // Update session in DB
-  await updateSessionStatus(targetSessionId, "stopped");
+    // Update session in DB
+    await updateSessionStatus(targetSessionId, "stopped");
 
-  // Log stop instruction
-  await logInstruction(
-    targetAgent.session.repoId,
-    null,
-    targetAgent.session.worktreePath,
-    "system_note",
-    `Claude agent stopped from UI (session: ${targetSessionId})`,
-  );
+    // Log stop instruction
+    await logInstruction(
+      targetAgent.session.repoId,
+      null,
+      targetAgent.session.worktreePath,
+      "system_note",
+      `Claude agent stopped from UI (session: ${targetSessionId})`,
+    );
 
-  // Broadcast stop event
-  broadcast({
-    type: "agent.stopped",
-    repoId: targetAgent.session.repoId,
-    data: { sessionId: targetSessionId, pid: input.pid, stoppedAt: new Date().toISOString() },
+    // Broadcast stop event
+    broadcast({
+      type: "agent.stopped",
+      repoId: targetAgent.session.repoId,
+      data: { sessionId: targetSessionId, pid: input.pid, stoppedAt: new Date().toISOString() },
+    });
+
+    return c.json({ status: "stopped", sessionId: targetSessionId, pid: input.pid });
+  })
+
+  // GET /api/ai/status - Get status of running agents
+  .get("/status", (c) => {
+    const agents: AgentSession[] = [];
+
+    for (const [, agent] of runningAgents) {
+      agents.push(agent.session);
+    }
+
+    return c.json({ agents });
+  })
+
+  // GET /api/ai/sessions - Get all sessions from DB
+  .get("/sessions", async (c) => {
+    const repoId = c.req.query("repoId");
+
+    let sessions;
+    if (repoId) {
+      sessions = await db
+        .select()
+        .from(schema.agentSessions)
+        .where(eq(schema.agentSessions.repoId, repoId))
+        .orderBy(schema.agentSessions.startedAt);
+    } else {
+      sessions = await db
+        .select()
+        .from(schema.agentSessions)
+        .orderBy(schema.agentSessions.startedAt);
+    }
+
+    return c.json({ sessions });
   });
-
-  return c.json({ status: "stopped", sessionId: targetSessionId, pid: input.pid });
-});
-
-// GET /api/ai/status - Get status of running agents
-aiRouter.get("/status", (c) => {
-  const agents: AgentSession[] = [];
-
-  for (const [, agent] of runningAgents) {
-    agents.push(agent.session);
-  }
-
-  return c.json({ agents });
-});
-
-// GET /api/ai/sessions - Get all sessions from DB
-aiRouter.get("/sessions", async (c) => {
-  const repoId = c.req.query("repoId");
-
-  let sessions;
-  if (repoId) {
-    sessions = await db
-      .select()
-      .from(schema.agentSessions)
-      .where(eq(schema.agentSessions.repoId, repoId))
-      .orderBy(schema.agentSessions.startedAt);
-  } else {
-    sessions = await db.select().from(schema.agentSessions).orderBy(schema.agentSessions.startedAt);
-  }
-
-  return c.json({ sessions });
-});

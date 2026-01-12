@@ -18,8 +18,6 @@ import {
 import { BadRequestError, NotFoundError } from "../middleware/error-handler";
 import type { ChatSession, ChatMessage, ChatSummary, BranchNamingRule } from "../../shared/types";
 
-export const chatRouter = new Hono();
-
 // Helper to convert DB row to ChatSession
 function toSession(row: typeof schema.chatSessions.$inferSelect): ChatSession {
   return {
@@ -47,773 +45,6 @@ function toMessage(row: typeof schema.chatMessages.$inferSelect): ChatMessage {
     createdAt: row.createdAt,
   };
 }
-
-// GET /api/chat/sessions - List sessions for a repo
-chatRouter.get("/sessions", async (c) => {
-  const repoId = c.req.query("repoId");
-  if (!repoId) {
-    throw new BadRequestError("repoId is required");
-  }
-
-  const sessions = await db
-    .select()
-    .from(schema.chatSessions)
-    .where(eq(schema.chatSessions.repoId, repoId))
-    .orderBy(desc(schema.chatSessions.lastUsedAt));
-
-  return c.json(sessions.map(toSession));
-});
-
-// POST /api/chat/sessions - Create or get existing session for branch
-chatRouter.post("/sessions", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(createChatSessionSchema, body);
-  const worktreePath = expandTilde(input.worktreePath);
-  const branchName = input.branchName;
-
-  // Check if session already exists for this branch (primary key is branchName, not worktreePath)
-  const existing = await db
-    .select()
-    .from(schema.chatSessions)
-    .where(
-      and(
-        eq(schema.chatSessions.repoId, input.repoId),
-        eq(schema.chatSessions.branchName, branchName),
-        eq(schema.chatSessions.status, "active"),
-      ),
-    );
-
-  if (existing[0]) {
-    // Update lastUsedAt and worktreePath (may have changed)
-    const now = new Date().toISOString();
-    await db
-      .update(schema.chatSessions)
-      .set({ lastUsedAt: now, updatedAt: now, worktreePath })
-      .where(eq(schema.chatSessions.id, existing[0].id));
-
-    return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now, worktreePath }));
-  }
-
-  // Create new session
-  const now = new Date().toISOString();
-  const sessionId = randomUUID();
-
-  await db.insert(schema.chatSessions).values({
-    id: sessionId,
-    repoId: input.repoId,
-    worktreePath,
-    branchName,
-    planId: input.planId ?? null,
-    status: "active",
-    lastUsedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  const session: ChatSession = {
-    id: sessionId,
-    repoId: input.repoId,
-    worktreePath,
-    branchName,
-    planId: input.planId ?? null,
-    status: "active",
-    lastUsedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  return c.json(session);
-});
-
-// POST /api/chat/sessions/planning - Create or get planning session (no worktree needed)
-chatRouter.post("/sessions/planning", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(createPlanningSessionSchema, body);
-  const localPath = expandTilde(input.localPath);
-
-  // Use localPath as worktreePath for planning sessions
-  const planningWorktreePath = `planning:${localPath}`;
-
-  // Check if planning session already exists for this repo
-  const existing = await db
-    .select()
-    .from(schema.chatSessions)
-    .where(
-      and(
-        eq(schema.chatSessions.repoId, input.repoId),
-        eq(schema.chatSessions.worktreePath, planningWorktreePath),
-        eq(schema.chatSessions.status, "active"),
-      ),
-    );
-
-  if (existing[0]) {
-    // Update lastUsedAt
-    const now = new Date().toISOString();
-    await db
-      .update(schema.chatSessions)
-      .set({ lastUsedAt: now, updatedAt: now })
-      .where(eq(schema.chatSessions.id, existing[0].id));
-
-    return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now }));
-  }
-
-  // Create new planning session
-  const now = new Date().toISOString();
-  const sessionId = randomUUID();
-
-  await db.insert(schema.chatSessions).values({
-    id: sessionId,
-    repoId: input.repoId,
-    worktreePath: planningWorktreePath,
-    branchName: null,
-    planId: null,
-    status: "active",
-    lastUsedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Add initial assistant message
-  const initialMessage = `こんにちは！何を作りたいですか？
-
-URLやドキュメント（Notion、Google Docs など）があれば共有してください。内容を確認して、タスクを分解するお手伝いをします。`;
-
-  await db.insert(schema.chatMessages).values({
-    sessionId,
-    role: "assistant",
-    content: initialMessage,
-    createdAt: now,
-  });
-
-  const session: ChatSession = {
-    id: sessionId,
-    repoId: input.repoId,
-    worktreePath: planningWorktreePath,
-    branchName: null,
-    planId: null,
-    status: "active",
-    lastUsedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  return c.json(session);
-});
-
-// POST /api/chat/sessions/archive - Archive a session
-chatRouter.post("/sessions/archive", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(archiveChatSessionSchema, body);
-
-  const now = new Date().toISOString();
-  await db
-    .update(schema.chatSessions)
-    .set({ status: "archived", updatedAt: now })
-    .where(eq(schema.chatSessions.id, input.sessionId));
-
-  return c.json({ success: true });
-});
-
-// GET /api/chat/messages - Get messages for a session
-chatRouter.get("/messages", async (c) => {
-  const sessionId = c.req.query("sessionId");
-  if (!sessionId) {
-    throw new BadRequestError("sessionId is required");
-  }
-
-  const messages = await db
-    .select()
-    .from(schema.chatMessages)
-    .where(eq(schema.chatMessages.sessionId, sessionId))
-    .orderBy(asc(schema.chatMessages.createdAt));
-
-  return c.json(messages.map(toMessage));
-});
-
-// GET /api/chat/running - Check if there's a running agent for a session
-chatRouter.get("/running", async (c) => {
-  const sessionId = c.req.query("sessionId");
-  if (!sessionId) {
-    throw new BadRequestError("sessionId is required");
-  }
-
-  const runningRuns = await db
-    .select()
-    .from(schema.agentRuns)
-    .where(and(eq(schema.agentRuns.sessionId, sessionId), eq(schema.agentRuns.status, "running")))
-    .limit(1);
-
-  return c.json({ isRunning: runningRuns.length > 0 });
-});
-
-// POST /api/chat/cancel - Cancel a running agent
-chatRouter.post("/cancel", async (c) => {
-  const body = await c.req.json();
-  const sessionId = body.sessionId;
-  if (!sessionId) {
-    throw new BadRequestError("sessionId is required");
-  }
-
-  // Find running agent run
-  const runningRuns = await db
-    .select()
-    .from(schema.agentRuns)
-    .where(and(eq(schema.agentRuns.sessionId, sessionId), eq(schema.agentRuns.status, "running")))
-    .limit(1);
-
-  const run = runningRuns[0];
-  if (!run) {
-    return c.json({ success: false, message: "No running agent found" });
-  }
-
-  // Kill the process if we have a pid
-  if (run.pid) {
-    try {
-      process.kill(run.pid, "SIGTERM");
-    } catch (err) {
-      console.error(`[Chat] Failed to kill process ${run.pid}:`, err);
-    }
-  }
-
-  // Update agent run status
-  const now = new Date().toISOString();
-  await db
-    .update(schema.agentRuns)
-    .set({ status: "cancelled", finishedAt: now })
-    .where(eq(schema.agentRuns.id, run.id));
-
-  // Get session for repoId
-  const sessions = await db
-    .select()
-    .from(schema.chatSessions)
-    .where(eq(schema.chatSessions.id, sessionId))
-    .limit(1);
-
-  const session = sessions[0];
-  if (session) {
-    // Broadcast streaming end
-    broadcast({
-      type: "chat.streaming.end",
-      repoId: session.repoId,
-      data: { sessionId, message: null },
-    });
-  }
-
-  return c.json({ success: true });
-});
-
-// PATCH /api/chat/messages/:id/instruction-status - Update instruction edit status
-chatRouter.patch("/messages/:id/instruction-status", async (c) => {
-  const messageId = parseInt(c.req.param("id"), 10);
-  if (isNaN(messageId)) {
-    throw new BadRequestError("Invalid message ID");
-  }
-
-  const body = await c.req.json();
-  const status = body.status as "committed" | "rejected";
-
-  if (status !== "committed" && status !== "rejected") {
-    throw new BadRequestError("status must be 'committed' or 'rejected'");
-  }
-
-  // Get the message first
-  const messages = await db
-    .select()
-    .from(schema.chatMessages)
-    .where(eq(schema.chatMessages.id, messageId));
-
-  const message = messages[0];
-  if (!message) {
-    throw new NotFoundError("Message not found");
-  }
-
-  // Update the status
-  await db
-    .update(schema.chatMessages)
-    .set({ instructionEditStatus: status })
-    .where(eq(schema.chatMessages.id, messageId));
-
-  return c.json({ success: true, status });
-});
-
-// POST /api/chat/send - Send a message (execute Claude asynchronously)
-chatRouter.post("/send", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(chatSendSchema, body);
-
-  // Get session
-  const sessions = await db
-    .select()
-    .from(schema.chatSessions)
-    .where(eq(schema.chatSessions.id, input.sessionId));
-
-  const session = sessions[0];
-  if (!session) {
-    throw new NotFoundError("Session not found");
-  }
-
-  // Handle planning sessions (worktreePath starts with "planning:")
-  const isPlanningSession = session.worktreePath.startsWith("planning:");
-  let worktreePath: string;
-
-  if (isPlanningSession) {
-    // For planning sessions, get the local path from repo_pins
-    const repoPins = await db
-      .select()
-      .from(schema.repoPins)
-      .where(eq(schema.repoPins.repoId, session.repoId))
-      .limit(1);
-
-    const repoPin = repoPins[0];
-    if (!repoPin) {
-      throw new BadRequestError(`Repo pin not found for repoId: ${session.repoId}`);
-    }
-    worktreePath = repoPin.localPath;
-  } else {
-    worktreePath = session.worktreePath;
-  }
-
-  if (!existsSync(worktreePath)) {
-    throw new BadRequestError(`Path does not exist: ${worktreePath}`);
-  }
-
-  const now = new Date().toISOString();
-
-  // 1. Save user message
-  const userMsgResult = await db
-    .insert(schema.chatMessages)
-    .values({
-      sessionId: input.sessionId,
-      role: "user",
-      content: input.userMessage,
-      chatMode: input.chatMode ?? null,
-      createdAt: now,
-    })
-    .returning();
-
-  const userMsg = userMsgResult[0];
-  if (!userMsg) {
-    throw new BadRequestError("Failed to save user message");
-  }
-
-  // Note: User message is returned via API response, not broadcast
-  // Only assistant messages are broadcast via WebSocket to avoid duplicates
-
-  // 2. Build prompt with context
-  const prompt = await buildPrompt(session, input.userMessage, input.context);
-
-  // 3. Create agent run record (status: running)
-  const promptDigest = createHash("md5").update(prompt).digest("hex");
-  const startedAt = new Date().toISOString();
-
-  const runResult = await db
-    .insert(schema.agentRuns)
-    .values({
-      sessionId: input.sessionId,
-      repoId: session.repoId,
-      worktreePath,
-      inputPromptDigest: promptDigest,
-      startedAt,
-      status: "running",
-      createdAt: startedAt,
-    })
-    .returning();
-
-  const run = runResult[0];
-  if (!run) {
-    throw new BadRequestError("Failed to create agent run record");
-  }
-  const runId = run.id;
-
-  // 4. Execute Claude ASYNCHRONOUSLY (non-blocking)
-  // Return immediately, process in background
-  const isExecution = input.chatMode === "execution";
-  const claudeArgs = ["-p", prompt];
-  if (isExecution) {
-    // Execution mode: use streaming + bypass permissions
-    claudeArgs.push("--output-format", "stream-json", "--verbose", "--include-partial-messages");
-    claudeArgs.push("--dangerously-skip-permissions");
-  }
-
-  // Spawn claude process in background
-  const claudeProcess = spawn("claude", claudeArgs, {
-    cwd: worktreePath,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
-  });
-
-  // Save pid for cancellation
-  if (claudeProcess.pid) {
-    await db
-      .update(schema.agentRuns)
-      .set({ pid: claudeProcess.pid })
-      .where(eq(schema.agentRuns.id, runId));
-  }
-
-  let accumulatedText = "";
-  const streamingChunks: Array<{
-    type: "thinking" | "text" | "tool_use" | "tool_result";
-    content?: string;
-    toolName?: string;
-    toolInput?: unknown;
-  }> = [];
-  let stderr = "";
-  let lineBuffer = "";
-
-  // Broadcast streaming start
-  broadcast({
-    type: "chat.streaming.start",
-    repoId: session.repoId,
-    data: { sessionId: input.sessionId, chatMode: input.chatMode },
-  });
-
-  claudeProcess.stdout.on("data", (data: Buffer) => {
-    if (isExecution) {
-      // Execution mode: parse stream-json format
-      lineBuffer += data.toString();
-      const lines = lineBuffer.split("\n");
-      lineBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const json = JSON.parse(line);
-
-          if (json.type === "assistant" && json.message?.content) {
-            for (const block of json.message.content) {
-              if (block.type === "thinking" && block.thinking) {
-                streamingChunks.push({ type: "thinking", content: block.thinking });
-                broadcast({
-                  type: "chat.streaming.chunk",
-                  repoId: session.repoId,
-                  data: {
-                    sessionId: input.sessionId,
-                    chunkType: "thinking",
-                    content: block.thinking,
-                  },
-                });
-              } else if (block.type === "text" && block.text) {
-                accumulatedText += block.text;
-                streamingChunks.push({ type: "text", content: block.text });
-                broadcast({
-                  type: "chat.streaming.chunk",
-                  repoId: session.repoId,
-                  data: {
-                    sessionId: input.sessionId,
-                    chunkType: "text",
-                    content: block.text,
-                  },
-                });
-              } else if (block.type === "tool_use") {
-                streamingChunks.push({
-                  type: "tool_use",
-                  toolName: block.name,
-                  toolInput: block.input,
-                });
-                broadcast({
-                  type: "chat.streaming.chunk",
-                  repoId: session.repoId,
-                  data: {
-                    sessionId: input.sessionId,
-                    chunkType: "tool_use",
-                    toolName: block.name,
-                    toolInput: block.input,
-                  },
-                });
-              } else if (block.type === "tool_result") {
-                const resultContent =
-                  typeof block.content === "string" ? block.content : JSON.stringify(block.content);
-                streamingChunks.push({ type: "tool_result", content: resultContent });
-                broadcast({
-                  type: "chat.streaming.chunk",
-                  repoId: session.repoId,
-                  data: {
-                    sessionId: input.sessionId,
-                    chunkType: "tool_result",
-                    content: resultContent,
-                  },
-                });
-              }
-            }
-          } else if (json.type === "content_block_delta") {
-            if (json.delta?.thinking) {
-              streamingChunks.push({ type: "thinking", content: json.delta.thinking });
-              broadcast({
-                type: "chat.streaming.chunk",
-                repoId: session.repoId,
-                data: {
-                  sessionId: input.sessionId,
-                  chunkType: "thinking_delta",
-                  content: json.delta.thinking,
-                },
-              });
-            } else if (json.delta?.text) {
-              accumulatedText += json.delta.text;
-              streamingChunks.push({ type: "text", content: json.delta.text });
-              broadcast({
-                type: "chat.streaming.chunk",
-                repoId: session.repoId,
-                data: {
-                  sessionId: input.sessionId,
-                  chunkType: "text_delta",
-                  content: json.delta.text,
-                },
-              });
-            }
-          }
-        } catch {
-          // Non-JSON line, ignore
-        }
-      }
-    } else {
-      // Planning mode: plain text output
-      accumulatedText += data.toString();
-    }
-  });
-
-  claudeProcess.stderr.on("data", (data: Buffer) => {
-    stderr += data.toString();
-  });
-
-  claudeProcess.on("close", async (code) => {
-    const finishedAt = new Date().toISOString();
-    const status = code === 0 ? "success" : "failed";
-
-    // For execution mode with chunks, save structured content
-    // For planning mode, save plain text
-    let assistantContent: string;
-    if (isExecution && streamingChunks.length > 0) {
-      assistantContent = JSON.stringify({ chunks: streamingChunks });
-    } else {
-      assistantContent = accumulatedText.trim() || "Claude execution failed. Please try again.";
-    }
-
-    // Update agent run
-    await db
-      .update(schema.agentRuns)
-      .set({
-        finishedAt,
-        status,
-        stdoutSnippet: accumulatedText.slice(0, 5000),
-        stderrSnippet: stderr.slice(0, 1000),
-      })
-      .where(eq(schema.agentRuns.id, runId));
-
-    // Save assistant message
-    const assistantMsgResult = await db
-      .insert(schema.chatMessages)
-      .values({
-        sessionId: input.sessionId,
-        role: "assistant",
-        content: assistantContent,
-        chatMode: input.chatMode ?? null,
-        createdAt: finishedAt,
-      })
-      .returning();
-
-    const assistantMsg = assistantMsgResult[0];
-    if (assistantMsg) {
-      // Update session lastUsedAt
-      await db
-        .update(schema.chatSessions)
-        .set({ lastUsedAt: finishedAt, updatedAt: finishedAt })
-        .where(eq(schema.chatSessions.id, input.sessionId));
-
-      // Broadcast streaming end
-      broadcast({
-        type: "chat.streaming.end",
-        repoId: session.repoId,
-        data: { sessionId: input.sessionId, message: toMessage(assistantMsg) },
-      });
-
-      // Broadcast assistant message
-      broadcast({
-        type: "chat.message",
-        repoId: session.repoId,
-        data: toMessage(assistantMsg),
-      });
-
-      // Auto-link PRs found in assistant response (for execution mode)
-      if (input.chatMode === "execution" && session.branchName) {
-        const prUrls = extractGitHubPrUrls(assistantContent);
-        for (const pr of prUrls) {
-          try {
-            await savePrLink(session.repoId, session.branchName, pr.url, pr.number);
-          } catch (err) {
-            console.error(`[Chat] Failed to auto-link PR:`, err);
-          }
-        }
-      }
-    }
-  });
-
-  claudeProcess.on("error", async (err) => {
-    console.error(`[Chat] Claude process error:`, err);
-    const finishedAt = new Date().toISOString();
-
-    // Update agent run as failed
-    await db
-      .update(schema.agentRuns)
-      .set({
-        finishedAt,
-        status: "failed",
-        stderrSnippet: err.message.slice(0, 1000),
-      })
-      .where(eq(schema.agentRuns.id, runId));
-
-    // Save error message
-    const assistantMsgResult = await db
-      .insert(schema.chatMessages)
-      .values({
-        sessionId: input.sessionId,
-        role: "assistant",
-        content: `Claude execution failed: ${err.message}`,
-        chatMode: input.chatMode ?? null,
-        createdAt: finishedAt,
-      })
-      .returning();
-
-    const assistantMsg = assistantMsgResult[0];
-    if (assistantMsg) {
-      // Broadcast streaming end
-      broadcast({
-        type: "chat.streaming.end",
-        repoId: session.repoId,
-        data: { sessionId: input.sessionId, message: toMessage(assistantMsg) },
-      });
-
-      broadcast({
-        type: "chat.message",
-        repoId: session.repoId,
-        data: toMessage(assistantMsg),
-      });
-    }
-  });
-
-  // Return immediately with user message and run ID
-  // Assistant message will be broadcast via WebSocket when ready
-  return c.json({
-    userMessage: toMessage(userMsg),
-    runId: runId,
-    status: "processing",
-  });
-});
-
-// POST /api/chat/summarize - Generate summary of conversation
-chatRouter.post("/summarize", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(chatSummarizeSchema, body);
-
-  // Get session
-  const sessions = await db
-    .select()
-    .from(schema.chatSessions)
-    .where(eq(schema.chatSessions.id, input.sessionId));
-
-  const session = sessions[0];
-  if (!session) {
-    throw new NotFoundError("Session not found");
-  }
-
-  // Get latest summary if exists
-  const summaries = await db
-    .select()
-    .from(schema.chatSummaries)
-    .where(eq(schema.chatSummaries.sessionId, input.sessionId))
-    .orderBy(desc(schema.chatSummaries.createdAt))
-    .limit(1);
-
-  const lastSummary = summaries[0];
-  const coveredUntil = lastSummary?.coveredUntilMessageId ?? 0;
-
-  // Get messages after last summary
-  const messages = await db
-    .select()
-    .from(schema.chatMessages)
-    .where(
-      and(
-        eq(schema.chatMessages.sessionId, input.sessionId),
-        gt(schema.chatMessages.id, coveredUntil),
-      ),
-    )
-    .orderBy(asc(schema.chatMessages.createdAt));
-
-  if (messages.length === 0) {
-    return c.json({ message: "No new messages to summarize" });
-  }
-
-  // Build summary prompt
-  const conversationText = messages.map((m) => `[${m.role}]: ${m.content}`).join("\n\n");
-
-  const summaryPrompt = `Please summarize the following conversation. Focus on:
-1. Key decisions made
-2. Tasks completed
-3. Outstanding issues or next steps
-4. Important context that should be preserved
-
-Conversation:
-${conversationText}
-
-Provide a concise markdown summary (max 500 words).`;
-
-  let summaryContent = "";
-  try {
-    summaryContent = execSync(`claude -p "${escapeShell(summaryPrompt)}"`, {
-      cwd: session.worktreePath,
-      encoding: "utf-8",
-      maxBuffer: 5 * 1024 * 1024,
-      timeout: 60000,
-    });
-  } catch {
-    // Fallback: simple summary
-    summaryContent = `## Conversation Summary\n\n- ${messages.length} messages exchanged\n- Last update: ${messages[messages.length - 1]?.createdAt}`;
-  }
-
-  const now = new Date().toISOString();
-  const lastMessageId = messages[messages.length - 1]?.id ?? 0;
-
-  await db.insert(schema.chatSummaries).values({
-    sessionId: input.sessionId,
-    summaryMarkdown: summaryContent,
-    coveredUntilMessageId: lastMessageId,
-    createdAt: now,
-  });
-
-  const summary: ChatSummary = {
-    id: 0, // Will be set by DB
-    sessionId: input.sessionId,
-    summaryMarkdown: summaryContent,
-    coveredUntilMessageId: lastMessageId,
-    createdAt: now,
-  };
-
-  return c.json(summary);
-});
-
-// POST /api/chat/purge - Delete old messages
-chatRouter.post("/purge", async (c) => {
-  const body = await c.req.json();
-  const input = validateOrThrow(chatPurgeSchema, body);
-
-  // Get all messages for session ordered by id desc
-  const messages = await db
-    .select()
-    .from(schema.chatMessages)
-    .where(eq(schema.chatMessages.sessionId, input.sessionId))
-    .orderBy(desc(schema.chatMessages.id));
-
-  if (messages.length <= input.keepLastN) {
-    return c.json({ deleted: 0, remaining: messages.length });
-  }
-
-  // Delete old messages (all except last N)
-  const toDelete = messages.slice(input.keepLastN);
-  for (const msg of toDelete) {
-    await db.delete(schema.chatMessages).where(eq(schema.chatMessages.id, msg.id));
-  }
-
-  return c.json({ deleted: toDelete.length, remaining: input.keepLastN });
-});
 
 // Refinement system prompt (task breakdown)
 const REFINEMENT_SYSTEM_PROMPT = `あなたはプロジェクト計画のアシスタントです。
@@ -1403,3 +634,773 @@ async function savePrLink(
     }
   }
 }
+
+export const chatRouter = new Hono()
+  // GET /api/chat/sessions - List sessions for a repo
+  .get("/sessions", async (c) => {
+    const repoId = c.req.query("repoId");
+    if (!repoId) {
+      throw new BadRequestError("repoId is required");
+    }
+
+    const sessions = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.repoId, repoId))
+      .orderBy(desc(schema.chatSessions.lastUsedAt));
+
+    return c.json(sessions.map(toSession));
+  })
+
+  // POST /api/chat/sessions - Create or get existing session for branch
+  .post("/sessions", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(createChatSessionSchema, body);
+    const worktreePath = expandTilde(input.worktreePath);
+    const branchName = input.branchName;
+
+    // Check if session already exists for this branch (primary key is branchName, not worktreePath)
+    const existing = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(
+        and(
+          eq(schema.chatSessions.repoId, input.repoId),
+          eq(schema.chatSessions.branchName, branchName),
+          eq(schema.chatSessions.status, "active"),
+        ),
+      );
+
+    if (existing[0]) {
+      // Update lastUsedAt and worktreePath (may have changed)
+      const now = new Date().toISOString();
+      await db
+        .update(schema.chatSessions)
+        .set({ lastUsedAt: now, updatedAt: now, worktreePath })
+        .where(eq(schema.chatSessions.id, existing[0].id));
+
+      return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now, worktreePath }));
+    }
+
+    // Create new session
+    const now = new Date().toISOString();
+    const sessionId = randomUUID();
+
+    await db.insert(schema.chatSessions).values({
+      id: sessionId,
+      repoId: input.repoId,
+      worktreePath,
+      branchName,
+      planId: input.planId ?? null,
+      status: "active",
+      lastUsedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const session: ChatSession = {
+      id: sessionId,
+      repoId: input.repoId,
+      worktreePath,
+      branchName,
+      planId: input.planId ?? null,
+      status: "active",
+      lastUsedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    return c.json(session);
+  })
+
+  // POST /api/chat/sessions/planning - Create or get planning session (no worktree needed)
+  .post("/sessions/planning", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(createPlanningSessionSchema, body);
+    const localPath = expandTilde(input.localPath);
+
+    // Use localPath as worktreePath for planning sessions
+    const planningWorktreePath = `planning:${localPath}`;
+
+    // Check if planning session already exists for this repo
+    const existing = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(
+        and(
+          eq(schema.chatSessions.repoId, input.repoId),
+          eq(schema.chatSessions.worktreePath, planningWorktreePath),
+          eq(schema.chatSessions.status, "active"),
+        ),
+      );
+
+    if (existing[0]) {
+      // Update lastUsedAt
+      const now = new Date().toISOString();
+      await db
+        .update(schema.chatSessions)
+        .set({ lastUsedAt: now, updatedAt: now })
+        .where(eq(schema.chatSessions.id, existing[0].id));
+
+      return c.json(toSession({ ...existing[0], lastUsedAt: now, updatedAt: now }));
+    }
+
+    // Create new planning session
+    const now = new Date().toISOString();
+    const sessionId = randomUUID();
+
+    await db.insert(schema.chatSessions).values({
+      id: sessionId,
+      repoId: input.repoId,
+      worktreePath: planningWorktreePath,
+      branchName: null,
+      planId: null,
+      status: "active",
+      lastUsedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Add initial assistant message
+    const initialMessage = `こんにちは！何を作りたいですか？
+
+URLやドキュメント（Notion、Google Docs など）があれば共有してください。内容を確認して、タスクを分解するお手伝いをします。`;
+
+    await db.insert(schema.chatMessages).values({
+      sessionId,
+      role: "assistant",
+      content: initialMessage,
+      createdAt: now,
+    });
+
+    const session: ChatSession = {
+      id: sessionId,
+      repoId: input.repoId,
+      worktreePath: planningWorktreePath,
+      branchName: null,
+      planId: null,
+      status: "active",
+      lastUsedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    return c.json(session);
+  })
+
+  // POST /api/chat/sessions/archive - Archive a session
+  .post("/sessions/archive", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(archiveChatSessionSchema, body);
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.chatSessions)
+      .set({ status: "archived", updatedAt: now })
+      .where(eq(schema.chatSessions.id, input.sessionId));
+
+    return c.json({ success: true });
+  })
+
+  // GET /api/chat/messages - Get messages for a session
+  .get("/messages", async (c) => {
+    const sessionId = c.req.query("sessionId");
+    if (!sessionId) {
+      throw new BadRequestError("sessionId is required");
+    }
+
+    const messages = await db
+      .select()
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.sessionId, sessionId))
+      .orderBy(asc(schema.chatMessages.createdAt));
+
+    return c.json(messages.map(toMessage));
+  })
+
+  // GET /api/chat/running - Check if there's a running agent for a session
+  .get("/running", async (c) => {
+    const sessionId = c.req.query("sessionId");
+    if (!sessionId) {
+      throw new BadRequestError("sessionId is required");
+    }
+
+    const runningRuns = await db
+      .select()
+      .from(schema.agentRuns)
+      .where(and(eq(schema.agentRuns.sessionId, sessionId), eq(schema.agentRuns.status, "running")))
+      .limit(1);
+
+    return c.json({ isRunning: runningRuns.length > 0 });
+  })
+
+  // POST /api/chat/cancel - Cancel a running agent
+  .post("/cancel", async (c) => {
+    const body = await c.req.json();
+    const sessionId = body.sessionId;
+    if (!sessionId) {
+      throw new BadRequestError("sessionId is required");
+    }
+
+    // Find running agent run
+    const runningRuns = await db
+      .select()
+      .from(schema.agentRuns)
+      .where(and(eq(schema.agentRuns.sessionId, sessionId), eq(schema.agentRuns.status, "running")))
+      .limit(1);
+
+    const run = runningRuns[0];
+    if (!run) {
+      return c.json({ success: false, message: "No running agent found" });
+    }
+
+    // Kill the process if we have a pid
+    if (run.pid) {
+      try {
+        process.kill(run.pid, "SIGTERM");
+      } catch (err) {
+        console.error(`[Chat] Failed to kill process ${run.pid}:`, err);
+      }
+    }
+
+    // Update agent run status
+    const now = new Date().toISOString();
+    await db
+      .update(schema.agentRuns)
+      .set({ status: "cancelled", finishedAt: now })
+      .where(eq(schema.agentRuns.id, run.id));
+
+    // Get session for repoId
+    const sessions = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, sessionId))
+      .limit(1);
+
+    const session = sessions[0];
+    if (session) {
+      // Broadcast streaming end
+      broadcast({
+        type: "chat.streaming.end",
+        repoId: session.repoId,
+        data: { sessionId, message: null },
+      });
+    }
+
+    return c.json({ success: true });
+  })
+
+  // PATCH /api/chat/messages/:id/instruction-status - Update instruction edit status
+  .patch("/messages/:id/instruction-status", async (c) => {
+    const messageId = parseInt(c.req.param("id"), 10);
+    if (isNaN(messageId)) {
+      throw new BadRequestError("Invalid message ID");
+    }
+
+    const body = await c.req.json();
+    const status = body.status as "committed" | "rejected";
+
+    if (status !== "committed" && status !== "rejected") {
+      throw new BadRequestError("status must be 'committed' or 'rejected'");
+    }
+
+    // Get the message first
+    const messages = await db
+      .select()
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.id, messageId));
+
+    const message = messages[0];
+    if (!message) {
+      throw new NotFoundError("Message not found");
+    }
+
+    // Update the status
+    await db
+      .update(schema.chatMessages)
+      .set({ instructionEditStatus: status })
+      .where(eq(schema.chatMessages.id, messageId));
+
+    return c.json({ success: true, status });
+  })
+
+  // POST /api/chat/send - Send a message (execute Claude asynchronously)
+  .post("/send", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(chatSendSchema, body);
+
+    // Get session
+    const sessions = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, input.sessionId));
+
+    const session = sessions[0];
+    if (!session) {
+      throw new NotFoundError("Session not found");
+    }
+
+    // Handle planning sessions (worktreePath starts with "planning:")
+    const isPlanningSession = session.worktreePath.startsWith("planning:");
+    let worktreePath: string;
+
+    if (isPlanningSession) {
+      // For planning sessions, get the local path from repo_pins
+      const repoPins = await db
+        .select()
+        .from(schema.repoPins)
+        .where(eq(schema.repoPins.repoId, session.repoId))
+        .limit(1);
+
+      const repoPin = repoPins[0];
+      if (!repoPin) {
+        throw new BadRequestError(`Repo pin not found for repoId: ${session.repoId}`);
+      }
+      worktreePath = repoPin.localPath;
+    } else {
+      worktreePath = session.worktreePath;
+    }
+
+    if (!existsSync(worktreePath)) {
+      throw new BadRequestError(`Path does not exist: ${worktreePath}`);
+    }
+
+    const now = new Date().toISOString();
+
+    // 1. Save user message
+    const userMsgResult = await db
+      .insert(schema.chatMessages)
+      .values({
+        sessionId: input.sessionId,
+        role: "user",
+        content: input.userMessage,
+        chatMode: input.chatMode ?? null,
+        createdAt: now,
+      })
+      .returning();
+
+    const userMsg = userMsgResult[0];
+    if (!userMsg) {
+      throw new BadRequestError("Failed to save user message");
+    }
+
+    // Note: User message is returned via API response, not broadcast
+    // Only assistant messages are broadcast via WebSocket to avoid duplicates
+
+    // 2. Build prompt with context
+    const prompt = await buildPrompt(session, input.userMessage, input.context);
+
+    // 3. Create agent run record (status: running)
+    const promptDigest = createHash("md5").update(prompt).digest("hex");
+    const startedAt = new Date().toISOString();
+
+    const runResult = await db
+      .insert(schema.agentRuns)
+      .values({
+        sessionId: input.sessionId,
+        repoId: session.repoId,
+        worktreePath,
+        inputPromptDigest: promptDigest,
+        startedAt,
+        status: "running",
+        createdAt: startedAt,
+      })
+      .returning();
+
+    const run = runResult[0];
+    if (!run) {
+      throw new BadRequestError("Failed to create agent run record");
+    }
+    const runId = run.id;
+
+    // 4. Execute Claude ASYNCHRONOUSLY (non-blocking)
+    // Return immediately, process in background
+    const isExecution = input.chatMode === "execution";
+    const claudeArgs = ["-p", prompt];
+    if (isExecution) {
+      // Execution mode: use streaming + bypass permissions
+      claudeArgs.push("--output-format", "stream-json", "--verbose", "--include-partial-messages");
+      claudeArgs.push("--dangerously-skip-permissions");
+    }
+
+    // Spawn claude process in background
+    const claudeProcess = spawn("claude", claudeArgs, {
+      cwd: worktreePath,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
+
+    // Save pid for cancellation
+    if (claudeProcess.pid) {
+      await db
+        .update(schema.agentRuns)
+        .set({ pid: claudeProcess.pid })
+        .where(eq(schema.agentRuns.id, runId));
+    }
+
+    let accumulatedText = "";
+    const streamingChunks: Array<{
+      type: "thinking" | "text" | "tool_use" | "tool_result";
+      content?: string;
+      toolName?: string;
+      toolInput?: unknown;
+    }> = [];
+    let stderr = "";
+    let lineBuffer = "";
+
+    // Broadcast streaming start
+    broadcast({
+      type: "chat.streaming.start",
+      repoId: session.repoId,
+      data: { sessionId: input.sessionId, chatMode: input.chatMode },
+    });
+
+    claudeProcess.stdout.on("data", (data: Buffer) => {
+      if (isExecution) {
+        // Execution mode: parse stream-json format
+        lineBuffer += data.toString();
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const json = JSON.parse(line);
+
+            if (json.type === "assistant" && json.message?.content) {
+              for (const block of json.message.content) {
+                if (block.type === "thinking" && block.thinking) {
+                  streamingChunks.push({ type: "thinking", content: block.thinking });
+                  broadcast({
+                    type: "chat.streaming.chunk",
+                    repoId: session.repoId,
+                    data: {
+                      sessionId: input.sessionId,
+                      chunkType: "thinking",
+                      content: block.thinking,
+                    },
+                  });
+                } else if (block.type === "text" && block.text) {
+                  accumulatedText += block.text;
+                  streamingChunks.push({ type: "text", content: block.text });
+                  broadcast({
+                    type: "chat.streaming.chunk",
+                    repoId: session.repoId,
+                    data: {
+                      sessionId: input.sessionId,
+                      chunkType: "text",
+                      content: block.text,
+                    },
+                  });
+                } else if (block.type === "tool_use") {
+                  streamingChunks.push({
+                    type: "tool_use",
+                    toolName: block.name,
+                    toolInput: block.input,
+                  });
+                  broadcast({
+                    type: "chat.streaming.chunk",
+                    repoId: session.repoId,
+                    data: {
+                      sessionId: input.sessionId,
+                      chunkType: "tool_use",
+                      toolName: block.name,
+                      toolInput: block.input,
+                    },
+                  });
+                } else if (block.type === "tool_result") {
+                  const resultContent =
+                    typeof block.content === "string"
+                      ? block.content
+                      : JSON.stringify(block.content);
+                  streamingChunks.push({ type: "tool_result", content: resultContent });
+                  broadcast({
+                    type: "chat.streaming.chunk",
+                    repoId: session.repoId,
+                    data: {
+                      sessionId: input.sessionId,
+                      chunkType: "tool_result",
+                      content: resultContent,
+                    },
+                  });
+                }
+              }
+            } else if (json.type === "content_block_delta") {
+              if (json.delta?.thinking) {
+                streamingChunks.push({ type: "thinking", content: json.delta.thinking });
+                broadcast({
+                  type: "chat.streaming.chunk",
+                  repoId: session.repoId,
+                  data: {
+                    sessionId: input.sessionId,
+                    chunkType: "thinking_delta",
+                    content: json.delta.thinking,
+                  },
+                });
+              } else if (json.delta?.text) {
+                accumulatedText += json.delta.text;
+                streamingChunks.push({ type: "text", content: json.delta.text });
+                broadcast({
+                  type: "chat.streaming.chunk",
+                  repoId: session.repoId,
+                  data: {
+                    sessionId: input.sessionId,
+                    chunkType: "text_delta",
+                    content: json.delta.text,
+                  },
+                });
+              }
+            }
+          } catch {
+            // Non-JSON line, ignore
+          }
+        }
+      } else {
+        // Planning mode: plain text output
+        accumulatedText += data.toString();
+      }
+    });
+
+    claudeProcess.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    claudeProcess.on("close", async (code) => {
+      const finishedAt = new Date().toISOString();
+      const status = code === 0 ? "success" : "failed";
+
+      // For execution mode with chunks, save structured content
+      // For planning mode, save plain text
+      let assistantContent: string;
+      if (isExecution && streamingChunks.length > 0) {
+        assistantContent = JSON.stringify({ chunks: streamingChunks });
+      } else {
+        assistantContent = accumulatedText.trim() || "Claude execution failed. Please try again.";
+      }
+
+      // Update agent run
+      await db
+        .update(schema.agentRuns)
+        .set({
+          finishedAt,
+          status,
+          stdoutSnippet: accumulatedText.slice(0, 5000),
+          stderrSnippet: stderr.slice(0, 1000),
+        })
+        .where(eq(schema.agentRuns.id, runId));
+
+      // Save assistant message
+      const assistantMsgResult = await db
+        .insert(schema.chatMessages)
+        .values({
+          sessionId: input.sessionId,
+          role: "assistant",
+          content: assistantContent,
+          chatMode: input.chatMode ?? null,
+          createdAt: finishedAt,
+        })
+        .returning();
+
+      const assistantMsg = assistantMsgResult[0];
+      if (assistantMsg) {
+        // Update session lastUsedAt
+        await db
+          .update(schema.chatSessions)
+          .set({ lastUsedAt: finishedAt, updatedAt: finishedAt })
+          .where(eq(schema.chatSessions.id, input.sessionId));
+
+        // Broadcast streaming end
+        broadcast({
+          type: "chat.streaming.end",
+          repoId: session.repoId,
+          data: { sessionId: input.sessionId, message: toMessage(assistantMsg) },
+        });
+
+        // Broadcast assistant message
+        broadcast({
+          type: "chat.message",
+          repoId: session.repoId,
+          data: toMessage(assistantMsg),
+        });
+
+        // Auto-link PRs found in assistant response (for execution mode)
+        if (input.chatMode === "execution" && session.branchName) {
+          const prUrls = extractGitHubPrUrls(assistantContent);
+          for (const pr of prUrls) {
+            try {
+              await savePrLink(session.repoId, session.branchName, pr.url, pr.number);
+            } catch (err) {
+              console.error(`[Chat] Failed to auto-link PR:`, err);
+            }
+          }
+        }
+      }
+    });
+
+    claudeProcess.on("error", async (err) => {
+      console.error(`[Chat] Claude process error:`, err);
+      const finishedAt = new Date().toISOString();
+
+      // Update agent run as failed
+      await db
+        .update(schema.agentRuns)
+        .set({
+          finishedAt,
+          status: "failed",
+          stderrSnippet: err.message.slice(0, 1000),
+        })
+        .where(eq(schema.agentRuns.id, runId));
+
+      // Save error message
+      const assistantMsgResult = await db
+        .insert(schema.chatMessages)
+        .values({
+          sessionId: input.sessionId,
+          role: "assistant",
+          content: `Claude execution failed: ${err.message}`,
+          chatMode: input.chatMode ?? null,
+          createdAt: finishedAt,
+        })
+        .returning();
+
+      const assistantMsg = assistantMsgResult[0];
+      if (assistantMsg) {
+        // Broadcast streaming end
+        broadcast({
+          type: "chat.streaming.end",
+          repoId: session.repoId,
+          data: { sessionId: input.sessionId, message: toMessage(assistantMsg) },
+        });
+
+        broadcast({
+          type: "chat.message",
+          repoId: session.repoId,
+          data: toMessage(assistantMsg),
+        });
+      }
+    });
+
+    // Return immediately with user message and run ID
+    // Assistant message will be broadcast via WebSocket when ready
+    return c.json({
+      userMessage: toMessage(userMsg),
+      runId: runId,
+      status: "processing",
+    });
+  })
+
+  // POST /api/chat/summarize - Generate summary of conversation
+  .post("/summarize", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(chatSummarizeSchema, body);
+
+    // Get session
+    const sessions = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, input.sessionId));
+
+    const session = sessions[0];
+    if (!session) {
+      throw new NotFoundError("Session not found");
+    }
+
+    // Get latest summary if exists
+    const summaries = await db
+      .select()
+      .from(schema.chatSummaries)
+      .where(eq(schema.chatSummaries.sessionId, input.sessionId))
+      .orderBy(desc(schema.chatSummaries.createdAt))
+      .limit(1);
+
+    const lastSummary = summaries[0];
+    const coveredUntil = lastSummary?.coveredUntilMessageId ?? 0;
+
+    // Get messages after last summary
+    const messages = await db
+      .select()
+      .from(schema.chatMessages)
+      .where(
+        and(
+          eq(schema.chatMessages.sessionId, input.sessionId),
+          gt(schema.chatMessages.id, coveredUntil),
+        ),
+      )
+      .orderBy(asc(schema.chatMessages.createdAt));
+
+    if (messages.length === 0) {
+      return c.json({ message: "No new messages to summarize" });
+    }
+
+    // Build summary prompt
+    const conversationText = messages.map((m) => `[${m.role}]: ${m.content}`).join("\n\n");
+
+    const summaryPrompt = `Please summarize the following conversation. Focus on:
+1. Key decisions made
+2. Tasks completed
+3. Outstanding issues or next steps
+4. Important context that should be preserved
+
+Conversation:
+${conversationText}
+
+Provide a concise markdown summary (max 500 words).`;
+
+    let summaryContent = "";
+    try {
+      summaryContent = execSync(`claude -p "${escapeShell(summaryPrompt)}"`, {
+        cwd: session.worktreePath,
+        encoding: "utf-8",
+        maxBuffer: 5 * 1024 * 1024,
+        timeout: 60000,
+      });
+    } catch {
+      // Fallback: simple summary
+      summaryContent = `## Conversation Summary\n\n- ${messages.length} messages exchanged\n- Last update: ${messages[messages.length - 1]?.createdAt}`;
+    }
+
+    const now = new Date().toISOString();
+    const lastMessageId = messages[messages.length - 1]?.id ?? 0;
+
+    await db.insert(schema.chatSummaries).values({
+      sessionId: input.sessionId,
+      summaryMarkdown: summaryContent,
+      coveredUntilMessageId: lastMessageId,
+      createdAt: now,
+    });
+
+    const summary: ChatSummary = {
+      id: 0, // Will be set by DB
+      sessionId: input.sessionId,
+      summaryMarkdown: summaryContent,
+      coveredUntilMessageId: lastMessageId,
+      createdAt: now,
+    };
+
+    return c.json(summary);
+  })
+
+  // POST /api/chat/purge - Delete old messages
+  .post("/purge", async (c) => {
+    const body = await c.req.json();
+    const input = validateOrThrow(chatPurgeSchema, body);
+
+    // Get all messages for session ordered by id desc
+    const messages = await db
+      .select()
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.sessionId, input.sessionId))
+      .orderBy(desc(schema.chatMessages.id));
+
+    if (messages.length <= input.keepLastN) {
+      return c.json({ deleted: 0, remaining: messages.length });
+    }
+
+    // Delete old messages (all except last N)
+    const toDelete = messages.slice(input.keepLastN);
+    for (const msg of toDelete) {
+      await db.delete(schema.chatMessages).where(eq(schema.chatMessages.id, msg.id));
+    }
+
+    return c.json({ deleted: toDelete.length, remaining: input.keepLastN });
+  });
