@@ -261,9 +261,7 @@ URLやドキュメント（Notion、GitHub Issue、Figma など）があれば�
     });
 
     // Add initial assistant message with issue context
-    const issueContext = issueDetail.body
-      ? `\n\n---\n**Issue内容:**\n${issueDetail.body}`
-      : "";
+    const issueContext = issueDetail.body ? `\n\n---\n**Issue内容:**\n${issueDetail.body}` : "";
     const initialMessage = `GitHub Issue #${issueNumber} をもとにプランニングを開始します。
 
 **${issueDetail.title}**${issueContext}
