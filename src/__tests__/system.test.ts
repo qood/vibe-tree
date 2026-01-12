@@ -33,39 +33,43 @@ describe("systemRouter", () => {
       expect(json.code).toBe("UNSUPPORTED_PLATFORM");
     });
 
-    test("returns correct response structure for darwin platform", async () => {
-      // This test verifies the API contract without actually opening a dialog
-      // The actual dialog behavior is tested through integration tests
-      const originalPlatform = process.platform;
+    test.skipIf(!!process.env.CI)(
+      "returns correct response structure for darwin platform",
+      async () => {
+        // This test verifies the API contract without actually opening a dialog
+        // The actual dialog behavior is tested through integration tests
+        // Skipped in CI as it requires actual osascript execution
+        const originalPlatform = process.platform;
 
-      if (originalPlatform !== "darwin") {
-        // Skip this test on non-macOS platforms
-        return;
-      }
+        if (originalPlatform !== "darwin") {
+          // Skip this test on non-macOS platforms
+          return;
+        }
 
-      // We can't easily mock the osascript call, so we just verify the route exists
-      // and accepts POST requests
-      const res = await app.request("/api/system/select-directory", {
-        method: "POST",
-      });
+        // We can't easily mock the osascript call, so we just verify the route exists
+        // and accepts POST requests
+        const res = await app.request("/api/system/select-directory", {
+          method: "POST",
+        });
 
-      // The response should be either success or an error (if dialog fails)
-      expect([200, 500]).toContain(res.status);
-      const json = (await res.json()) as Record<string, unknown>;
+        // The response should be either success or an error (if dialog fails)
+        expect([200, 500]).toContain(res.status);
+        const json = (await res.json()) as Record<string, unknown>;
 
-      // Verify response structure
-      if (res.status === 200) {
-        expect(json).toHaveProperty("cancelled");
-        expect(json).toHaveProperty("path");
-      } else {
-        expect(json).toHaveProperty("error");
-      }
-    });
+        // Verify response structure
+        if (res.status === 200) {
+          expect(json).toHaveProperty("cancelled");
+          expect(json).toHaveProperty("path");
+        } else {
+          expect(json).toHaveProperty("error");
+        }
+      },
+    );
 
-    test("handles cancelled dialog response", async () => {
+    test.skipIf(!!process.env.CI)("handles cancelled dialog response", async () => {
       // Mock a cancelled dialog response
       // Note: In a real test environment, you would mock the spawn function
-      // For now, we verify the endpoint structure
+      // Skipped in CI as it requires actual osascript execution
       const res = await app.request("/api/system/select-directory", {
         method: "POST",
       });

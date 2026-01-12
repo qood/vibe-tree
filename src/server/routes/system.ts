@@ -1,10 +1,8 @@
 import { Hono } from "hono";
 import { spawn } from "child_process";
 
-export const systemRouter = new Hono();
-
 // POST /api/system/select-directory - Open native directory picker dialog
-systemRouter.post("/select-directory", async (c) => {
+export const systemRouter = new Hono().post("/select-directory", async (c) => {
   const platform = process.platform;
 
   try {

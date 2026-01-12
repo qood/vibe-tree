@@ -252,10 +252,11 @@ describe("api", () => {
 
       const result = await api.selectDirectory();
       expect(result).toEqual(response);
-      expect(mockFetch).toHaveBeenCalledWith("/api/system/select-directory", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      // RPC client uses different fetch options
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/system/select-directory",
+        expect.objectContaining({ method: "POST" }),
+      );
     });
 
     it("should return cancelled: true when user cancels the dialog", async () => {

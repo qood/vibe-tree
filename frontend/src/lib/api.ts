@@ -1,13 +1,3 @@
-const API_BASE = "/api";
-
-// API Error types
-interface ApiErrorResponse {
-  error?: string;
-  code?: string;
-  message?: string;
-  details?: Record<string, unknown>;
-}
-
 export class ApiError extends Error {
   public readonly statusCode: number;
   public readonly code?: string;
@@ -411,567 +401,254 @@ export interface BranchLink {
   updatedAt: string;
 }
 
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) {
-    const errorData: ApiErrorResponse = await res.json().catch(() => ({}));
-    throw new ApiError(
-      errorData.error || errorData.message || `HTTP error: ${res.status}`,
-      res.status,
-      errorData.code,
-      errorData.details,
-    );
-  }
-  return res.json();
+// API Performance Metrics
+interface ApiMetrics {
+  totalCalls: number;
+  callsByEndpoint: Map<string, number>;
+  callTimestamps: Array<{ endpoint: string; timestamp: number; duration?: number }>;
 }
 
-// Import RPC functions
-import { healthRpc, getReposRpc, getRepoRpc } from "./rpc";
+const apiMetrics: ApiMetrics = {
+  totalCalls: 0,
+  callsByEndpoint: new Map(),
+  callTimestamps: [],
+};
+
+// Global flag to enable/disable metrics collection
+let metricsEnabled = false;
+
+export function enableApiMetrics() {
+  metricsEnabled = true;
+  apiMetrics.totalCalls = 0;
+  apiMetrics.callsByEndpoint.clear();
+  apiMetrics.callTimestamps = [];
+  console.log("📊 API metrics collection enabled");
+}
+
+export function disableApiMetrics() {
+  metricsEnabled = false;
+}
+
+export function getApiMetrics() {
+  return {
+    enabled: metricsEnabled,
+    totalCalls: apiMetrics.totalCalls,
+    callsByEndpoint: Object.fromEntries(apiMetrics.callsByEndpoint),
+    recentCalls: apiMetrics.callTimestamps.slice(-20),
+  };
+}
+
+export function logApiMetrics() {
+  console.log("📊 API Performance Metrics:");
+  console.log(`Total API calls: ${apiMetrics.totalCalls}`);
+  console.log("Calls by endpoint:");
+  Array.from(apiMetrics.callsByEndpoint.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([endpoint, count]) => {
+      console.log(`  ${endpoint}: ${count} calls`);
+    });
+}
+
+// Import all RPC functions
+import {
+  healthRpc,
+  getReposRpc,
+  getRepoRpc,
+  getBranchNamingRpc,
+  updateBranchNamingRpc,
+  getWorktreeSettingsRpc,
+  updateWorktreeSettingsRpc,
+  getCurrentPlanRpc,
+  startPlanRpc,
+  updatePlanRpc,
+  commitPlanRpc,
+  scanRpc,
+  fetchRpc,
+  getRestartPromptRpc,
+  getTreeSpecRpc,
+  updateTreeSpecRpc,
+  confirmTreeSpecRpc,
+  unconfirmTreeSpecRpc,
+  logInstructionRpc,
+  getInstructionLogsRpc,
+  getTaskInstructionRpc,
+  updateTaskInstructionRpc,
+  getRepoPinsRpc,
+  createRepoPinRpc,
+  useRepoPinRpc,
+  deleteRepoPinRpc,
+  updateRepoPinRpc,
+  aiStartRpc,
+  aiStopRpc,
+  aiStatusRpc,
+  aiSessionsRpc,
+  createBranchRpc,
+  createTreeRpc,
+  createWorktreeRpc,
+  checkoutRpc,
+  pullRpc,
+  checkBranchDeletableRpc,
+  deleteBranchRpc,
+  cleanupOrphanedBranchDataRpc,
+  deleteWorktreeRpc,
+  rebaseRpc,
+  mergeParentRpc,
+  pushRpc,
+  getChatSessionsRpc,
+  createChatSessionRpc,
+  createChatPlanningSessionRpc,
+  archiveChatSessionRpc,
+  getChatMessagesRpc,
+  checkChatRunningRpc,
+  cancelChatRpc,
+  sendChatMessageRpc,
+  updateInstructionEditStatusRpc,
+  summarizeChatRpc,
+  purgeChatRpc,
+  createTerminalSessionRpc,
+  getTerminalSessionRpc,
+  startTerminalSessionRpc,
+  stopTerminalSessionRpc,
+  getRequirementsRpc,
+  createRequirementRpc,
+  updateRequirementRpc,
+  deleteRequirementRpc,
+  parseTasksRpc,
+  getExternalLinksRpc,
+  addExternalLinkRpc,
+  refreshExternalLinkRpc,
+  updateExternalLinkRpc,
+  deleteExternalLinkRpc,
+  getPlanningSessionsRpc,
+  getPlanningSessionRpc,
+  createPlanningSessionRpc,
+  updatePlanningSessionRpc,
+  confirmPlanningSessionRpc,
+  discardPlanningSessionRpc,
+  deletePlanningSessionRpc,
+  getBranchLinksRpc,
+  createBranchLinkRpc,
+  updateBranchLinkRpc,
+  deleteBranchLinkRpc,
+  refreshBranchLinkRpc,
+  selectDirectoryRpc,
+} from "./rpc";
 
 export const api = {
-  // Health (via RPC)
+  // Health
   health: healthRpc,
 
-  // Repos (via RPC)
+  // Repos
   getRepos: getReposRpc,
   getRepo: getRepoRpc,
 
   // Branch Naming
-  getBranchNaming: (repoId: string) =>
-    fetchJson<BranchNamingRule & { id: number; repoId: string }>(
-      `${API_BASE}/project-rules/branch-naming?repoId=${encodeURIComponent(repoId)}`,
-    ),
-  updateBranchNaming: (data: { repoId: string; patterns: string[] }) =>
-    fetchJson<BranchNamingRule>(`${API_BASE}/project-rules/branch-naming`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  getBranchNaming: getBranchNamingRpc,
+  updateBranchNaming: updateBranchNamingRpc,
 
   // Worktree Settings
-  getWorktreeSettings: (repoId: string) =>
-    fetchJson<WorktreeSettings & { id: number | null; repoId: string }>(
-      `${API_BASE}/project-rules/worktree?repoId=${encodeURIComponent(repoId)}`,
-    ),
-  updateWorktreeSettings: (data: {
-    repoId: string;
-    createScript?: string;
-    postCreateScript?: string;
-    postDeleteScript?: string;
-    checkoutPreference?: "main" | "first" | "ask";
-    worktreeCreateCommand?: string;
-    worktreeDeleteCommand?: string;
-  }) =>
-    fetchJson<WorktreeSettings>(`${API_BASE}/project-rules/worktree`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  getWorktreeSettings: getWorktreeSettingsRpc,
+  updateWorktreeSettings: updateWorktreeSettingsRpc,
 
   // Plan
-  getCurrentPlan: (repoId: string) =>
-    fetchJson<Plan | null>(`${API_BASE}/plan/current?repoId=${encodeURIComponent(repoId)}`),
-  startPlan: (repoId: string, title: string) =>
-    fetchJson<Plan>(`${API_BASE}/plan/start`, {
-      method: "POST",
-      body: JSON.stringify({ repoId, title }),
-    }),
-  updatePlan: (planId: number, contentMd: string) =>
-    fetchJson<Plan>(`${API_BASE}/plan/update`, {
-      method: "POST",
-      body: JSON.stringify({ planId, contentMd }),
-    }),
-  commitPlan: (planId: number, localPath: string) =>
-    fetchJson<Plan>(`${API_BASE}/plan/commit`, {
-      method: "POST",
-      body: JSON.stringify({ planId, localPath }),
-    }),
+  getCurrentPlan: getCurrentPlanRpc,
+  startPlan: startPlanRpc,
+  updatePlan: updatePlanRpc,
+  commitPlan: commitPlanRpc,
 
   // Scan
-  scan: (localPath: string) =>
-    fetchJson<ScanSnapshot>(`${API_BASE}/scan`, {
-      method: "POST",
-      body: JSON.stringify({ localPath }),
-    }),
-  fetch: (localPath: string) =>
-    fetchJson<{
-      success: boolean;
-      branchStatus: Record<string, { ahead: number; behind: number }>;
-    }>(`${API_BASE}/scan/fetch`, {
-      method: "POST",
-      body: JSON.stringify({ localPath }),
-    }),
-  getRestartPrompt: (repoId: string, localPath: string, planId?: number, worktreePath?: string) => {
-    const params = new URLSearchParams({
-      repoId,
-      localPath,
-    });
-    if (planId) params.set("planId", String(planId));
-    if (worktreePath) params.set("worktreePath", worktreePath);
-    return fetchJson<{ cdCommand: string; restartPromptMd: string }>(
-      `${API_BASE}/scan/restart-prompt?${params}`,
-    );
-  },
+  scan: scanRpc,
+  fetch: fetchRpc,
+  getRestartPrompt: getRestartPromptRpc,
 
   // Tree Spec
-  getTreeSpec: (repoId: string) =>
-    fetchJson<TreeSpec | null>(`${API_BASE}/tree-spec?repoId=${encodeURIComponent(repoId)}`),
-  updateTreeSpec: (data: {
-    repoId: string;
-    baseBranch?: string;
-    nodes: TreeSpecNode[];
-    edges: TreeSpecEdge[];
-  }) =>
-    fetchJson<TreeSpec>(`${API_BASE}/tree-spec`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  confirmTreeSpec: (repoId: string) =>
-    fetchJson<TreeSpec>(`${API_BASE}/tree-spec/confirm`, {
-      method: "POST",
-      body: JSON.stringify({ repoId }),
-    }),
-  unconfirmTreeSpec: (repoId: string) =>
-    fetchJson<TreeSpec>(`${API_BASE}/tree-spec/unconfirm`, {
-      method: "POST",
-      body: JSON.stringify({ repoId }),
-    }),
+  getTreeSpec: getTreeSpecRpc,
+  updateTreeSpec: updateTreeSpecRpc,
+  confirmTreeSpec: confirmTreeSpecRpc,
+  unconfirmTreeSpec: unconfirmTreeSpecRpc,
 
   // Instructions
-  logInstruction: (data: {
-    repoId: string;
-    planId?: number;
-    worktreePath?: string;
-    branchName?: string;
-    kind: "director_suggestion" | "user_instruction" | "system_note";
-    contentMd: string;
-  }) =>
-    fetchJson<InstructionLog>(`${API_BASE}/instructions/log`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  getInstructionLogs: (repoId: string) =>
-    fetchJson<InstructionLog[]>(
-      `${API_BASE}/instructions/logs?repoId=${encodeURIComponent(repoId)}`,
-    ),
+  logInstruction: logInstructionRpc,
+  getInstructionLogs: getInstructionLogsRpc,
+  getTaskInstruction: getTaskInstructionRpc,
+  updateTaskInstruction: updateTaskInstructionRpc,
 
   // Repo Pins
-  getRepoPins: () => fetchJson<RepoPin[]>(`${API_BASE}/repo-pins`),
-  createRepoPin: (localPath: string, label?: string) =>
-    fetchJson<RepoPin>(`${API_BASE}/repo-pins`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, label }),
-    }),
-  useRepoPin: (id: number) =>
-    fetchJson<RepoPin>(`${API_BASE}/repo-pins/use`, {
-      method: "POST",
-      body: JSON.stringify({ id }),
-    }),
-  deleteRepoPin: (id: number) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/repo-pins/${id}`, {
-      method: "DELETE",
-    }),
-  updateRepoPin: (id: number, updates: { label?: string; baseBranch?: string | null }) =>
-    fetchJson<RepoPin>(`${API_BASE}/repo-pins/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(updates),
-    }),
+  getRepoPins: getRepoPinsRpc,
+  createRepoPin: createRepoPinRpc,
+  useRepoPin: useRepoPinRpc,
+  deleteRepoPin: deleteRepoPinRpc,
+  updateRepoPin: updateRepoPinRpc,
 
   // AI Agent
-  aiStart: (localPath: string, planId?: number, branch?: string) =>
-    fetchJson<AiStartResult>(`${API_BASE}/ai/start`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, planId, branch }),
-    }),
-  aiStop: (pid: number) =>
-    fetchJson<{ status: string; pid: number }>(`${API_BASE}/ai/stop`, {
-      method: "POST",
-      body: JSON.stringify({ pid }),
-    }),
-  aiStatus: () => fetchJson<{ agents: AgentSession[] }>(`${API_BASE}/ai/status`),
-  aiSessions: (repoId?: string) => {
-    const params = repoId ? `?repoId=${encodeURIComponent(repoId)}` : "";
-    return fetchJson<{ sessions: AgentSession[] }>(`${API_BASE}/ai/sessions${params}`);
-  },
+  aiStart: aiStartRpc,
+  aiStop: aiStopRpc,
+  aiStatus: aiStatusRpc,
+  aiSessions: aiSessionsRpc,
 
   // Branch
-  createBranch: (localPath: string, branchName: string, baseBranch: string) =>
-    fetchJson<{ success: boolean; branchName: string; baseBranch: string }>(
-      `${API_BASE}/branch/create`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, baseBranch }),
-      },
-    ),
-  createTree: (
-    repoId: string,
-    localPath: string,
-    tasks: Array<{
-      id: string;
-      branchName: string;
-      parentBranch: string;
-      worktreeName: string;
-      title?: string;
-      description?: string;
-    }>,
-    options?: { createPrs?: boolean; baseBranch?: string },
-  ) =>
-    fetchJson<{
-      success: boolean;
-      worktreesDir: string;
-      results: Array<{
-        taskId: string;
-        branchName: string;
-        worktreePath: string;
-        chatSessionId: string;
-        prUrl?: string;
-        prNumber?: number;
-        success: boolean;
-        error?: string;
-      }>;
-      summary: { total: number; success: number; failed: number };
-    }>(`${API_BASE}/branch/create-tree`, {
-      method: "POST",
-      body: JSON.stringify({
-        repoId,
-        localPath,
-        tasks,
-        createPrs: options?.createPrs ?? false,
-        baseBranch: options?.baseBranch,
-      }),
-    }),
+  createBranch: createBranchRpc,
+  createTree: createTreeRpc,
+  createWorktree: createWorktreeRpc,
+  checkout: checkoutRpc,
+  pull: pullRpc,
+  checkBranchDeletable: checkBranchDeletableRpc,
+  deleteBranch: deleteBranchRpc,
+  cleanupOrphanedBranchData: cleanupOrphanedBranchDataRpc,
+  deleteWorktree: deleteWorktreeRpc,
+  rebase: rebaseRpc,
+  mergeParent: mergeParentRpc,
+  push: pushRpc,
 
   // Chat
-  getChatSessions: (repoId: string) =>
-    fetchJson<ChatSession[]>(`${API_BASE}/chat/sessions?repoId=${encodeURIComponent(repoId)}`),
-  createChatSession: (repoId: string, worktreePath: string, branchName: string, planId?: number) =>
-    fetchJson<ChatSession>(`${API_BASE}/chat/sessions`, {
-      method: "POST",
-      body: JSON.stringify({ repoId, worktreePath, branchName, planId }),
-    }),
-  createChatPlanningSession: (repoId: string, localPath: string) =>
-    fetchJson<ChatSession>(`${API_BASE}/chat/sessions/planning`, {
-      method: "POST",
-      body: JSON.stringify({ repoId, localPath }),
-    }),
-  archiveChatSession: (sessionId: string) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/chat/sessions/archive`, {
-      method: "POST",
-      body: JSON.stringify({ sessionId }),
-    }),
-  getChatMessages: (sessionId: string) =>
-    fetchJson<ChatMessage[]>(
-      `${API_BASE}/chat/messages?sessionId=${encodeURIComponent(sessionId)}`,
-    ),
-  checkChatRunning: (sessionId: string) =>
-    fetchJson<{ isRunning: boolean }>(
-      `${API_BASE}/chat/running?sessionId=${encodeURIComponent(sessionId)}`,
-    ),
-  cancelChat: (sessionId: string) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/chat/cancel`, {
-      method: "POST",
-      body: JSON.stringify({ sessionId }),
-    }),
-  sendChatMessage: (
-    sessionId: string,
-    userMessage: string,
-    context?: string,
-    chatMode?: ChatMode,
-  ) =>
-    fetchJson<{ userMessage: ChatMessage; runId: number; status: string }>(
-      `${API_BASE}/chat/send`,
-      {
-        method: "POST",
-        body: JSON.stringify({ sessionId, userMessage, context, chatMode }),
-      },
-    ),
-  updateInstructionEditStatus: (messageId: number, status: InstructionEditStatus) =>
-    fetchJson<{ success: boolean; status: InstructionEditStatus }>(
-      `${API_BASE}/chat/messages/${messageId}/instruction-status`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      },
-    ),
-  summarizeChat: (sessionId: string) =>
-    fetchJson<ChatSummary | { message: string }>(`${API_BASE}/chat/summarize`, {
-      method: "POST",
-      body: JSON.stringify({ sessionId }),
-    }),
-  purgeChat: (sessionId: string, keepLastN?: number) =>
-    fetchJson<{ deleted: number; remaining: number }>(`${API_BASE}/chat/purge`, {
-      method: "POST",
-      body: JSON.stringify({ sessionId, keepLastN: keepLastN ?? 50 }),
-    }),
+  getChatSessions: getChatSessionsRpc,
+  createChatSession: createChatSessionRpc,
+  createChatPlanningSession: createChatPlanningSessionRpc,
+  archiveChatSession: archiveChatSessionRpc,
+  getChatMessages: getChatMessagesRpc,
+  checkChatRunning: checkChatRunningRpc,
+  cancelChat: cancelChatRpc,
+  sendChatMessage: sendChatMessageRpc,
+  updateInstructionEditStatus: updateInstructionEditStatusRpc,
+  summarizeChat: summarizeChatRpc,
+  purgeChat: purgeChatRpc,
 
   // Terminal
-  createTerminalSession: (repoId: string, worktreePath: string) =>
-    fetchJson<TerminalSession>(`${API_BASE}/term/sessions`, {
-      method: "POST",
-      body: JSON.stringify({ repoId, worktreePath }),
-    }),
-  startTerminalSession: (sessionId: string, cols?: number, rows?: number) =>
-    fetchJson<{ id: string; status: string; pid: number; message?: string }>(
-      `${API_BASE}/term/sessions/${sessionId}/start`,
-      {
-        method: "POST",
-        body: JSON.stringify({ cols, rows }),
-      },
-    ),
-  stopTerminalSession: (sessionId: string) =>
-    fetchJson<{ id: string; status: string }>(`${API_BASE}/term/sessions/${sessionId}/stop`, {
-      method: "POST",
-    }),
-  getTerminalSession: (sessionId: string) =>
-    fetchJson<TerminalSession>(`${API_BASE}/term/sessions/${sessionId}`),
+  createTerminalSession: createTerminalSessionRpc,
+  getTerminalSession: getTerminalSessionRpc,
+  startTerminalSession: startTerminalSessionRpc,
+  stopTerminalSession: stopTerminalSessionRpc,
 
   // Requirements
-  getRequirements: (repoId: string) =>
-    fetchJson<RequirementsNote[]>(`${API_BASE}/requirements?repoId=${encodeURIComponent(repoId)}`),
-  createRequirement: (data: {
-    repoId: string;
-    planId?: number;
-    noteType: RequirementsNoteType;
-    title?: string;
-    content?: string;
-    notionUrl?: string;
-  }) =>
-    fetchJson<RequirementsNote>(`${API_BASE}/requirements`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  updateRequirement: (
-    id: number,
-    data: {
-      noteType?: RequirementsNoteType;
-      title?: string;
-      content?: string;
-      notionUrl?: string;
-    },
-  ) =>
-    fetchJson<RequirementsNote>(`${API_BASE}/requirements/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
-  deleteRequirement: (id: number) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/requirements/${id}`, {
-      method: "DELETE",
-    }),
-  parseTasks: (content: string) =>
-    fetchJson<{ tasks: { title: string; description?: string }[] }>(
-      `${API_BASE}/requirements/parse-tasks`,
-      {
-        method: "POST",
-        body: JSON.stringify({ content }),
-      },
-    ),
+  getRequirements: getRequirementsRpc,
+  createRequirement: createRequirementRpc,
+  updateRequirement: updateRequirementRpc,
+  deleteRequirement: deleteRequirementRpc,
+  parseTasks: parseTasksRpc,
 
   // External Links
-  getExternalLinks: (planningSessionId: string) =>
-    fetchJson<ExternalLink[]>(
-      `${API_BASE}/external-links?planningSessionId=${encodeURIComponent(planningSessionId)}`,
-    ),
-  addExternalLink: (planningSessionId: string, url: string, title?: string) =>
-    fetchJson<ExternalLink>(`${API_BASE}/external-links`, {
-      method: "POST",
-      body: JSON.stringify({ planningSessionId, url, title }),
-    }),
-  refreshExternalLink: (id: number) =>
-    fetchJson<ExternalLink>(`${API_BASE}/external-links/${id}/refresh`, {
-      method: "POST",
-    }),
-  updateExternalLink: (id: number, title: string) =>
-    fetchJson<ExternalLink>(`${API_BASE}/external-links/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
-  deleteExternalLink: (id: number) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/external-links/${id}`, {
-      method: "DELETE",
-    }),
+  getExternalLinks: getExternalLinksRpc,
+  addExternalLink: addExternalLinkRpc,
+  refreshExternalLink: refreshExternalLinkRpc,
+  updateExternalLink: updateExternalLinkRpc,
+  deleteExternalLink: deleteExternalLinkRpc,
 
   // Planning Sessions
-  getPlanningSessions: (repoId: string) =>
-    fetchJson<PlanningSession[]>(
-      `${API_BASE}/planning-sessions?repoId=${encodeURIComponent(repoId)}`,
-    ),
-  getPlanningSession: (id: string) =>
-    fetchJson<PlanningSession>(`${API_BASE}/planning-sessions/${id}`),
-  createPlanningSession: (repoId: string, baseBranch: string, title?: string) =>
-    fetchJson<PlanningSession>(`${API_BASE}/planning-sessions`, {
-      method: "POST",
-      body: JSON.stringify({ repoId, baseBranch, title }),
-    }),
-  updatePlanningSession: (
-    id: string,
-    data: {
-      title?: string;
-      baseBranch?: string;
-      nodes?: TaskNode[];
-      edges?: TaskEdge[];
-    },
-  ) =>
-    fetchJson<PlanningSession>(`${API_BASE}/planning-sessions/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-  confirmPlanningSession: (id: string) =>
-    fetchJson<PlanningSession>(`${API_BASE}/planning-sessions/${id}/confirm`, {
-      method: "POST",
-    }),
-  discardPlanningSession: (id: string) =>
-    fetchJson<PlanningSession>(`${API_BASE}/planning-sessions/${id}/discard`, {
-      method: "POST",
-    }),
-  deletePlanningSession: (id: string) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/planning-sessions/${id}`, {
-      method: "DELETE",
-    }),
-
-  // Task Instructions
-  getTaskInstruction: (repoId: string, branchName: string) =>
-    fetchJson<TaskInstruction>(
-      `${API_BASE}/instructions/task?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`,
-    ),
-  updateTaskInstruction: (repoId: string, branchName: string, instructionMd: string) =>
-    fetchJson<TaskInstruction>(`${API_BASE}/instructions/task`, {
-      method: "PATCH",
-      body: JSON.stringify({ repoId, branchName, instructionMd }),
-    }),
-
-  // Worktree
-  createWorktree: (localPath: string, branchName: string) =>
-    fetchJson<{ worktreePath: string; branchName: string }>(`${API_BASE}/branch/create-worktree`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, branchName }),
-    }),
-
-  // Checkout
-  checkout: (localPath: string, branchName: string) =>
-    fetchJson<{ success: boolean; branchName: string }>(`${API_BASE}/branch/checkout`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, branchName }),
-    }),
-
-  // Pull
-  pull: (localPath: string, branchName: string, worktreePath?: string) =>
-    fetchJson<{ success: boolean; branchName: string; output: string }>(`${API_BASE}/branch/pull`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, branchName, worktreePath }),
-    }),
-
-  // Check if branch can be deleted
-  checkBranchDeletable: (localPath: string, branchName: string, parentBranch?: string) =>
-    fetchJson<{ deletable: boolean; reason: string | null }>(`${API_BASE}/branch/check-deletable`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, branchName, parentBranch }),
-    }),
-
-  // Delete branch
-  deleteBranch: (localPath: string, branchName: string, force?: boolean) =>
-    fetchJson<{ success: boolean; branchName: string }>(`${API_BASE}/branch/delete`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, branchName, force }),
-    }),
-
-  // Clean up orphaned branch data
-  cleanupOrphanedBranchData: (localPath: string) =>
-    fetchJson<{
-      success: boolean;
-      cleaned: {
-        chatSessions: number;
-        chatMessages: number;
-        taskInstructions: number;
-        branchLinks: number;
-        instructionsLog: number;
-      };
-      existingBranches: number;
-    }>(`${API_BASE}/branch/cleanup-orphaned`, {
-      method: "POST",
-      body: JSON.stringify({ localPath }),
-    }),
-
-  // Delete worktree
-  deleteWorktree: (localPath: string, worktreePath: string) =>
-    fetchJson<{ success: boolean; worktreePath: string; branchName: string | null }>(
-      `${API_BASE}/branch/delete-worktree`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, worktreePath }),
-      },
-    ),
-
-  // Rebase onto parent
-  rebase: (localPath: string, branchName: string, parentBranch: string, worktreePath?: string) =>
-    fetchJson<{ success: boolean; branchName: string; parentBranch: string; output: string }>(
-      `${API_BASE}/branch/rebase`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, parentBranch, worktreePath }),
-      },
-    ),
-
-  // Merge parent into current branch
-  mergeParent: (
-    localPath: string,
-    branchName: string,
-    parentBranch: string,
-    worktreePath?: string,
-  ) =>
-    fetchJson<{ success: boolean; branchName: string; parentBranch: string; output: string }>(
-      `${API_BASE}/branch/merge-parent`,
-      {
-        method: "POST",
-        body: JSON.stringify({ localPath, branchName, parentBranch, worktreePath }),
-      },
-    ),
-
-  // Push branch to remote
-  push: (localPath: string, branchName: string, worktreePath?: string, force?: boolean) =>
-    fetchJson<{ success: boolean; branchName: string; output: string }>(`${API_BASE}/branch/push`, {
-      method: "POST",
-      body: JSON.stringify({ localPath, branchName, worktreePath, force }),
-    }),
+  getPlanningSessions: getPlanningSessionsRpc,
+  getPlanningSession: getPlanningSessionRpc,
+  createPlanningSession: createPlanningSessionRpc,
+  updatePlanningSession: updatePlanningSessionRpc,
+  confirmPlanningSession: confirmPlanningSessionRpc,
+  discardPlanningSession: discardPlanningSessionRpc,
+  deletePlanningSession: deletePlanningSessionRpc,
 
   // Branch Links
-  getBranchLinks: (repoId: string, branchName: string) =>
-    fetchJson<BranchLink[]>(
-      `${API_BASE}/branch-links?repoId=${encodeURIComponent(repoId)}&branchName=${encodeURIComponent(branchName)}`,
-    ),
-  createBranchLink: (data: {
-    repoId: string;
-    branchName: string;
-    linkType: BranchLinkType;
-    url: string;
-    number?: number;
-    title?: string;
-    status?: string;
-  }) =>
-    fetchJson<BranchLink>(`${API_BASE}/branch-links`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  updateBranchLink: (id: number, data: { title?: string; status?: string }) =>
-    fetchJson<BranchLink>(`${API_BASE}/branch-links/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-  deleteBranchLink: (id: number) =>
-    fetchJson<{ success: boolean }>(`${API_BASE}/branch-links/${id}`, {
-      method: "DELETE",
-    }),
-  refreshBranchLink: (id: number) =>
-    fetchJson<BranchLink>(`${API_BASE}/branch-links/${id}/refresh`, {
-      method: "POST",
-    }),
+  getBranchLinks: getBranchLinksRpc,
+  createBranchLink: createBranchLinkRpc,
+  updateBranchLink: updateBranchLinkRpc,
+  deleteBranchLink: deleteBranchLinkRpc,
+  refreshBranchLink: refreshBranchLinkRpc,
 
   // System
-  selectDirectory: () =>
-    fetchJson<{ cancelled: boolean; path: string | null }>(`${API_BASE}/system/select-directory`, {
-      method: "POST",
-    }),
+  selectDirectory: selectDirectoryRpc,
 };

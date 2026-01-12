@@ -13,8 +13,6 @@ import {
   fetchIssuesTrackingThisGraphQL,
 } from "../lib/github-api";
 
-export const externalLinksRouter = new Hono();
-
 // Link type detection
 function detectLinkType(url: string): string {
   if (url.includes("notion.so") || url.includes("notion.site")) {
@@ -372,176 +370,172 @@ const updateLinkSchema = z.object({
   title: z.string().optional(),
 });
 
-// GET /api/external-links?planningSessionId=xxx
-externalLinksRouter.get("/", async (c) => {
-  const planningSessionId = c.req.query("planningSessionId");
-  if (!planningSessionId) {
-    throw new BadRequestError("planningSessionId is required");
-  }
+export const externalLinksRouter = new Hono()
+  // GET /api/external-links?planningSessionId=xxx
+  .get("/", async (c) => {
+    const planningSessionId = c.req.query("planningSessionId");
+    if (!planningSessionId) {
+      throw new BadRequestError("planningSessionId is required");
+    }
 
-  const links = await db
-    .select()
-    .from(externalLinks)
-    .where(eq(externalLinks.planningSessionId, planningSessionId))
-    .orderBy(externalLinks.createdAt);
+    const links = await db
+      .select()
+      .from(externalLinks)
+      .where(eq(externalLinks.planningSessionId, planningSessionId))
+      .orderBy(externalLinks.createdAt);
 
-  return c.json(links);
-});
+    return c.json(links);
+  })
+  // GET /api/external-links/context?planningSessionId=xxx - Get all link contents for Claude context
+  .get("/context", async (c) => {
+    const planningSessionId = c.req.query("planningSessionId");
+    if (!planningSessionId) {
+      throw new BadRequestError("planningSessionId is required");
+    }
 
-// POST /api/external-links - Add a new link
-externalLinksRouter.post("/", async (c) => {
-  const body = await c.req.json();
-  const { planningSessionId, url, title } = validateOrThrow(addLinkSchema, body);
+    const links = await db
+      .select()
+      .from(externalLinks)
+      .where(eq(externalLinks.planningSessionId, planningSessionId));
 
-  const linkType = detectLinkType(url);
-  const now = new Date().toISOString();
+    // Build context string for Claude
+    const contextParts = links
+      .filter((link) => link.contentCache)
+      .map((link) => {
+        return `## ${link.title || link.linkType.toUpperCase()}\nSource: ${link.url}\n\n${link.contentCache}`;
+      });
 
-  // Fetch content
-  const { title: fetchedTitle, content } = await fetchLinkContent(url, linkType);
+    return c.json({
+      links,
+      contextMarkdown:
+        contextParts.length > 0
+          ? `# External References\n\n${contextParts.join("\n\n---\n\n")}`
+          : null,
+    });
+  })
+  // POST /api/external-links - Add a new link
+  .post("/", async (c) => {
+    const body = await c.req.json();
+    const { planningSessionId, url, title } = validateOrThrow(addLinkSchema, body);
 
-  const [inserted] = await db
-    .insert(externalLinks)
-    .values({
+    const linkType = detectLinkType(url);
+    const now = new Date().toISOString();
+
+    // Fetch content
+    const { title: fetchedTitle, content } = await fetchLinkContent(url, linkType);
+
+    const [inserted] = await db
+      .insert(externalLinks)
+      .values({
+        planningSessionId,
+        url,
+        linkType,
+        title: title || fetchedTitle || null,
+        contentCache: content || null,
+        lastFetchedAt: content ? now : null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    broadcast({
+      type: "external-link.created",
       planningSessionId,
-      url,
-      linkType,
-      title: title || fetchedTitle || null,
-      contentCache: content || null,
-      lastFetchedAt: content ? now : null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
-
-  broadcast({
-    type: "external-link.created",
-    planningSessionId,
-    data: inserted,
-  });
-
-  return c.json(inserted, 201);
-});
-
-// POST /api/external-links/:id/refresh - Re-fetch content
-externalLinksRouter.post("/:id/refresh", async (c) => {
-  const id = parseInt(c.req.param("id"), 10);
-  if (isNaN(id)) {
-    throw new BadRequestError("Invalid id");
-  }
-
-  const [link] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
-
-  if (!link) {
-    throw new NotFoundError("Link not found");
-  }
-
-  const { title, content } = await fetchLinkContent(link.url, link.linkType);
-  const now = new Date().toISOString();
-
-  const [updated] = await db
-    .update(externalLinks)
-    .set({
-      title: title || link.title,
-      contentCache: content || link.contentCache,
-      lastFetchedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(externalLinks.id, id))
-    .returning();
-
-  broadcast({
-    type: "external-link.updated",
-    planningSessionId: link.planningSessionId,
-    data: updated,
-  });
-
-  return c.json(updated);
-});
-
-// PATCH /api/external-links/:id - Update title
-externalLinksRouter.patch("/:id", async (c) => {
-  const id = parseInt(c.req.param("id"), 10);
-  if (isNaN(id)) {
-    throw new BadRequestError("Invalid id");
-  }
-
-  const body = await c.req.json();
-  const { title } = validateOrThrow(updateLinkSchema, body);
-
-  const [existing] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
-
-  if (!existing) {
-    throw new NotFoundError("Link not found");
-  }
-
-  const now = new Date().toISOString();
-
-  const [updated] = await db
-    .update(externalLinks)
-    .set({
-      title,
-      updatedAt: now,
-    })
-    .where(eq(externalLinks.id, id))
-    .returning();
-
-  broadcast({
-    type: "external-link.updated",
-    planningSessionId: existing.planningSessionId,
-    data: updated,
-  });
-
-  return c.json(updated);
-});
-
-// DELETE /api/external-links/:id
-externalLinksRouter.delete("/:id", async (c) => {
-  const id = parseInt(c.req.param("id"), 10);
-  if (isNaN(id)) {
-    throw new BadRequestError("Invalid id");
-  }
-
-  const [link] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
-
-  if (!link) {
-    throw new NotFoundError("Link not found");
-  }
-
-  await db.delete(externalLinks).where(eq(externalLinks.id, id));
-
-  broadcast({
-    type: "external-link.deleted",
-    planningSessionId: link.planningSessionId,
-    data: { id },
-  });
-
-  return c.json({ success: true });
-});
-
-// GET /api/external-links/context?planningSessionId=xxx - Get all link contents for Claude context
-externalLinksRouter.get("/context", async (c) => {
-  const planningSessionId = c.req.query("planningSessionId");
-  if (!planningSessionId) {
-    throw new BadRequestError("planningSessionId is required");
-  }
-
-  const links = await db
-    .select()
-    .from(externalLinks)
-    .where(eq(externalLinks.planningSessionId, planningSessionId));
-
-  // Build context string for Claude
-  const contextParts = links
-    .filter((link) => link.contentCache)
-    .map((link) => {
-      return `## ${link.title || link.linkType.toUpperCase()}\nSource: ${link.url}\n\n${link.contentCache}`;
+      data: inserted,
     });
 
-  return c.json({
-    links,
-    contextMarkdown:
-      contextParts.length > 0
-        ? `# External References\n\n${contextParts.join("\n\n---\n\n")}`
-        : null,
+    return c.json(inserted, 201);
+  })
+  // POST /api/external-links/:id/refresh - Re-fetch content
+  .post("/:id/refresh", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+      throw new BadRequestError("Invalid id");
+    }
+
+    const [link] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
+
+    if (!link) {
+      throw new NotFoundError("Link not found");
+    }
+
+    const { title, content } = await fetchLinkContent(link.url, link.linkType);
+    const now = new Date().toISOString();
+
+    const [updated] = await db
+      .update(externalLinks)
+      .set({
+        title: title || link.title,
+        contentCache: content || link.contentCache,
+        lastFetchedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(externalLinks.id, id))
+      .returning();
+
+    broadcast({
+      type: "external-link.updated",
+      planningSessionId: link.planningSessionId,
+      data: updated,
+    });
+
+    return c.json(updated);
+  })
+  // PATCH /api/external-links/:id - Update title
+  .patch("/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+      throw new BadRequestError("Invalid id");
+    }
+
+    const body = await c.req.json();
+    const { title } = validateOrThrow(updateLinkSchema, body);
+
+    const [existing] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
+
+    if (!existing) {
+      throw new NotFoundError("Link not found");
+    }
+
+    const now = new Date().toISOString();
+
+    const [updated] = await db
+      .update(externalLinks)
+      .set({
+        title,
+        updatedAt: now,
+      })
+      .where(eq(externalLinks.id, id))
+      .returning();
+
+    broadcast({
+      type: "external-link.updated",
+      planningSessionId: existing.planningSessionId,
+      data: updated,
+    });
+
+    return c.json(updated);
+  })
+  // DELETE /api/external-links/:id
+  .delete("/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+      throw new BadRequestError("Invalid id");
+    }
+
+    const [link] = await db.select().from(externalLinks).where(eq(externalLinks.id, id));
+
+    if (!link) {
+      throw new NotFoundError("Link not found");
+    }
+
+    await db.delete(externalLinks).where(eq(externalLinks.id, id));
+
+    broadcast({
+      type: "external-link.deleted",
+      planningSessionId: link.planningSessionId,
+      data: { id },
+    });
+
+    return c.json({ success: true });
   });
-});
