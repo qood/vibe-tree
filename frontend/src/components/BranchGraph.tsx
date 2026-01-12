@@ -722,7 +722,7 @@ export default function BranchGraph({
 
           // Calculate badge widths based on label length
           const badgeWidths = badges.map((badge) =>
-            Math.max(baseBadgeWidth, badge.label.length * charWidth + 8)
+            Math.max(baseBadgeWidth, badge.label.length * charWidth + 8),
           );
 
           // Calculate x positions for each badge

@@ -1,6 +1,3 @@
 {
-  "recommendations": [
-    "nicegoodthings.vscode-oxfmt",
-    "dbaeumer.vscode-eslint"
-  ]
+  "recommendations": ["nicegoodthings.vscode-oxfmt", "dbaeumer.vscode-eslint"]
 }
