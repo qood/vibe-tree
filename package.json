@@ -25,6 +25,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "bun run scripts/seed-e2e.ts",
+    "db:seed:clean": "bun run scripts/seed-e2e.ts --clean",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check ."
   },
