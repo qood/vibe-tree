@@ -1,0 +1,44 @@
+{
+  // Formatter
+  "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt",
+  "editor.formatOnSave": true,
+
+  // Language-specific settings
+  "[typescript]": {
+    "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "nicegoodthings.vscode-oxfmt"
+  },
+
+  // TypeScript
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  // ESLint
+  "eslint.workingDirectories": ["frontend"],
+  "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+
+  // Editor
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // File associations
+  "files.associations": {
+    "*.css": "css"
+  }
+}
