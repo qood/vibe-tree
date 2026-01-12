@@ -53,8 +53,7 @@ export const onErrorHandler: ErrorHandler = (error, c) => {
 
   if (error instanceof Error) {
     // Don't expose internal errors in production
-    const message =
-      process.env.NODE_ENV === "production" ? "Internal server error" : error.message;
+    const message = process.env.NODE_ENV === "production" ? "Internal server error" : error.message;
     return c.json<ApiError>({ error: message, code: "INTERNAL_ERROR" }, 500);
   }
 
