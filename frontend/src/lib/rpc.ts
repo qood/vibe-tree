@@ -863,12 +863,33 @@ export async function updatePlanningSessionRpc(
   return unwrap<PlanningSession>(res);
 }
 
-export async function confirmPlanningSessionRpc(id: string): Promise<PlanningSession> {
+export interface ConfirmPlanningSessionResult extends PlanningSession {
+  worktreePath?: string;
+  branchName?: string;
+  branchResults?: Array<{
+    taskId: string;
+    branchName: string;
+    parentBranch: string;
+    success: boolean;
+    error?: string;
+  }>;
+  summary?: {
+    total: number;
+    success: number;
+    failed: number;
+  };
+}
+
+export async function confirmPlanningSessionRpc(
+  id: string,
+  options?: { singleBranch?: boolean },
+): Promise<ConfirmPlanningSessionResult> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await (rpc["planning-sessions"] as any)[`:id`].confirm.$post({
     param: { id },
+    json: options || {},
   });
-  return unwrap<PlanningSession>(res);
+  return unwrap<ConfirmPlanningSessionResult>(res);
 }
 
 export async function discardPlanningSessionRpc(id: string): Promise<PlanningSession> {
