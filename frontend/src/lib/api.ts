@@ -355,6 +355,23 @@ export interface PlanningSession {
   updatedAt: string;
 }
 
+export interface ConfirmPlanningSessionResult extends PlanningSession {
+  worktreePath?: string;
+  branchName?: string;
+  branchResults?: Array<{
+    taskId: string;
+    branchName: string;
+    parentBranch: string;
+    success: boolean;
+    error?: string;
+  }>;
+  summary?: {
+    total: number;
+    success: number;
+    failed: number;
+  };
+}
+
 // Task Instruction types
 export interface TaskInstruction {
   id: number | null;
@@ -522,6 +539,7 @@ import {
   getPlanningSessionsRpc,
   getPlanningSessionRpc,
   createPlanningSessionRpc,
+  createPlanningSessionFromIssueRpc,
   updatePlanningSessionRpc,
   confirmPlanningSessionRpc,
   discardPlanningSessionRpc,
@@ -637,6 +655,7 @@ export const api = {
   getPlanningSessions: getPlanningSessionsRpc,
   getPlanningSession: getPlanningSessionRpc,
   createPlanningSession: createPlanningSessionRpc,
+  createPlanningSessionFromIssue: createPlanningSessionFromIssueRpc,
   updatePlanningSession: updatePlanningSessionRpc,
   confirmPlanningSession: confirmPlanningSessionRpc,
   discardPlanningSession: discardPlanningSessionRpc,

@@ -200,6 +200,10 @@ interface PlanningPanelProps {
   onSessionSelect?: (session: PlanningSession | null) => void;
   pendingPlanning?: { branchName: string; instruction: string | null } | null;
   onPlanningStarted?: () => void;
+  onOpenTerminal?: (
+    worktreePath: string,
+    taskContext?: { title: string; description?: string },
+  ) => void;
 }
 
 export function PlanningPanel({
@@ -210,6 +214,7 @@ export function PlanningPanel({
   onSessionSelect,
   pendingPlanning,
   onPlanningStarted,
+  onOpenTerminal,
 }: PlanningPanelProps) {
   const [sessions, setSessions] = useState<PlanningSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<PlanningSession | null>(null);
@@ -231,6 +236,7 @@ export function PlanningPanel({
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBaseBranch, setNewBaseBranch] = useState(defaultBranch);
+  const [newIssue, setNewIssue] = useState("");
 
   // External links for selected session
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
@@ -249,6 +255,9 @@ export function PlanningPanel({
   const [instructionLoading, setInstructionLoading] = useState(false);
   const [instructionSaving, setInstructionSaving] = useState(false);
   const [instructionDirty, setInstructionDirty] = useState(false);
+
+  // Single branch mode option
+  const [singleBranchMode, setSingleBranchMode] = useState(false);
 
   // Session notifications (unread counts, thinking state)
   const chatSessionIds = sessions
@@ -428,17 +437,29 @@ export function PlanningPanel({
     setCreating(true);
     setError(null);
     try {
-      const session = await api.createPlanningSession(
-        repoId,
-        newBaseBranch.trim(),
-        newTitle.trim() || undefined,
-      );
+      let session: PlanningSession;
+      if (newIssue.trim()) {
+        // Create session from GitHub issue
+        session = await api.createPlanningSessionFromIssue(
+          repoId,
+          newIssue.trim(),
+          newBaseBranch.trim(),
+        );
+      } else {
+        // Create regular session
+        session = await api.createPlanningSession(
+          repoId,
+          newBaseBranch.trim(),
+          newTitle.trim() || undefined,
+        );
+      }
       // State will be updated via WebSocket planning.created event
       setSelectedSession(session);
       onSessionSelect?.(session);
       setShowNewForm(false);
       setNewTitle("");
       setNewBaseBranch(defaultBranch);
+      setNewIssue("");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -508,10 +529,22 @@ export function PlanningPanel({
     }
     setLoading(true);
     try {
-      const updated = await api.confirmPlanningSession(selectedSession.id);
-      setSelectedSession(updated);
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-      onSessionSelect?.(updated);
+      const result = await api.confirmPlanningSession(selectedSession.id, {
+        singleBranch: singleBranchMode,
+      });
+      setSelectedSession(result);
+      setSessions((prev) => prev.map((s) => (s.id === result.id ? result : s)));
+      onSessionSelect?.(result);
+      setSingleBranchMode(false); // Reset after confirm
+
+      // Open terminal with the worktree if available
+      if (result.worktreePath && onOpenTerminal) {
+        const taskContext = {
+          title: selectedSession.title,
+          description: selectedSession.nodes.map((n) => n.title).join("\n"),
+        };
+        onOpenTerminal(result.worktreePath, taskContext);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -864,11 +897,20 @@ export function PlanningPanel({
           >
             <input
               type="text"
-              placeholder="Title (optional)"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="#123 or issue URL (optional)"
+              value={newIssue}
+              onChange={(e) => setNewIssue(e.target.value)}
               className="planning-panel__input"
             />
+            {!newIssue.trim() && (
+              <input
+                type="text"
+                placeholder="Title (optional)"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                className="planning-panel__input"
+              />
+            )}
             <select
               value={newBaseBranch}
               onChange={(e) => setNewBaseBranch(e.target.value)}
@@ -1208,34 +1250,95 @@ export function PlanningPanel({
           {!isPlanningSession && (
             <div className="planning-panel__tasks">
               <h4>Tasks ({selectedSession.nodes.length})</h4>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-              >
-                {selectedSession.nodes.map((task) => (
-                  <DraggableTaskItem
-                    key={task.id}
-                    task={task}
-                    parentName={getParentName(task.id)}
-                    depth={getTaskDepth(task.id)}
-                    isDraft={selectedSession.status === "draft"}
-                    onRemove={() => handleRemoveTask(task.id)}
-                    onRemoveParent={() => handleRemoveParent(task.id)}
-                    onBranchNameChange={(newName) => handleBranchNameChange(task.id, newName)}
-                  />
-                ))}
-                <DragOverlay>
-                  {activeDragId && (
-                    <div className="planning-panel__task-item planning-panel__task-item--dragging">
-                      {selectedSession.nodes.find((t) => t.id === activeDragId)?.title}
-                    </div>
+
+              {/* Single branch mode preview */}
+              {singleBranchMode && selectedSession.nodes.length > 0 ? (
+                <div
+                  style={{
+                    background: "#1e3a5f",
+                    border: "1px solid #3b82f6",
+                    borderRadius: 8,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "#60a5fa" }}>
+                      🔀 1ブランチにまとめて実行
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "#f3f4f6",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {selectedSession.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#9ca3af",
+                      fontFamily: "monospace",
+                      marginBottom: 12,
+                    }}
+                  >
+                    task/
+                    {selectedSession.title
+                      .toLowerCase()
+                      .replace(/\s+/g, "-")
+                      .replace(/[^a-z0-9-]/g, "")
+                      .substring(0, 50)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#9ca3af" }}>含まれるタスク:</div>
+                  <ul style={{ margin: "4px 0 0 0", paddingLeft: 20 }}>
+                    {selectedSession.nodes.map((task) => (
+                      <li key={task.id} style={{ fontSize: 12, color: "#d1d5db", marginBottom: 2 }}>
+                        {task.title}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  >
+                    {selectedSession.nodes.map((task) => (
+                      <DraggableTaskItem
+                        key={task.id}
+                        task={task}
+                        parentName={getParentName(task.id)}
+                        depth={getTaskDepth(task.id)}
+                        isDraft={selectedSession.status === "draft"}
+                        onRemove={() => handleRemoveTask(task.id)}
+                        onRemoveParent={() => handleRemoveParent(task.id)}
+                        onBranchNameChange={(newName) => handleBranchNameChange(task.id, newName)}
+                      />
+                    ))}
+                    <DragOverlay>
+                      {activeDragId && (
+                        <div className="planning-panel__task-item planning-panel__task-item--dragging">
+                          {selectedSession.nodes.find((t) => t.id === activeDragId)?.title}
+                        </div>
+                      )}
+                    </DragOverlay>
+                  </DndContext>
+                  {selectedSession.nodes.length === 0 && (
+                    <div className="planning-panel__tasks-empty">Chat with AI to suggest tasks</div>
                   )}
-                </DragOverlay>
-              </DndContext>
-              {selectedSession.nodes.length === 0 && (
-                <div className="planning-panel__tasks-empty">Chat with AI to suggest tasks</div>
+                </>
               )}
             </div>
           )}
@@ -1279,22 +1382,45 @@ export function PlanningPanel({
 
           {/* Actions in sidebar */}
           {selectedSession.status === "draft" && (
-            <div className="planning-panel__actions">
-              <button
-                className="planning-panel__discard-btn"
-                onClick={handleDiscard}
-                disabled={loading}
-              >
-                Discard
-              </button>
-              <button
-                className="planning-panel__confirm-btn"
-                onClick={handleConfirm}
-                disabled={loading || selectedSession.nodes.length === 0}
-              >
-                Confirm
-              </button>
-            </div>
+            <>
+              {selectedSession.nodes.length > 1 && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                    color: "#9ca3af",
+                    marginBottom: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={singleBranchMode}
+                    onChange={(e) => setSingleBranchMode(e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <span>まとめて1つのブランチで実行</span>
+                </label>
+              )}
+              <div className="planning-panel__actions">
+                <button
+                  className="planning-panel__discard-btn"
+                  onClick={handleDiscard}
+                  disabled={loading}
+                >
+                  Discard
+                </button>
+                <button
+                  className="planning-panel__confirm-btn"
+                  onClick={handleConfirm}
+                  disabled={loading || selectedSession.nodes.length === 0}
+                >
+                  Confirm
+                </button>
+              </div>
+            </>
           )}
 
           {selectedSession.status === "confirmed" && (

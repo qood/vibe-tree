@@ -83,6 +83,34 @@ export function ChatPanel({
     }
   }, [messages]);
 
+  // Send message with specific content (for auto-send)
+  const sendMessageWithContent = async (content: string) => {
+    if (loading) return;
+
+    setLoading(true);
+    setError(null);
+
+    const tempId = Date.now();
+    const tempUserMsg: ChatMessage = {
+      id: tempId,
+      sessionId,
+      role: "user",
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, tempUserMsg]);
+
+    try {
+      const result = await api.sendChatMessage(sessionId, content);
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? result.userMessage : m)));
+      inputRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setLoading(false);
+    }
+  };
+
   // Send message
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -390,6 +418,39 @@ export function ChatPanel({
             </div>
           </div>
         ))}
+
+        {/* Auto-start button for Issue-based sessions */}
+        {messages.length === 1 &&
+          messages[0]?.role === "assistant" &&
+          messages[0]?.content.includes("GitHub Issue #") &&
+          !loading &&
+          !disabled && (
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <button
+                onClick={() =>
+                  sendMessageWithContent(
+                    "このIssueの内容をもとに、必要なタスクを分解して提案してください。",
+                  )
+                }
+                style={{
+                  padding: "10px 16px",
+                  background: "#3b82f6",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>▶</span>
+                <span>AIにタスク分解を依頼</span>
+              </button>
+            </div>
+          )}
 
         {loading && (
           <div style={{ display: "flex", justifyContent: "flex-start" }}>
