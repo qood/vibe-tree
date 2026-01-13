@@ -8,10 +8,7 @@ import type { RepoId, BranchName, PRNumber, IssueNumber } from "../common/brande
 // PR State (Discriminated Union)
 // ============================================
 
-export type PRState =
-  | OpenPR
-  | MergedPR
-  | ClosedPR;
+export type PRState = OpenPR | MergedPR | ClosedPR;
 
 export interface OpenPR {
   readonly state: "open";
@@ -35,17 +32,9 @@ export interface ClosedPR {
 // Review & Checks
 // ============================================
 
-export type ReviewDecision =
-  | "APPROVED"
-  | "CHANGES_REQUESTED"
-  | "REVIEW_REQUIRED"
-  | "NONE";
+export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | "NONE";
 
-export type ChecksStatus =
-  | "SUCCESS"
-  | "FAILURE"
-  | "PENDING"
-  | "NONE";
+export type ChecksStatus = "SUCCESS" | "FAILURE" | "PENDING" | "NONE";
 
 export interface CheckRun {
   readonly name: string;
@@ -77,9 +66,7 @@ export interface PullRequest {
 // Issue State (Discriminated Union)
 // ============================================
 
-export type IssueState =
-  | OpenIssue
-  | ClosedIssue;
+export type IssueState = OpenIssue | ClosedIssue;
 
 export interface OpenIssue {
   readonly state: "open";
@@ -110,9 +97,7 @@ export interface Issue {
 // Branch Link (ブランチとPR/Issueの関連)
 // ============================================
 
-export type BranchLink =
-  | PRLink
-  | IssueLink;
+export type BranchLink = PRLink | IssueLink;
 
 export interface PRLink {
   readonly type: "pr";
@@ -132,26 +117,19 @@ export interface IssueLink {
 // Type Guards
 // ============================================
 
-export const isOpenPR = (state: PRState): state is OpenPR =>
-  state.state === "open";
+export const isOpenPR = (state: PRState): state is OpenPR => state.state === "open";
 
-export const isMergedPR = (state: PRState): state is MergedPR =>
-  state.state === "merged";
+export const isMergedPR = (state: PRState): state is MergedPR => state.state === "merged";
 
-export const isClosedPR = (state: PRState): state is ClosedPR =>
-  state.state === "closed";
+export const isClosedPR = (state: PRState): state is ClosedPR => state.state === "closed";
 
-export const isOpenIssue = (state: IssueState): state is OpenIssue =>
-  state.state === "open";
+export const isOpenIssue = (state: IssueState): state is OpenIssue => state.state === "open";
 
-export const isClosedIssue = (state: IssueState): state is ClosedIssue =>
-  state.state === "closed";
+export const isClosedIssue = (state: IssueState): state is ClosedIssue => state.state === "closed";
 
-export const isPRLink = (link: BranchLink): link is PRLink =>
-  link.type === "pr";
+export const isPRLink = (link: BranchLink): link is PRLink => link.type === "pr";
 
-export const isIssueLink = (link: BranchLink): link is IssueLink =>
-  link.type === "issue";
+export const isIssueLink = (link: BranchLink): link is IssueLink => link.type === "issue";
 
 // ============================================
 // Helpers

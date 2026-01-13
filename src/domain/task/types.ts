@@ -26,11 +26,7 @@ import type {
  * - done: 完了情報（完了時刻）
  * - blocked: ブロック情報（理由、依存タスク）
  */
-export type TaskStatus =
-  | TodoStatus
-  | DoingStatus
-  | DoneStatus
-  | BlockedStatus;
+export type TaskStatus = TodoStatus | DoingStatus | DoneStatus | BlockedStatus;
 
 export interface TodoStatus {
   readonly type: "todo";
@@ -80,9 +76,7 @@ export type TaskNode = TaskNodeBase & {
 // Task Node Constructors
 // ============================================
 
-export const createTodoTask = (
-  base: TaskNodeBase
-): TaskNode => ({
+export const createTodoTask = (base: TaskNodeBase): TaskNode => ({
   ...base,
   status: { type: "todo" },
 });
@@ -90,18 +84,16 @@ export const createTodoTask = (
 export const createDoingTask = (
   base: TaskNodeBase,
   startedAt: Date,
-  worktreePath?: WorktreePath
+  worktreePath?: WorktreePath,
 ): TaskNode => ({
   ...base,
-  status: worktreePath
-    ? { type: "doing", startedAt, worktreePath }
-    : { type: "doing", startedAt },
+  status: worktreePath ? { type: "doing", startedAt, worktreePath } : { type: "doing", startedAt },
 });
 
 export const createDoneTask = (
   base: TaskNodeBase,
   completedAt: Date,
-  worktreePath?: WorktreePath
+  worktreePath?: WorktreePath,
 ): TaskNode => ({
   ...base,
   status: worktreePath
@@ -112,12 +104,10 @@ export const createDoneTask = (
 export const createBlockedTask = (
   base: TaskNodeBase,
   reason: string,
-  blockedBy?: TaskId[]
+  blockedBy?: TaskId[],
 ): TaskNode => ({
   ...base,
-  status: blockedBy
-    ? { type: "blocked", reason, blockedBy }
-    : { type: "blocked", reason },
+  status: blockedBy ? { type: "blocked", reason, blockedBy } : { type: "blocked", reason },
 });
 
 // ============================================
@@ -159,17 +149,13 @@ export interface PlanningSession {
 // Type Guards
 // ============================================
 
-export const isTodo = (status: TaskStatus): status is TodoStatus =>
-  status.type === "todo";
+export const isTodo = (status: TaskStatus): status is TodoStatus => status.type === "todo";
 
-export const isDoing = (status: TaskStatus): status is DoingStatus =>
-  status.type === "doing";
+export const isDoing = (status: TaskStatus): status is DoingStatus => status.type === "doing";
 
-export const isDone = (status: TaskStatus): status is DoneStatus =>
-  status.type === "done";
+export const isDone = (status: TaskStatus): status is DoneStatus => status.type === "done";
 
-export const isBlocked = (status: TaskStatus): status is BlockedStatus =>
-  status.type === "blocked";
+export const isBlocked = (status: TaskStatus): status is BlockedStatus => status.type === "blocked";
 
 // ============================================
 // Task Status Helpers
@@ -177,11 +163,9 @@ export const isBlocked = (status: TaskStatus): status is BlockedStatus =>
 
 export const getStatusType = (status: TaskStatus): string => status.type;
 
-export const isCompleted = (node: TaskNode): boolean =>
-  node.status.type === "done";
+export const isCompleted = (node: TaskNode): boolean => node.status.type === "done";
 
-export const isInProgress = (node: TaskNode): boolean =>
-  node.status.type === "doing";
+export const isInProgress = (node: TaskNode): boolean => node.status.type === "doing";
 
 export const isPending = (node: TaskNode): boolean =>
   node.status.type === "todo" || node.status.type === "blocked";
@@ -204,10 +188,7 @@ export type TaskTransitionError =
  * - blocked → todo (ブロック解除)
  * - blocked → doing (ブロック解除して作業開始)
  */
-export const canTransition = (
-  from: TaskStatus["type"],
-  to: TaskStatus["type"]
-): boolean => {
+export const canTransition = (from: TaskStatus["type"], to: TaskStatus["type"]): boolean => {
   const validTransitions: Record<string, string[]> = {
     todo: ["doing", "blocked"],
     doing: ["done", "blocked"],

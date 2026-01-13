@@ -85,10 +85,8 @@ export const BranchName = (value: string): BranchName => value as BranchName;
 export const WorktreePath = (value: string): WorktreePath => value as WorktreePath;
 export const CommitHash = (value: string): CommitHash => value as CommitHash;
 export const TaskId = (value: string): TaskId => value as TaskId;
-export const PlanningSessionId = (value: string): PlanningSessionId =>
-  value as PlanningSessionId;
-export const ChatSessionId = (value: string): ChatSessionId =>
-  value as ChatSessionId;
+export const PlanningSessionId = (value: string): PlanningSessionId => value as PlanningSessionId;
+export const ChatSessionId = (value: string): ChatSessionId => value as ChatSessionId;
 export const IssueNumber = (value: number): IssueNumber => value as IssueNumber;
 export const PRNumber = (value: number): PRNumber => value as PRNumber;
 export const DbId = (value: number): DbId => value as DbId;

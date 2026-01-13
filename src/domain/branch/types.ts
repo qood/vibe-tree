@@ -2,13 +2,7 @@
  * Branch Domain Types - ブランチ・ワークツリーのドメインモデル
  */
 
-import type {
-  RepoId,
-  BranchName,
-  WorktreePath,
-  CommitHash,
-  LocalPath,
-} from "../common/branded";
+import type { RepoId, BranchName, WorktreePath, CommitHash, LocalPath } from "../common/branded";
 
 // ============================================
 // Worktree State (Discriminated Union)
@@ -20,10 +14,7 @@ import type {
  * - idle: 存在するが作業中ではない
  * - none: ワークツリーなし
  */
-export type WorktreeState =
-  | ActiveWorktree
-  | IdleWorktree
-  | NoWorktree;
+export type WorktreeState = ActiveWorktree | IdleWorktree | NoWorktree;
 
 export interface ActiveWorktree {
   readonly type: "active";
@@ -142,17 +133,13 @@ export interface TreeDivergenceWarning {
 // Type Guards for Warnings
 // ============================================
 
-export const isBehindParent = (w: Warning): w is BehindParentWarning =>
-  w.type === "BEHIND_PARENT";
+export const isBehindParent = (w: Warning): w is BehindParentWarning => w.type === "BEHIND_PARENT";
 
-export const isDirty = (w: Warning): w is DirtyWarning =>
-  w.type === "DIRTY";
+export const isDirty = (w: Warning): w is DirtyWarning => w.type === "DIRTY";
 
-export const isCIFail = (w: Warning): w is CIFailWarning =>
-  w.type === "CI_FAIL";
+export const isCIFail = (w: Warning): w is CIFailWarning => w.type === "CI_FAIL";
 
-export const isErrorSeverity = (w: Warning): boolean =>
-  w.severity === "error";
+export const isErrorSeverity = (w: Warning): boolean => w.severity === "error";
 
 // ============================================
 // Repository Settings
